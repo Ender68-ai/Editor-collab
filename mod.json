@@ -9,5 +9,17 @@
   "name": "Collaborative Editor",
   "version": "1.0.0",
   "developer": "Collab Team",
-  "description": "Real-time collaborative level editor for Geometry Dash"
+  "description": "Real-time collaborative level editor for Geometry Dash",
+  "dependencies": [
+    {
+      "id": "geode.loader",
+      "version": ">=5.3.0"
+    }
+  ],
+  "resources": {
+    "files": [
+      "server/server.js",
+      "server/package.json"
+    ]
+  }
 }
