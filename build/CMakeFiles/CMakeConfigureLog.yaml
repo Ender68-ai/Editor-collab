@@ -24,7 +24,7 @@ events:
       The output was:
       0
       Versi├│n de MSBuild 17.13.19+0d9f5a35a para .NET Framework
-      Compilaci├│n iniciada a las 12/03/2026 19:48:45.
+      Compilaci├│n iniciada a las 12/03/2026 20:20:00.
       
       Proyecto "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\4.0.1\\CompilerIdC\\CompilerIdC.vcxproj" en nodo 1 (destinos predeterminados).
       PrepareForBuild:
@@ -53,7 +53,7 @@ events:
           0 Advertencia(s)
           0 Errores
       
-      Tiempo transcurrido 00:00:02.02
+      Tiempo transcurrido 00:00:02.30
       
       
       Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.exe"
@@ -79,7 +79,7 @@ events:
       The output was:
       0
       Versi├│n de MSBuild 17.13.19+0d9f5a35a para .NET Framework
-      Compilaci├│n iniciada a las 12/03/2026 19:48:48.
+      Compilaci├│n iniciada a las 12/03/2026 20:20:03.
       
       Proyecto "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\4.0.1\\CompilerIdCXX\\CompilerIdCXX.vcxproj" en nodo 1 (destinos predeterminados).
       PrepareForBuild:
@@ -108,7 +108,7 @@ events:
           0 Advertencia(s)
           0 Errores
       
-      Tiempo transcurrido 00:00:02.32
+      Tiempo transcurrido 00:00:02.68
       
       
       Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.exe"
@@ -127,8 +127,8 @@ events:
     checks:
       - "Detecting C compiler ABI info"
     directories:
-      source: "C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-h22eui"
-      binary: "C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-h22eui"
+      source: "C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-zsrm8r"
+      binary: "C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-zsrm8r"
     cmakeVariables:
       CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
       CMAKE_C_FLAGS_DEBUG: "/Ob0 /Od /RTC1"
@@ -137,70 +137,96 @@ events:
       variable: "CMAKE_C_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-h22eui'
+        Change Dir: 'C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-zsrm8r'
         
-        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_1a581.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_b013b.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
         Versi├│n de MSBuild 17.13.19+0d9f5a35a para .NET Framework
-        Compilaci├│n iniciada a las 12/03/2026 19:48:51.
+        Compilaci├│n iniciada a las 12/03/2026 20:20:06.
         
-        Proyecto "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h22eui\\cmTC_1a581.vcxproj" en nodo 1 (destinos predeterminados).
+        Proyecto "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zsrm8r\\cmTC_b013b.vcxproj" en nodo 1 (destinos predeterminados).
         PrepareForBuild:
-          Creando directorio "cmTC_1a581.dir\\Debug\\".
+          Creando directorio "cmTC_b013b.dir\\Debug\\".
           La salida estructurada est├í habilitada. El formato del diagn├│stico del compilador reflejar├í la jerarqu├¡a de errores. Consulte https://aka.ms/cpp/structured-output para obtener m├ís detalles.
-          Creando directorio "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h22eui\\Debug\\".
-          Creando directorio "cmTC_1a581.dir\\Debug\\cmTC_1a581.tlog\\".
+          Creando directorio "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zsrm8r\\Debug\\".
+          Creando directorio "cmTC_b013b.dir\\Debug\\cmTC_b013b.tlog\\".
         InitializeBuildStatus:
-          Se crear├í "cmTC_1a581.dir\\Debug\\cmTC_1a581.tlog\\unsuccessfulbuild" porque se especific├│ "AlwaysCreate".
-          Aplicando tarea Touch a "cmTC_1a581.dir\\Debug\\cmTC_1a581.tlog\\unsuccessfulbuild".
+          Se crear├í "cmTC_b013b.dir\\Debug\\cmTC_b013b.tlog\\unsuccessfulbuild" porque se especific├│ "AlwaysCreate".
+          Aplicando tarea Touch a "cmTC_b013b.dir\\Debug\\cmTC_b013b.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_1a581.dir\\Debug\\\\" /Fd"cmTC_1a581.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c"
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_b013b.dir\\Debug\\\\" /Fd"cmTC_b013b.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c"
           Compilador de optimizaci├│n de C/C++ de Microsoft (R) versi├│n 19.43.34810 para x64
           (C) Microsoft Corporation. Todos los derechos reservados.
-          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_1a581.dir\\Debug\\\\" /Fd"cmTC_1a581.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c"
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_b013b.dir\\Debug\\\\" /Fd"cmTC_b013b.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c"
           CMakeCCompilerABI.c
+        C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c(1,1): error C1090: No se pudo ejecutar la llamada API de PDB. C├│digo de error "3": C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zsrm8r\\cmTC_b013b.dir\\Debug\\vc143.pdb [C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zsrm8r\\cmTC_b013b.vcxproj]
+        Compilaci├│n del proyecto terminada "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zsrm8r\\cmTC_b013b.vcxproj" (destinos predeterminados) -- ERROR.
+        
+        ERROR al compilar.
+        
+        "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zsrm8r\\cmTC_b013b.vcxproj" (destino predeterminado) (1) ->
+        (ClCompile destino) -> 
+          C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCCompilerABI.c(1,1): error C1090: No se pudo ejecutar la llamada API de PDB. C├│digo de error "3": C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zsrm8r\\cmTC_b013b.dir\\Debug\\vc143.pdb [C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zsrm8r\\cmTC_b013b.vcxproj]
+        
+            0 Advertencia(s)
+            1 Errores
+        
+        Tiempo transcurrido 00:00:01.39
+        
+      exitCode: 1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:56 (try_compile)"
+      - "CMakeLists.txt:2 (project)"
+    checks:
+      - "Check for working C compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.43.34808/bin/Hostx64/x64/cl.exe"
+    directories:
+      source: "C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-sgoaxj"
+      binary: "C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-sgoaxj"
+    cmakeVariables:
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
+      CMAKE_C_FLAGS_DEBUG: "/Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+    buildResult:
+      variable: "CMAKE_C_COMPILER_WORKS"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-sgoaxj'
+        
+        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_7b8b5.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+        Versi├│n de MSBuild 17.13.19+0d9f5a35a para .NET Framework
+        Compilaci├│n iniciada a las 12/03/2026 20:20:09.
+        
+        Proyecto "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-sgoaxj\\cmTC_7b8b5.vcxproj" en nodo 1 (destinos predeterminados).
+        PrepareForBuild:
+          Creando directorio "cmTC_7b8b5.dir\\Debug\\".
+          La salida estructurada est├í habilitada. El formato del diagn├│stico del compilador reflejar├í la jerarqu├¡a de errores. Consulte https://aka.ms/cpp/structured-output para obtener m├ís detalles.
+          Creando directorio "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-sgoaxj\\Debug\\".
+          Creando directorio "cmTC_7b8b5.dir\\Debug\\cmTC_7b8b5.tlog\\".
+        InitializeBuildStatus:
+          Se crear├í "cmTC_7b8b5.dir\\Debug\\cmTC_7b8b5.tlog\\unsuccessfulbuild" porque se especific├│ "AlwaysCreate".
+          Aplicando tarea Touch a "cmTC_7b8b5.dir\\Debug\\cmTC_7b8b5.tlog\\unsuccessfulbuild".
+        ClCompile:
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_7b8b5.dir\\Debug\\\\" /Fd"cmTC_7b8b5.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-sgoaxj\\testCCompiler.c"
+          Compilador de optimizaci├│n de C/C++ de Microsoft (R) versi├│n 19.43.34810 para x64
+          (C) Microsoft Corporation. Todos los derechos reservados.
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_7b8b5.dir\\Debug\\\\" /Fd"cmTC_7b8b5.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-sgoaxj\\testCCompiler.c"
+          testCCompiler.c
         Link:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h22eui\\Debug\\cmTC_1a581.exe" /INCREMENTAL /ILK:"cmTC_1a581.dir\\Debug\\cmTC_1a581.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-h22eui/Debug/cmTC_1a581.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-h22eui/Debug/cmTC_1a581.lib" /MACHINE:X64  /machine:x64 cmTC_1a581.dir\\Debug\\CMakeCCompilerABI.obj
-          cmTC_1a581.vcxproj -> C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h22eui\\Debug\\cmTC_1a581.exe
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-sgoaxj\\Debug\\cmTC_7b8b5.exe" /INCREMENTAL /ILK:"cmTC_7b8b5.dir\\Debug\\cmTC_7b8b5.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-sgoaxj/Debug/cmTC_7b8b5.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-sgoaxj/Debug/cmTC_7b8b5.lib" /MACHINE:X64  /machine:x64 cmTC_7b8b5.dir\\Debug\\testCCompiler.obj
+          cmTC_7b8b5.vcxproj -> C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-sgoaxj\\Debug\\cmTC_7b8b5.exe
         FinalizeBuildStatus:
-          Se eliminar├í el archivo "cmTC_1a581.dir\\Debug\\cmTC_1a581.tlog\\unsuccessfulbuild".
-          Aplicando tarea Touch a "cmTC_1a581.dir\\Debug\\cmTC_1a581.tlog\\cmTC_1a581.lastbuildstate".
-        Compilaci├│n del proyecto terminada "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h22eui\\cmTC_1a581.vcxproj" (destinos predeterminados).
+          Se eliminar├í el archivo "cmTC_7b8b5.dir\\Debug\\cmTC_7b8b5.tlog\\unsuccessfulbuild".
+          Aplicando tarea Touch a "cmTC_7b8b5.dir\\Debug\\cmTC_7b8b5.tlog\\cmTC_7b8b5.lastbuildstate".
+        Compilaci├│n del proyecto terminada "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-sgoaxj\\cmTC_7b8b5.vcxproj" (destinos predeterminados).
         
         Compilaci├│n correcta.
             0 Advertencia(s)
             0 Errores
         
-        Tiempo transcurrido 00:00:02.18
+        Tiempo transcurrido 00:00:02.14
         
       exitCode: 0
-  -
-    kind: "message-v1"
-    backtrace:
-      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:227 (message)"
-      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
-      - "CMakeLists.txt:2 (project)"
-    message: |
-      Parsed C implicit link information:
-        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
-        linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
-        linker tool for 'C': C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.43.34808/bin/HostX64/x64/link.exe
-        implicit libs: []
-        implicit objs: []
-        implicit dirs: []
-        implicit fwks: []
-      
-      
-  -
-    kind: "message-v1"
-    backtrace:
-      - "C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CMakeDetermineLinkerId.cmake:36 (message)"
-      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeDetermineCompilerABI.cmake:264 (cmake_determine_linker_id)"
-      - "C:/Program Files/CMake/share/cmake-4.0/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
-      - "CMakeLists.txt:2 (project)"
-    message: |
-      Running the C compiler's linker: "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.43.34808/bin/HostX64/x64/link.exe" "-v"
-      Microsoft (R) Incremental Linker Version 14.43.34810.0
-      Copyright (C) Microsoft Corporation.  All rights reserved.
   -
     kind: "try_compile-v1"
     backtrace:
@@ -210,8 +236,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-7c01pd"
-      binary: "C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-7c01pd"
+      source: "C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-yqw71p"
+      binary: "C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-yqw71p"
     cmakeVariables:
       CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /EHsc"
       CMAKE_CXX_FLAGS_DEBUG: "/Ob0 /Od /RTC1"
@@ -221,40 +247,40 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-7c01pd'
+        Change Dir: 'C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-yqw71p'
         
-        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_3ac23.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_76ebb.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
         Versi├│n de MSBuild 17.13.19+0d9f5a35a para .NET Framework
-        Compilaci├│n iniciada a las 12/03/2026 19:48:55.
+        Compilaci├│n iniciada a las 12/03/2026 20:20:12.
         
-        Proyecto "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7c01pd\\cmTC_3ac23.vcxproj" en nodo 1 (destinos predeterminados).
+        Proyecto "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-yqw71p\\cmTC_76ebb.vcxproj" en nodo 1 (destinos predeterminados).
         PrepareForBuild:
-          Creando directorio "cmTC_3ac23.dir\\Debug\\".
+          Creando directorio "cmTC_76ebb.dir\\Debug\\".
           La salida estructurada est├í habilitada. El formato del diagn├│stico del compilador reflejar├í la jerarqu├¡a de errores. Consulte https://aka.ms/cpp/structured-output para obtener m├ís detalles.
-          Creando directorio "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7c01pd\\Debug\\".
-          Creando directorio "cmTC_3ac23.dir\\Debug\\cmTC_3ac23.tlog\\".
+          Creando directorio "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-yqw71p\\Debug\\".
+          Creando directorio "cmTC_76ebb.dir\\Debug\\cmTC_76ebb.tlog\\".
         InitializeBuildStatus:
-          Se crear├í "cmTC_3ac23.dir\\Debug\\cmTC_3ac23.tlog\\unsuccessfulbuild" porque se especific├│ "AlwaysCreate".
-          Aplicando tarea Touch a "cmTC_3ac23.dir\\Debug\\cmTC_3ac23.tlog\\unsuccessfulbuild".
+          Se crear├í "cmTC_76ebb.dir\\Debug\\cmTC_76ebb.tlog\\unsuccessfulbuild" porque se especific├│ "AlwaysCreate".
+          Aplicando tarea Touch a "cmTC_76ebb.dir\\Debug\\cmTC_76ebb.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_3ac23.dir\\Debug\\\\" /Fd"cmTC_3ac23.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp"
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_76ebb.dir\\Debug\\\\" /Fd"cmTC_76ebb.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp"
           Compilador de optimizaci├│n de C/C++ de Microsoft (R) versi├│n 19.43.34810 para x64
           (C) Microsoft Corporation. Todos los derechos reservados.
-          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_3ac23.dir\\Debug\\\\" /Fd"cmTC_3ac23.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp"
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_76ebb.dir\\Debug\\\\" /Fd"cmTC_76ebb.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp"
           CMakeCXXCompilerABI.cpp
         Link:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7c01pd\\Debug\\cmTC_3ac23.exe" /INCREMENTAL /ILK:"cmTC_3ac23.dir\\Debug\\cmTC_3ac23.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-7c01pd/Debug/cmTC_3ac23.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-7c01pd/Debug/cmTC_3ac23.lib" /MACHINE:X64  /machine:x64 cmTC_3ac23.dir\\Debug\\CMakeCXXCompilerABI.obj
-          cmTC_3ac23.vcxproj -> C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7c01pd\\Debug\\cmTC_3ac23.exe
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.43.34808\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-yqw71p\\Debug\\cmTC_76ebb.exe" /INCREMENTAL /ILK:"cmTC_76ebb.dir\\Debug\\cmTC_76ebb.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-yqw71p/Debug/cmTC_76ebb.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CMakeScratch/TryCompile-yqw71p/Debug/cmTC_76ebb.lib" /MACHINE:X64  /machine:x64 cmTC_76ebb.dir\\Debug\\CMakeCXXCompilerABI.obj
+          cmTC_76ebb.vcxproj -> C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-yqw71p\\Debug\\cmTC_76ebb.exe
         FinalizeBuildStatus:
-          Se eliminar├í el archivo "cmTC_3ac23.dir\\Debug\\cmTC_3ac23.tlog\\unsuccessfulbuild".
-          Aplicando tarea Touch a "cmTC_3ac23.dir\\Debug\\cmTC_3ac23.tlog\\cmTC_3ac23.lastbuildstate".
-        Compilaci├│n del proyecto terminada "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7c01pd\\cmTC_3ac23.vcxproj" (destinos predeterminados).
+          Se eliminar├í el archivo "cmTC_76ebb.dir\\Debug\\cmTC_76ebb.tlog\\unsuccessfulbuild".
+          Aplicando tarea Touch a "cmTC_76ebb.dir\\Debug\\cmTC_76ebb.tlog\\cmTC_76ebb.lastbuildstate".
+        Compilaci├│n del proyecto terminada "C:\\Users\\aleja\\CascadeProjects\\windsurf-project\\build\\CMakeFiles\\CMakeScratch\\TryCompile-yqw71p\\cmTC_76ebb.vcxproj" (destinos predeterminados).
         
         Compilaci├│n correcta.
             0 Advertencia(s)
             0 Errores
         
-        Tiempo transcurrido 00:00:01.71
+        Tiempo transcurrido 00:00:02.69
         
       exitCode: 0
   -
