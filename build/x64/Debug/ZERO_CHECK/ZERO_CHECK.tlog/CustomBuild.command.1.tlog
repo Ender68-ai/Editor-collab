@@ -1,0 +1,10 @@
+^C:\USERS\ALEJA\CASCADEPROJECTS\WINDSURF-PROJECT\BUILD\CMAKEFILES\EB4518090B3AAD5C3B9343B99DCD6731\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/aleja/CascadeProjects/windsurf-project -BC:/Users/aleja/CascadeProjects/windsurf-project/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/aleja/CascadeProjects/windsurf-project/build/CollabEditor.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

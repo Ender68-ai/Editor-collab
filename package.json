@@ -1,0 +1,24 @@
+{
+  "name": "collaborative-editor-server",
+  "version": "1.0.0",
+  "description": "WebSocket relay server for collaborative Geometry Dash level editing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "keywords": [
+    "collaborative",
+    "editor",
+    "geometry-dash",
+    "websocket",
+    "real-time"
+  ],
+  "author": "Collab Team",
+  "license": "MIT"
+}

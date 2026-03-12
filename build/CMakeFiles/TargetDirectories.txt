@@ -1,0 +1,3 @@
+C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/CollabEditor.dir
+C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/aleja/CascadeProjects/windsurf-project/build/CMakeFiles/ZERO_CHECK.dir
