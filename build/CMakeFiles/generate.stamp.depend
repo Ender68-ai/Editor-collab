@@ -96,12 +96,10 @@ C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CMakeDetermineLinkerId.c
 C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CMakeInspectCLinker.cmake
 C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/CMakeInspectCXXLinker.cmake
 C:/Program Files/CMake/share/cmake-4.0/Modules/Internal/FeatureTesting.cmake
+C:/Program Files/CMake/share/cmake-4.0/Modules/Linker/MSVC-C.cmake
 C:/Program Files/CMake/share/cmake-4.0/Modules/Linker/MSVC-CXX.cmake
 C:/Program Files/CMake/share/cmake-4.0/Modules/Linker/MSVC.cmake
-C:/Program Files/CMake/share/cmake-4.0/Modules/Platform/Linker/GNU.cmake
-C:/Program Files/CMake/share/cmake-4.0/Modules/Platform/Linker/Windows-C.cmake
-C:/Program Files/CMake/share/cmake-4.0/Modules/Platform/Linker/Windows-GNU-C.cmake
-C:/Program Files/CMake/share/cmake-4.0/Modules/Platform/Linker/Windows-GNU.cmake
+C:/Program Files/CMake/share/cmake-4.0/Modules/Platform/Linker/Windows-MSVC-C.cmake
 C:/Program Files/CMake/share/cmake-4.0/Modules/Platform/Linker/Windows-MSVC-CXX.cmake
 C:/Program Files/CMake/share/cmake-4.0/Modules/Platform/Linker/Windows-MSVC.cmake
 C:/Program Files/CMake/share/cmake-4.0/Modules/Platform/Windows-Determine-CXX.cmake
