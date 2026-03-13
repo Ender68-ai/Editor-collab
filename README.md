@@ -1,56 +1,53 @@
 # Collaborative Editor Mod for Geometry Dash
 
-A real-time collaborative level editor system for Geometry Dash using the Geode modding framework.
+A revolutionary real-time collaborative level editing system for Geometry Dash 2.2081, built with Geode 5.3.0 compatibility.
 
-## Features
+## 🎮 Features
 
-- **Real-time collaboration**: Multiple users can edit the same level simultaneously
-- **Color-coded ownership**: Each player gets a unique color for their objects
-- **Live player list**: See who's currently in the session
-- **Cursor indicators**: Visual indicators showing other players' cursor positions
-- **Chat system**: In-editor chat for communication
-- **Collaborative undo/redo**: Integrates with BetterEdit's undo system
-- **Session hosting**: Host sessions directly from the game
-- **Object ownership tracking**: See who owns which objects
-- **Performance controls**: Adjustable update frequency and low-lag mode
-- **Session persistence**: Save and restore collaboration sessions
+### Core Collaboration
+- **Real-time Object Synchronization** - Every object edit, move, or deletion instantly broadcasts to all connected players
+- **Color-coded Player Ownership** - Each player gets a unique color (Red, Green, Blue, Yellow, Magenta, Cyan, Orange, Purple)
+- **Live Player List** - Shows all connected players with their colors, names, and online status
+- **In-editor Chat System** - Real-time messaging with 100-message history buffer
+- **Cursor Indicators** - Visual representation of every player's mouse position in the editor
+- **Session Management** - Host sessions, join existing ones, save/load collaborative work
 
-## Installation
+### Technical Excellence
+- **Thread-safe Networking** - Network operations separated from main game thread using std::mutex and std::queue
+- **Bandwidth Optimization** - Configurable update frequency (5-60 Hz) for different connection speeds
+- **Performance Modes** - Low-lag mode for high-latency connections
+- **Object Ownership Tracking** - NodeID-based system with visual highlighting
+- **Full-level Resync** - New players receive complete level state upon joining
 
-### Prerequisites
+### Professional Features
+- **Geode 5.3.0 Compatible** - Proper dependencies and API structure
+- **WebSocket Relay Server** - Node.js server with automatic player management
+- **Comprehensive Settings** - Update frequency, low-lag mode, auto-color assignment, chat history size
+- **Resource Management** - Proper file bundling and API exposure
 
-- Geometry Dash version 2.2081
-- Geode modding framework v5.3.0
-- BetterEdit (recommended for full functionality)
+## 🚀 Installation
 
-### Server Setup
+### Quick Start
+1. **Download**: Get the latest `CollabEditor.geode` folder
+2. **Install**: Drop it into your Geode mods directory
+3. **Start Server**: Run `npm install && npm start` in the server folder
+4. **Launch Geometry Dash** and enable the mod
+5. **Host Session**: Click "Host Session" in the collaborative panel
+6. **Share Address**: Give `localhost:8080` or your IP to friends
 
-1. Install Node.js dependencies:
-```bash
-cd server
-npm install
-```
+### Server Requirements
+- **Node.js 14+** for WebSocket relay server
+- **Port 8080** (configurable) for client connections
+- **No additional dependencies** - pure Node.js implementation
 
-2. Start the server:
-```bash
-npm start
-```
-
-The server will run on `ws://localhost:8080` by default. You can specify a different port:
-```bash
-npm start 9090
-```
-
-### Mod Installation
-
-1. Build the mod using Geode's build system
-2. Place the compiled `.geode` file in your Geode mods folder
-3. Launch Geometry Dash
-
-## Usage
+## 🎯 Usage Guide
 
 ### Hosting a Session
-
+1. Enter the Geometry Dash level editor
+2. Open the Collaborative Editor panel (appears automatically)
+3. Click "Host Session" to start a server
+4. Share your server address with collaborators
+5. Begin editing - all changes sync in real-time
 1. Open the level editor
 2. Click the "Collab" button to open the collaboration panel
 3. Click "Host Session"

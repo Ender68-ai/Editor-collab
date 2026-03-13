@@ -3,23 +3,63 @@
   "gd": {
     "win": "2.2081",
     "android": "2.2081",
-    "mac": "2.2081"
+    "mac": "2.2081",
+    "ios": "2.2081"
   },
+  "version": "1.0.0",
   "id": "collab.editor",
   "name": "Collaborative Editor",
-  "version": "1.0.0",
-  "developer": "Collab Team",
-  "description": "Real-time collaborative level editor for Geometry Dash",
-  "dependencies": [
-    {
-      "id": "geode.loader",
-      "version": ">=5.3.0"
-    }
-  ],
+  "links": {
+    "homepage": "https://github.com/Ender68-ai/Editor-collab",
+    "source": "https://github.com/Ender68-ai/Editor-collab",
+    "community": "https://discord.gg/collab-editor"
+  },
+  "api": { "include": [ "include/*.hpp" ] },
+  "tags": ["collaboration", "multiplayer", "editor", "real-time", "networking"],
+  "developers": ["Collab Team"],
+  "description": "Real-time collaborative level editor for Geometry Dash. Work together with friends to create amazing levels!",
+  "early-load": false,
   "resources": {
     "files": [
+      "resources/*",
       "server/server.js",
       "server/package.json"
     ]
+  },
+  "dependencies": {
+    "geode.loader": {
+      "version": ">=5.3.0",
+      "required": true
+    }
+  },
+  "settings": {
+    "update-frequency": {
+      "name": "Update Frequency",
+      "description": "How often cursor and object updates are sent (updates per second).",
+      "type": "float",
+      "default": 30.0,
+      "min": 5.0,
+      "max": 60.0
+    },
+    "low-lag-mode": {
+      "name": "Low Lag Mode",
+      "description": "Reduces update frequency for better performance on slow connections.",
+      "type": "bool",
+      "default": false
+    },
+    "auto-color-assignment": {
+      "name": "Auto Color Assignment",
+      "description": "Automatically assign unique colors to players when they join.",
+      "type": "bool",
+      "default": true
+    },
+    "chat-history-size": {
+      "name": "Chat History Size",
+      "description": "Maximum number of chat messages to keep in memory.",
+      "type": "int",
+      "default": 100,
+      "min": 50,
+      "max": 500
+    }
   }
 }
