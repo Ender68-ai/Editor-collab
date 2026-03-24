@@ -1,0 +1,17 @@
+{
+	"geode": "5.4.1",
+	"gd": {
+		"win": "2.2081",
+		"android": "2.2081",
+		"mac": "2.2081",
+		"ios": "2.2081"
+	},
+	"id": "ender68.collabeditor",
+	"name": "CollabEditor",
+	"version": "v0.1.0",
+	"developer": "Ender68",
+	"description": "A mod that aids you in editing levels with other people in real time.",
+	"dependencies": {
+		"geode.node-ids": ">=v1.20.0"
+	}
+}
