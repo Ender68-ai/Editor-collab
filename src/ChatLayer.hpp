@@ -14,6 +14,7 @@ protected:
     virtual bool init() override;
     void onSendMessage(CCObject*);
     void onClose(CCObject*);
+    void updateMessageLayout();
 
 public:
     static ChatLayer* create();

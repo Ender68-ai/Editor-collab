@@ -13,12 +13,22 @@ class $modify(MyEditorUI, EditorUI) {
         
         // Attach the hidden sidebar
         auto chatLayer = ChatLayer::create();
+        if (!chatLayer) {
+            log::error("Failed to create ChatLayer");
+            return false;
+        }
         chatLayer->setID("collab-chat-layer"_spr);
         this->addChild(chatLayer, 1000);
 
         // Setup the UI Button
         auto btnSprite = CCSprite::create("logo.png"_spr);
-        if (!btnSprite) btnSprite = CCSprite::createWithSpriteFrameName("GJ_chatBtn_001.png");
+        if (!btnSprite) {
+            btnSprite = CCSprite::createWithSpriteFrameName("GJ_chatBtn_001.png");
+            if (!btnSprite) {
+                log::warn("Failed to load chat button sprite, using fallback");
+                btnSprite = ButtonSprite::create("CHAT", 20, true, "goldFont.fnt", "GJ_button_01.png", 25, 0.5f);
+            }
+        }
         btnSprite->setScale(0.6f);
 
         auto btn = CCMenuItemSpriteExtra::create(
@@ -27,6 +37,10 @@ class $modify(MyEditorUI, EditorUI) {
 
         // Setup the Notification Badge
         auto badge = CCLabelBMFont::create("0", "chatFont.fnt");
+        if (!badge) {
+            log::warn("Failed to create badge with chatFont.fnt, using goldFont.fnt");
+            badge = CCLabelBMFont::create("0", "goldFont.fnt");
+        }
         badge->setScale(0.5f);
         badge->setPosition({ btnSprite->getContentSize().width - 5, btnSprite->getContentSize().height - 5 });
         badge->setColor({ 255, 50, 50 });
@@ -45,6 +59,8 @@ class $modify(MyEditorUI, EditorUI) {
     void onToggleChat(CCObject* sender) {
         if (auto chat = typeinfo_cast<ChatLayer*>(this->getChildByIDRecursive("collab-chat-layer"_spr))) {
             chat->toggle();
+        } else {
+            log::error("ChatLayer not found in scene hierarchy");
         }
     }
 };

@@ -30,6 +30,14 @@ bool ChatLayer::init() {
 
     // 1. Main Background Panel
     m_bg = CCScale9Sprite::create("GJ_square05.png");
+    if (!m_bg) {
+        log::warn("Failed to load GJ_square05.png, using fallback");
+        m_bg = CCScale9Sprite::create("square02_001.png");
+        if (!m_bg) {
+            log::error("Failed to create background panel");
+            return false;
+        }
+    }
     m_bg->setContentSize({ PANEL_WIDTH, PANEL_HEIGHT });
     m_bg->setPosition({ winSize.width - (PANEL_WIDTH / 2) - PANEL_MARGIN, winSize.height / 2 });
     this->addChild(m_bg);
@@ -56,6 +64,10 @@ bool ChatLayer::init() {
 
     // 3. Title
     auto title = CCLabelBMFont::create("MEMENTO MORI", "goldFont.fnt");
+    if (!title) {
+        log::warn("Failed to create title with goldFont.fnt, using default font");
+        title = CCLabelBMFont::create("MEMENTO MORI", "bigFont.fnt");
+    }
     title->setScale(0.55f);
     title->setPosition({ PANEL_WIDTH / 2, PANEL_HEIGHT - 20 });
     m_bg->addChild(title);
@@ -82,6 +94,10 @@ bool ChatLayer::init() {
 
     // 6. Empty State Hint
     auto hintLabel = CCLabelBMFont::create("No messages yet...", "chatFont.fnt");
+    if (!hintLabel) {
+        log::warn("Failed to create hint with chatFont.fnt, using goldFont.fnt");
+        hintLabel = CCLabelBMFont::create("No messages yet...", "goldFont.fnt");
+    }
     hintLabel->setScale(0.4f);
     hintLabel->setOpacity(80);
     hintLabel->setPosition({ PANEL_WIDTH / 2, PANEL_HEIGHT / 2 });
@@ -90,14 +106,28 @@ bool ChatLayer::init() {
 
     // 7. Input Area Background
     auto inputBG = CCScale9Sprite::create("square02b_001.png");
-    inputBG->setColor({ 0, 0, 0 });
-    inputBG->setOpacity(180);
-    inputBG->setContentSize({ PANEL_WIDTH - 25, 35 });
-    inputBG->setPosition({ PANEL_WIDTH / 2, 40 });
-    m_bg->addChild(inputBG);
+    if (!inputBG) {
+        log::warn("Failed to load square02b_001.png, using fallback");
+        inputBG = CCScale9Sprite::create("square02_001.png");
+    }
+    if (inputBG) {
+        inputBG->setColor({ 0, 0, 0 });
+        inputBG->setOpacity(180);
+        inputBG->setContentSize({ PANEL_WIDTH - 25, 35 });
+        inputBG->setPosition({ PANEL_WIDTH / 2, 40 });
+        m_bg->addChild(inputBG);
+    }
 
     // 8. Chat Input Field
     m_input = CCTextInputNode::create(PANEL_WIDTH - 70, 30.f, "Type here...", "chatFont.fnt");
+    if (!m_input) {
+        log::warn("Failed to create input with chatFont.fnt, using goldFont.fnt");
+        m_input = CCTextInputNode::create(PANEL_WIDTH - 70, 30.f, "Type here...", "goldFont.fnt");
+    }
+    if (!m_input) {
+        log::error("Failed to create input field");
+        return false;
+    }
     m_input->setPosition({ (PANEL_WIDTH / 2) - 15, 40 });
     m_input->setDelegate(this); 
     m_bg->addChild(m_input);
@@ -172,6 +202,20 @@ void ChatLayer::toggle() {
         this->setVisible(true);
         m_bg->setScale(0.1f);
         m_bg->runAction(CCEaseBackOut::create(CCScaleTo::create(0.3f, 1.0f)));
+        
+        // Reset unread count when opening
+        auto netManager = NetworkingManager::get();
+        if (netManager) {
+            netManager->resetUnreadCount();
+        }
+        
+        // Hide badge when opening
+        auto scene = CCDirector::get()->getRunningScene();
+        if (scene) {
+            if (auto badge = typeinfo_cast<CCLabelBMFont*>(scene->getChildByIDRecursive("chat-badge"_spr))) {
+                badge->setVisible(false);
+            }
+        }
     } else {
         // Unfocus input when closing
         if (m_input) {
@@ -194,53 +238,92 @@ void ChatLayer::addMessage(std::string const& user, std::string const& message, 
         hint->removeFromParent();
     }
 
-    // Limit message history
+    // Limit message history - remove oldest messages first
     auto children = m_scroll->m_contentLayer->getChildren();
-    if (children && children->count() >= MAX_MESSAGE_HISTORY) {
+    while (children && children->count() >= MAX_MESSAGE_HISTORY) {
         auto oldestMsg = static_cast<CCNode*>(children->objectAtIndex(0));
-        oldestMsg->removeFromParent();
+        if (oldestMsg) oldestMsg->removeFromParent();
+        children = m_scroll->m_contentLayer->getChildren(); // Refresh list
     }
 
-    // Create message bubble
+    // Create message bubble with null checks
     auto container = CCNode::create();
-    container->setUserData(reinterpret_cast<void*>(isMe ? 1 : 0)); // Store alignment
+    if (!container) return;
+    container->setUserData(reinterpret_cast<void*>(isMe ? 1 : 0));
     
     auto bubble = CCScale9Sprite::create("square02_001.png");
+    if (!bubble) {
+        log::warn("Failed to create message bubble");
+        container->release();
+        return;
+    }
     bubble->setOpacity(140);
     bubble->setAnchorPoint({ isMe ? 1.0f : 0.0f, 1.0f });
     
     auto nameLabel = CCLabelBMFont::create(user.c_str(), "goldFont.fnt");
-    nameLabel->setScale(0.32f);
-    nameLabel->setColor(color);
-    nameLabel->setAnchorPoint({ 0, 1 });
-    nameLabel->setPosition({ 8, -5 });
+    if (!nameLabel) {
+        nameLabel = CCLabelBMFont::create(user.c_str(), "bigFont.fnt");
+    }
+    if (nameLabel) {
+        nameLabel->setScale(0.32f);
+        nameLabel->setColor(color);
+        nameLabel->setAnchorPoint({ 0, 1 });
+        nameLabel->setPosition({ 8, -5 });
+    }
     
     auto msgLabel = CCLabelBMFont::create(message.c_str(), "chatFont.fnt");
-    msgLabel->setScale(0.42f);
-    msgLabel->setAnchorPoint({ 0, 1 });
-    msgLabel->setWidth(135.f);
-    msgLabel->setPosition({ 8, -16 });
+    if (!msgLabel) {
+        msgLabel = CCLabelBMFont::create(message.c_str(), "goldFont.fnt");
+    }
+    if (msgLabel) {
+        msgLabel->setScale(0.42f);
+        msgLabel->setAnchorPoint({ 0, 1 });
+        msgLabel->setWidth(135.f);
+        msgLabel->setPosition({ 8, -16 });
+    }
 
-    bubble->addChild(nameLabel);
-    bubble->addChild(msgLabel);
+    // Add labels to bubble if they exist
+    if (nameLabel) bubble->addChild(nameLabel);
+    if (msgLabel) bubble->addChild(msgLabel);
     
-    float h = msgLabel->getScaledContentSize().height + 25;
+    // Calculate bubble height
+    float h = 25; // Base height
+    if (msgLabel) {
+        h += msgLabel->getScaledContentSize().height;
+    }
     bubble->setContentSize({ 150, h });
     container->addChild(bubble);
     container->setContentSize(bubble->getContentSize());
     m_scroll->m_contentLayer->addChild(container);
     
-    // Recalculate layout
+    // Optimized layout recalculation - only update positions
+    this->updateMessageLayout();
+    m_scroll->moveToTop();
+}
+
+void ChatLayer::updateMessageLayout() {
+    if (!m_scroll || !m_scroll->m_contentLayer) return;
+    
+    auto children = m_scroll->m_contentLayer->getChildren();
+    if (!children) return;
+    
+    // Calculate total height
     float totalH = 0;
-    for (auto* child : CCArrayExt<CCNode*>(m_scroll->m_contentLayer->getChildren())) {
-        totalH += child->getContentSize().height + 6;
+    for (auto* child : CCArrayExt<CCNode*>(children)) {
+        if (child) {
+            totalH += child->getContentSize().height + 6;
+        }
     }
 
+    // Update content size
     float scrollH = std::max(m_scroll->getContentSize().height, totalH);
     m_scroll->m_contentLayer->setContentSize({ m_scroll->getContentSize().width, scrollH });
 
+    // Update positions
     float curY = scrollH;
-    for (auto* child : CCArrayExt<CCNode*>(m_scroll->m_contentLayer->getChildren())) {
+    for (auto* child : CCArrayExt<CCNode*>(children)) {
+        if (!child) continue;
+        
         curY -= (child->getContentSize().height + 6);
         
         // Use stored alignment data
@@ -248,8 +331,6 @@ void ChatLayer::addMessage(std::string const& user, std::string const& message, 
         float xPos = childIsMe ? m_scroll->getContentSize().width - 5 : 5;
         child->setPosition({ xPos, curY + child->getContentSize().height });
     }
-    
-    m_scroll->moveToTop();
 }
 
 void ChatLayer::onSendMessage(CCObject*) {
