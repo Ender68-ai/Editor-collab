@@ -23,7 +23,7 @@ void NetworkingManager::onMessageReceived(std::string const& user, std::string c
 
     auto chat = typeinfo_cast<ChatLayer*>(scene->getChildByIDRecursive("collab-chat-layer"_spr));
     if (chat) {
-        chat->addMessage(user, message, color);
+        chat->addMessage(user, message, color, false);
         
         // Update badge logic if the sidebar is closed
         if (!chat->isOpen()) {
