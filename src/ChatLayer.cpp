@@ -315,21 +315,24 @@ void ChatLayer::updateMessageLayout() {
         }
     }
 
-    // Update content size
+    // Update content size - ensure it's at least as tall as the scroll area
     float scrollH = std::max(m_scroll->getContentSize().height, totalH);
     m_scroll->m_contentLayer->setContentSize({ m_scroll->getContentSize().width, scrollH });
 
-    // Update positions
-    float curY = scrollH;
+    // Update positions - layout messages from top to bottom
+    float curY = scrollH - 10; // Start 10px from top
     for (auto* child : CCArrayExt<CCNode*>(children)) {
         if (!child) continue;
         
-        curY -= (child->getContentSize().height + 6);
-        
         // Use stored alignment data
         bool childIsMe = reinterpret_cast<intptr_t>(child->getUserData()) == 1;
-        float xPos = childIsMe ? m_scroll->getContentSize().width - 5 : 5;
-        child->setPosition({ xPos, curY + child->getContentSize().height });
+        float xPos = childIsMe ? m_scroll->getContentSize().width - child->getContentSize().width - 5 : 5;
+        
+        // Position with anchor point at top-left/right
+        child->setAnchorPoint({ childIsMe ? 1.0f : 0.0f, 1.0f });
+        child->setPosition({ xPos, curY });
+        
+        curY -= (child->getContentSize().height + 6);
     }
 }
 
@@ -347,7 +350,6 @@ void ChatLayer::onSendMessage(CCObject*) {
     }
     
     netManager->sendMessage(text);
-    this->addMessage("You", text, {255, 255, 255}, true);
     m_input->setString("");
     m_input->onClickTrackNode(false); // Unfocus after sending
 }

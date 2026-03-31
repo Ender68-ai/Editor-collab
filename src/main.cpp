@@ -1,7 +1,9 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/EditorUI.hpp>
+#include <Geode/modify/MenuLayer.hpp>
 #include "ChatLayer.hpp"
 #include "NetworkingManager.hpp"
+#include "CollabManager.hpp"
 
 using namespace geode::prelude;
 
@@ -10,6 +12,9 @@ class $modify(MyEditorUI, EditorUI) {
         if (!EditorUI::init(lek)) return false;
 
         auto winSize = CCDirector::get()->getWinSize();
+        
+        // Initialize CollabManager
+        CollabManager::get()->loadData();
         
         // Attach the hidden sidebar
         auto chatLayer = ChatLayer::create();
@@ -64,3 +69,9 @@ class $modify(MyEditorUI, EditorUI) {
         }
     }
 };
+
+// Initialize CollabManager when mod loads
+$execute {
+    CollabManager::get()->loadData();
+    log::info("CollabEditor initialized successfully");
+}
