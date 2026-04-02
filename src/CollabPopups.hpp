@@ -64,3 +64,13 @@ protected:
 public:
     static CollabSettingsPopup* create(int levelID, const std::string& levelName);
 };
+
+class FirstTimeSetupPopup : public Popup {
+protected:
+    bool init();
+    void onNext(CCObject* sender);
+    void onSkip(CCObject* sender);
+    
+public:
+    static FirstTimeSetupPopup* create();
+};

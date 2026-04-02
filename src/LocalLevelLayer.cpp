@@ -12,68 +12,88 @@ class $modify(CollabLevelInfoLayerExt, LevelInfoLayer) {
     bool init(GJGameLevel* level, bool challenge) {
         if (!LevelInfoLayer::init(level, challenge)) return false;
 
-        // Add the collab settings button in the bottom right area
-        // Position it above the existing buttons
-        
+        log::debug("LevelInfoLayer::init called - initializing CollabEditor button");
+
+        // Safety: Create button sprite safely
+        CCSprite* btnSprite = CCSprite::createWithSpriteFrameName("GJ_shareBtn_001.png");
+        if (!btnSprite) {
+            log::warn("Failed to load GJ_shareBtn_001.png, using fallback button");
+            btnSprite = CCSprite::create("unknown.png");
+            if (!btnSprite) {
+                log::error("Could not create button sprite at all - skipping collab button");
+                return true;
+            }
+        }
+
+        // Create button with safe sprite
         auto collabBtn = CCMenuItemSpriteExtra::create(
-            CCSprite::createWithSpriteFrameName("GJ_shareBtn_001.png"),
+            btnSprite,
             this,
             menu_selector(CollabLevelInfoLayerExt::onCollabSettings)
         );
         
         if (!collabBtn) {
-            log::warn("Failed to load GJ_shareBtn_001.png for collab button");
-            collabBtn = CCMenuItemSpriteExtra::create(
-                ButtonSprite::create("Collab", "bigFont.fnt", "GJ_button_01.png", 0.7f),
-                this,
-                menu_selector(CollabLevelInfoLayerExt::onCollabSettings)
-            );
+            log::error("Failed to create CCMenuItemSpriteExtra for collab button");
+            return true;
         }
-        
+
         collabBtn->setScale(0.8f);
         collabBtn->setID("collab-settings-btn"_spr);
-        
-        // Find or create the info menu where buttons are
+        log::debug("Collab button created successfully");
+
+        // Find the bottom-right menu safely
         CCMenu* targetMenu = nullptr;
         
-        // Try to find existing menus
-        for (int i = 0; i < this->getChildren()->count(); i++) {
-            auto child = static_cast<CCNode*>(this->getChildren()->objectAtIndex(i));
-            if (auto menu = typeinfo_cast<CCMenu*>(child)) {
-                // Check if this menu contains GJ buttons
-                if (menu->getChildByID("info-menu"_spr) || menu->getChildByID("button-menu"_spr)) {
+        // Check if we can find the main layer's menu
+        auto children = this->getChildren();
+        if (children) {
+            for (auto obj : CCArrayExt<CCObject*>(children)) {
+                if (auto menu = typeinfo_cast<CCMenu*>(obj)) {
+                    // Found a menu - use it
                     targetMenu = menu;
+                    log::debug("Found existing menu for collab button placement");
                     break;
                 }
             }
         }
         
+        // If no menu found, create one
         if (!targetMenu) {
-            // Create a new menu for the collab button
+            log::debug("No existing menu found, creating new menu for collab button");
             targetMenu = CCMenu::create();
+            if (!targetMenu) {
+                log::error("Failed to create CCMenu for collab button");
+                return true;
+            }
             targetMenu->setPosition({0.f, 0.f});
             this->addChild(targetMenu, 10);
+            log::debug("Created new menu at z-order 10");
         }
         
-        // Position button in the bottom right area, above other buttons
-        // Adjust based on where other buttons are
+        // Position button with HARDCODED coordinates (safe fallback)
+        // Bottom right area of the screen
         collabBtn->setPosition({260.f, 55.f});
         targetMenu->addChild(collabBtn);
         
-        log::info("Added CollabSettings button to LevelInfoLayer");
+        log::info("CollabEditor button added to LevelInfoLayer at position (260, 55)");
         
         return true;
     }
 
     void onCollabSettings(CCObject* sender) {
+        log::debug("onCollabSettings called");
+        
         auto level = m_level;
         if (!level) {
-            log::error("Level is null in onCollabSettings");
+            log::error("Level is null in onCollabSettings - cannot create popup");
             return;
         }
 
+        log::debug("Creating CollabSettingsPopup for level {} ({})", level->m_levelID, level->m_levelName);
+        
         auto popup = CollabSettingsPopup::create(level->m_levelID, level->m_levelName);
         if (popup) {
+            log::debug("CollabSettingsPopup created successfully, showing...");
             popup->show();
         } else {
             log::error("Failed to create CollabSettingsPopup");

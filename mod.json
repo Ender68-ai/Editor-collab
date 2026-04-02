@@ -10,13 +10,75 @@
     "name": "CollabEditor",
     "version": "0.1.0",
     "developer": "Ender68",
-    "description": "Real-time level collaboration tool for the Geometry Dash editor.",
+    "description": "Real-time level collaboration tool for Geometry Dash.",
     "dependencies": {
         "geode.node-ids": ">=v1.20.0"
+    },
+    "settings": {
+        "networking": {
+            "type": "title",
+            "name": "Networking"
+        },
+        "auto-connect": {
+            "type": "bool",
+            "name": "Auto-Connect on Level Load",
+            "description": "Automatically connect to P2P network when loading a collaborative level",
+            "default": true
+        },
+        "sync-cursor": {
+            "type": "bool",
+            "name": "Show Remote Cursors",
+            "description": "Display real-time cursor positions of collaborators",
+            "default": true,
+            "requires-restart": false
+        },
+        "sync-objects": {
+            "type": "bool",
+            "name": "Real-time Object Sync",
+            "description": "Synchronize object movements and locks in real-time",
+            "default": true,
+            "requires-restart": false
+        },
+        "ui-settings": {
+            "type": "title",
+            "name": "User Interface"
+        },
+        "show-names": {
+            "type": "bool",
+            "name": "Show Collaborator Names",
+            "description": "Display name labels above remote cursors",
+            "default": true,
+            "requires-restart": false
+        },
+        "performance": {
+            "type": "title",
+            "name": "Performance"
+        },
+        "max-remote-players": {
+            "type": "int",
+            "name": "Maximum Remote Players",
+            "description": "Limit number of visible remote cursors (improves performance)",
+            "default": 5,
+            "min": 1,
+            "max": 20
+        },
+        "sync-interval": {
+            "type": "float",
+            "name": "Sync Interval (ms)",
+            "description": "Milliseconds between position sync updates (lower = more responsive, higher = less network traffic)",
+            "default": 50.0,
+            "min": 16.0,
+            "max": 500.0
+        }
     },
     "resources": {
         "files": [
             "resources/*"
+        ],
+        "sprites": [
+            "resources/collab_logo.png",
+            "resources/cursor.png",
+            "resources/crosshair.png"
         ]
     }
 }
