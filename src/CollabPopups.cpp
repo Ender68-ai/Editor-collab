@@ -320,3 +320,126 @@ TransferRequestPopup* TransferRequestPopup::create(const TransferRequest& reques
     CC_SAFE_DELETE(ret);
     return nullptr;
 }
+
+// ============================================================================
+// CollabSettingsPopup Implementation
+// ============================================================================
+
+bool CollabSettingsPopup::init(int levelID, const std::string& levelName) {
+    if (!Popup::init(320.f, 240.f))
+        return false;
+    
+    m_levelID = levelID;
+    m_levelName = levelName;
+    
+    auto collabMgr = CollabManager::get();
+    m_collabEnabled = collabMgr->isCollabEnabled(levelID);
+    
+    this->setTitle("Collab Settings");
+    
+    // Level name display
+    auto nameLabel = CCLabelBMFont::create(levelName.c_str(), "goldFont.fnt");
+    nameLabel->setScale(0.6f);
+    nameLabel->setPosition({160.f, 180.f});
+    m_mainLayer->addChild(nameLabel);
+    
+    // Separator line
+    auto separator = CCDrawNode::create();
+    separator->drawSegment({20.f, 165.f}, {300.f, 165.f}, 1.0f, {200, 200, 200, 255});
+    m_mainLayer->addChild(separator);
+    
+    // "Enable Real-time Collab" label
+    auto collabLabel = CCLabelBMFont::create("Enable Real-time Collab", "bigFont.fnt");
+    collabLabel->setScale(0.45f);
+    collabLabel->setPosition({100.f, 130.f});
+    m_mainLayer->addChild(collabLabel);
+    
+    // Toggle switch
+    auto toggle = CCMenuItemToggler::create(
+        CCSprite::createWithSpriteFrameName("GJ_checkOff_001.png"),
+        CCSprite::createWithSpriteFrameName("GJ_checkOn_001.png"),
+        this,
+        menu_selector(CollabSettingsPopup::onToggleRealTimeCollab)
+    );
+    
+    if (m_collabEnabled) {
+        toggle->toggle(true);
+    }
+    
+    toggle->setPosition({250.f, 130.f});
+    
+    // Info text
+    auto infoLabel = CCLabelBMFont::create("When enabled, this level becomes", "chatFont.fnt");
+    infoLabel->setScale(0.35f);
+    infoLabel->setPosition({160.f, 95.f});
+    m_mainLayer->addChild(infoLabel);
+    
+    auto infoLabel2 = CCLabelBMFont::create("your active host level for real-time", "chatFont.fnt");
+    infoLabel2->setScale(0.35f);
+    infoLabel2->setPosition({160.f, 80.f});
+    m_mainLayer->addChild(infoLabel2);
+    
+    auto infoLabel3 = CCLabelBMFont::create("collaboration with other players.", "chatFont.fnt");
+    infoLabel3->setScale(0.35f);
+    infoLabel3->setPosition({160.f, 65.f});
+    m_mainLayer->addChild(infoLabel3);
+    
+    // Close button
+    auto closeBtn = CCMenuItemSpriteExtra::create(
+        ButtonSprite::create("Close", "bigFont.fnt", "GJ_button_01.png", 0.8f),
+        this,
+        menu_selector(CollabSettingsPopup::onClose)
+    );
+    closeBtn->setPosition({160.f, 25.f});
+    
+    auto menu = CCMenu::create();
+    menu->addChild(toggle);
+    menu->addChild(closeBtn);
+    menu->setPosition({0.f, 0.f});
+    m_mainLayer->addChild(menu);
+    
+    return true;
+}
+
+void CollabSettingsPopup::onToggleRealTimeCollab(CCObject* sender) {
+    auto toggle = static_cast<CCMenuItemToggler*>(sender);
+    bool enabled = toggle->isSelected();
+    
+    auto collabMgr = CollabManager::get();
+    auto netMgr = NetworkManager::get();
+    
+    if (enabled) {
+        // Enable real-time collaboration
+        collabMgr->enableCollabForLevel(m_levelID, m_levelName, GJAccountManager::get()->m_accountID);
+        collabMgr->setCurrentLevelID(m_levelID);
+        netMgr->setConnected(true);
+        
+        log::info("Real-time collaboration enabled for level {} ({})", m_levelID, m_levelName);
+        FLAlertLayer::create("Enabled", "Real-time collaboration is now active for this level!", "OK")->show();
+    } else {
+        // Disable real-time collaboration
+        collabMgr->disableCollabForLevel(m_levelID);
+        if (collabMgr->getCurrentLevelID() == m_levelID) {
+            collabMgr->setCurrentLevelID(-1);
+        }
+        
+        log::info("Real-time collaboration disabled for level {}", m_levelID);
+        FLAlertLayer::create("Disabled", "Real-time collaboration has been turned off.", "OK")->show();
+    }
+    
+    m_collabEnabled = enabled;
+}
+
+void CollabSettingsPopup::onClose(CCObject* sender) {
+    this->onClose(nullptr);
+}
+
+CollabSettingsPopup* CollabSettingsPopup::create(int levelID, const std::string& levelName) {
+    auto ret = new CollabSettingsPopup();
+    if (ret && ret->init(levelID, levelName)) {
+        ret->autorelease();
+        return ret;
+    }
+    CC_SAFE_DELETE(ret);
+    return nullptr;
+}

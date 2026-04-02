@@ -50,3 +50,17 @@ public:
     TransferRequestPopup() = default;
     static TransferRequestPopup* create(const TransferRequest& request);
 };
+
+class CollabSettingsPopup : public Popup {
+protected:
+    int m_levelID;
+    std::string m_levelName;
+    bool m_collabEnabled;
+    
+    bool init(int levelID, const std::string& levelName);
+    void onToggleRealTimeCollab(CCObject* sender);
+    void onClose(CCObject* sender);
+    
+public:
+    static CollabSettingsPopup* create(int levelID, const std::string& levelName);
+};

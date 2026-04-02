@@ -18,5 +18,4 @@ rd /s /q build && geode build --ninja -- -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_CO
 
 :: 3. Keep the window open for further commands
 echo.
-echo [DONE] Build process finished. Terminal is now ready for more commands.
-cmd /k
+echo [DONE] Build process finished.
