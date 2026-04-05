@@ -1,4 +1,5 @@
 #include "CollabPopups.hpp"
+#include "CollabNetworkManager.hpp"
 #include <Geode/Geode.hpp>
 #include <Geode/binding/LevelInfoLayer.hpp>
 #include <Geode/binding/GJGameLevel.hpp>
@@ -181,7 +182,7 @@ void CollabManagementPopup::onTogglePlayer(CCObject* sender) {
     auto levelID = m_data;
     
     CollabManager::get()->togglePlayerStatus(levelID, accountID);
-    this->setupPlayerList(); // Refresh the list
+    this->setupPlayerList(); // Refresh list
 }
 
 CollabManagementPopup* CollabManagementPopup::create(int levelID) {
@@ -206,7 +207,7 @@ bool TransferConfirmPopup::init(int levelID, int targetAccountID, const std::str
     
     this->setTitle("Transfer Level");
     
-    auto label = CCLabelBMFont::create("Do you really wanna transfer the level?", "bigFont.fnt");
+    auto label = CCLabelBMFont::create("Do you really wanna transfer level?", "bigFont.fnt");
     label->setPosition({150.f, 120.f});
     m_mainLayer->addChild(label);
     
@@ -246,7 +247,7 @@ void TransferConfirmPopup::onConfirm(CCObject* sender) {
     auto accountID = GJAccountManager::get()->m_accountID;
     
     CollabManager::get()->requestTransfer(levelID, accountID, targetAccountID, levelName);
-    FLAlertLayer::create("Transfer Requested", "Transfer request sent to the player.", "OK")->show();
+    FLAlertLayer::create("Transfer Requested", "Transfer request sent to player.", "OK")->show();
     this->onClose(nullptr);
 }
 
@@ -312,7 +313,7 @@ bool TransferRequestPopup::init(const TransferRequest& request) {
 void TransferRequestPopup::onAccept(CCObject* sender) {
     auto request = m_data;
     CollabManager::get()->acceptTransfer(request);
-    FLAlertLayer::create("Transfer Accepted", "You are now the host of this level!", "OK")->show();
+    FLAlertLayer::create("Transfer Accepted", "You are now host of this level!", "OK")->show();
     this->onClose(nullptr);
 }
 
@@ -338,7 +339,7 @@ TransferRequestPopup* TransferRequestPopup::create(const TransferRequest& reques
 // ============================================================================
 
 bool CollabSettingsPopup::init(int levelID, const std::string& levelName) {
-    if (!Popup::init(320.f, 240.f))
+    if (!Popup::init(340.f, 260.f))
         return false;
     
     m_levelID = levelID;
@@ -349,24 +350,24 @@ bool CollabSettingsPopup::init(int levelID, const std::string& levelName) {
     
     this->setTitle("Collab Settings");
     
-    // Level name display
+    // Level name display - proper spacing from title
     auto nameLabel = CCLabelBMFont::create(levelName.c_str(), "goldFont.fnt");
     nameLabel->setScale(0.6f);
-    nameLabel->setPosition({160.f, 180.f});
+    nameLabel->setPosition({170.f, 185.f});
     m_mainLayer->addChild(nameLabel);
     
     // Separator line
     auto separator = CCDrawNode::create();
-    separator->drawSegment({20.f, 165.f}, {300.f, 165.f}, 1.0f, {200, 200, 200, 255});
+    separator->drawSegment({20.f, 170.f}, {320.f, 170.f}, 1.0f, {200, 200, 200, 255});
     m_mainLayer->addChild(separator);
     
-    // "Enable Real-time Collab" label
+    // "Enable Real-time Collab" label - better positioned
     auto collabLabel = CCLabelBMFont::create("Enable Real-time Collab", "bigFont.fnt");
-    collabLabel->setScale(0.45f);
-    collabLabel->setPosition({100.f, 130.f});
+    collabLabel->setScale(0.5f);
+    collabLabel->setPosition({120.f, 135.f});
     m_mainLayer->addChild(collabLabel);
     
-    // Toggle switch
+    // Toggle switch - positioned to the right of label
     auto toggle = CCMenuItemToggler::create(
         CCSprite::createWithSpriteFrameName("GJ_checkOff_001.png"),
         CCSprite::createWithSpriteFrameName("GJ_checkOn_001.png"),
@@ -378,31 +379,31 @@ bool CollabSettingsPopup::init(int levelID, const std::string& levelName) {
         toggle->toggle(true);
     }
     
-    toggle->setPosition({250.f, 130.f});
+    toggle->setPosition({280.f, 135.f});
     
-    // Info text
+    // Info text - properly spaced below
     auto infoLabel = CCLabelBMFont::create("When enabled, this level becomes", "chatFont.fnt");
-    infoLabel->setScale(0.35f);
-    infoLabel->setPosition({160.f, 95.f});
+    infoLabel->setScale(0.4f);
+    infoLabel->setPosition({170.f, 100.f});
     m_mainLayer->addChild(infoLabel);
     
     auto infoLabel2 = CCLabelBMFont::create("your active host level for real-time", "chatFont.fnt");
-    infoLabel2->setScale(0.35f);
-    infoLabel2->setPosition({160.f, 80.f});
+    infoLabel2->setScale(0.4f);
+    infoLabel2->setPosition({170.f, 85.f});
     m_mainLayer->addChild(infoLabel2);
     
     auto infoLabel3 = CCLabelBMFont::create("collaboration with other players.", "chatFont.fnt");
-    infoLabel3->setScale(0.35f);
-    infoLabel3->setPosition({160.f, 65.f});
+    infoLabel3->setScale(0.4f);
+    infoLabel3->setPosition({170.f, 70.f});
     m_mainLayer->addChild(infoLabel3);
     
-    // Close button
+    // Close button - at bottom
     auto closeBtn = CCMenuItemSpriteExtra::create(
         ButtonSprite::create("Close", "bigFont.fnt", "GJ_button_01.png", 0.8f),
         this,
         menu_selector(CollabSettingsPopup::onClose)
     );
-    closeBtn->setPosition({160.f, 25.f});
+    closeBtn->setPosition({170.f, 30.f});
     
     auto menu = CCMenu::create();
     menu->addChild(toggle);
@@ -415,19 +416,56 @@ bool CollabSettingsPopup::init(int levelID, const std::string& levelName) {
 
 void CollabSettingsPopup::onToggleRealTimeCollab(CCObject* sender) {
     auto toggle = static_cast<CCMenuItemToggler*>(sender);
-    bool enabled = toggle->isSelected();
+    // Fix toggle logic: isToggled() returns true when ON (checkmark showing)
+    // We want to know the NEW state after the toggle was clicked
+    bool isNowEnabled = toggle->isToggled();
+    
+    // Safety: Check if level is valid before proceeding
+    if (m_levelID <= 0) {
+        log::error("Invalid level ID in onToggleRealTimeCollab: {}", m_levelID);
+        return;
+    }
     
     auto collabMgr = CollabManager::get();
-    auto netMgr = NetworkManager::get();
+    auto netMgr = CollabNetworkManager::get();
+    auto accountMgr = GJAccountManager::get();
     
-    if (enabled) {
+    if (isNowEnabled) {
         // Enable real-time collaboration
-        collabMgr->enableCollabForLevel(m_levelID, m_levelName, GJAccountManager::get()->m_accountID);
+        collabMgr->enableCollabForLevel(m_levelID, m_levelName, accountMgr->m_accountID);
         collabMgr->setCurrentLevelID(m_levelID);
-        netMgr->setConnected(true);
         
-        log::info("Real-time collaboration enabled for level {} ({})", m_levelID, m_levelName);
-        FLAlertLayer::create("Enabled", "Real-time collaboration is now active for this level!", "OK")->show();
+        log::info("Real-time collaboration ENABLED for level {} ({})", m_levelID, m_levelName);
+        
+        // Connect to relay server
+        // TODO: Get these from configuration or use Playit.gg tunnel
+        std::string tcpServer = "localhost:8080";  // Replace with actual Playit.gg domain
+        std::string udpServer = "localhost:41234"; // Replace with actual Playit.gg domain
+        
+        // Start network connection
+        bool connected = netMgr->startConnection(
+            static_cast<uint32_t>(accountMgr->m_accountID),
+            GJAccountManager::sharedState()->m_password, // Use GJAccountManager password field
+            static_cast<uint32_t>(m_levelID),
+            tcpServer,
+            udpServer
+        );
+        
+        if (connected) {
+            log::info("Network connection initiated for level {}", m_levelID);
+            FLAlertLayer::create("ENABLED", 
+                "Real-time collaboration is now active for this level!\n"
+                "Connecting to relay server...", "OK")->show();
+        } else {
+            log::error("Failed to initiate network connection");
+            FLAlertLayer::create("ERROR", 
+                "Failed to connect to relay server.\n"
+                "Please check your network settings.", "OK")->show();
+            
+            // Disable in manager if connection failed
+            collabMgr->disableCollabForLevel(m_levelID);
+            toggle->toggle(false);
+        }
     } else {
         // Disable real-time collaboration
         collabMgr->disableCollabForLevel(m_levelID);
@@ -435,15 +473,20 @@ void CollabSettingsPopup::onToggleRealTimeCollab(CCObject* sender) {
             collabMgr->setCurrentLevelID(-1);
         }
         
-        log::info("Real-time collaboration disabled for level {}", m_levelID);
-        FLAlertLayer::create("Disabled", "Real-time collaboration has been turned off.", "OK")->show();
+        // Disconnect from relay server
+        netMgr->stopConnection();
+        
+        log::info("Real-time collaboration DISABLED for level {}", m_levelID);
+        FLAlertLayer::create("DISABLED", "Real-time collaboration has been turned off.", "OK")->show();
     }
     
-    m_collabEnabled = enabled;
+    m_collabEnabled = isNowEnabled;
 }
 
 void CollabSettingsPopup::onClose(CCObject* sender) {
-    this->onClose(nullptr);
+    // Prevent zombie popup and ensure clean close
+    this->setKeypadEnabled(false);
+    Popup::onClose(sender);
 }
 
 CollabSettingsPopup* CollabSettingsPopup::create(int levelID, const std::string& levelName) {
@@ -531,7 +574,7 @@ void FirstTimeSetupPopup::onNext(CCObject* sender) {
     // Show settings info alert (3 arguments: title, description, button)
     FLAlertLayer::create(
         "Settings Available",
-        "Check the Geode settings menu to configure CollabEditor options like auto-connect, cursor sync, and performance settings.",
+        "Check Geode settings menu to configure CollabEditor options like auto-connect, cursor sync, and performance settings.",
         "OK"
     )->show();
     

@@ -14,8 +14,10 @@ if exist "%VS_PATH%" (
 :: 2. Execute your specific build commands
 echo [STATUS] Cleaning and Building...
 
-rd /s /q build && geode build --ninja -- -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+rd /s /q build 
+geode build --ninja -- -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
 
 :: 3. Keep the window open for further commands
 echo.
 echo [DONE] Build process finished.
+cmd /k

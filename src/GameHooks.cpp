@@ -30,31 +30,11 @@ class $modify(CollabGameHooks, MenuLayer) {
         
         log::debug("CollabManager instance obtained");
         
-        // Check if this is the first time setup
-        if (collabMgr->isFirstTimeSetup()) {
-            log::info("First time setup detected - scheduling welcome popup with 5 second delay");
-            // INCREASED DELAY: 5.0f seconds to ensure everything is fully initialized
-            // This overkill delay helps us diagnose if the popup is causing the crash
-            this->scheduleOnce(schedule_selector(CollabGameHooks::showFirstTimeSetup), 5.0f);
-        } else {
-            log::debug("First time setup already completed");
-        }
+        // REMOVED: First time setup check - moved to EditLevelLayer
+        log::debug("First time setup check moved to EditLevelLayer");
 
         log::debug("MenuLayer::init hook completed successfully");
         return true;
-    }
-
-    void showFirstTimeSetup(float dt) {
-        log::debug("showFirstTimeSetup called after 5 second delay");
-        
-        auto popup = FirstTimeSetupPopup::create();
-        if (!popup) {
-            log::error("Failed to create FirstTimeSetupPopup");
-            return;
-        }
-        
-        log::debug("FirstTimeSetupPopup created successfully, showing to user");
-        popup->show();
     }
 };
 

@@ -62,6 +62,7 @@ protected:
     void onClose(CCObject* sender);
     
 public:
+    ~CollabSettingsPopup() = default;
     static CollabSettingsPopup* create(int levelID, const std::string& levelName);
 };
 

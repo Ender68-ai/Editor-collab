@@ -3,7 +3,9 @@
 #include <Geode/modify/MenuLayer.hpp>
 #include "ChatLayer.hpp"
 #include "NetworkingManager.hpp"
+#include "CollabNetworkManager.hpp"
 #include "CollabManager.hpp"
+#include "CollabPopups.hpp"
 
 using namespace geode::prelude;
 
@@ -34,7 +36,8 @@ class $modify(MyEditorUI, EditorUI) {
                 btnSprite = ButtonSprite::create("CHAT", 20, true, "goldFont.fnt", "GJ_button_01.png", 25, 0.5f);
             }
         }
-        btnSprite->setScale(0.6f);
+        // Scale the sprite itself to 0.25f - the icon was too large at 0.5f
+        btnSprite->setScale(0.25f);
 
         auto btn = CCMenuItemSpriteExtra::create(
             btnSprite, this, menu_selector(MyEditorUI::onToggleChat)
