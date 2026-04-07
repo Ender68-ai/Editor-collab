@@ -1,8 +1,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/LevelEditorLayer.hpp>
-#include "CollabNetworkManager.hpp"
+#include "core/CollabNetworkManager.hpp"
 #include "CollabManager.hpp"
-#include "CollabPopups.hpp"
 #include <Geode/binding/GJGameLevel.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
 
@@ -17,41 +16,6 @@ class $modify(CollabEditLevelLayer, LevelEditorLayer) {
         if (!LevelEditorLayer::init(level, noUI)) return false;
 
         log::debug("EditLevelLayer::init called - initializing CollabEditor button");
-
-        // Check for first time setup and show popup immediately
-        auto collabMgr = CollabManager::get();
-        if (collabMgr && collabMgr->isFirstTimeSetup()) {
-            log::info("First time setup detected in EditLevelLayer - showing popup immediately");
-            
-            // Thread Safety: Queue in main thread to prevent Cocos2d-x crashes
-            Loader::get()->queueInMainThread([this]() {
-                log::info("Attempting to create FirstTimeSetupPopup now");
-                
-                // Scene Safety: Verify running scene exists before showing popup
-                auto runningScene = CCDirector::sharedDirector()->getRunningScene();
-                if (!runningScene) {
-                    log::error("No running scene available - cannot show FirstTimeSetupPopup");
-                    return;
-                }
-                
-                // Resource Validation: Check if required resources exist before creating popup
-                if (!CCSprite::createWithSpriteFrameName("GJ_button_01.png")) {
-                    log::error("Required UI resources not found - cannot show FirstTimeSetupPopup");
-                    return;
-                }
-                
-                log::debug("Scene and resources validated, creating FirstTimeSetupPopup");
-                
-                auto popup = FirstTimeSetupPopup::create();
-                if (!popup) {
-                    log::error("Failed to create FirstTimeSetupPopup");
-                    return;
-                }
-                
-                log::debug("FirstTimeSetupPopup created successfully, showing to user");
-                popup->show();
-            });
-        }
 
         // Find the level-edit-menu
         auto levelEditMenu = this->getChildByIDRecursive("level-edit-menu");
@@ -85,7 +49,7 @@ class $modify(CollabEditLevelLayer, LevelEditorLayer) {
             0, 
             false, 
             0.f, 
-            "GJ_button_01.png", 
+            "GJ_button_01.png"_spr, 
             0.6f
         );
 
@@ -138,13 +102,8 @@ class $modify(CollabEditLevelLayer, LevelEditorLayer) {
 
         log::debug("Creating CollabSettingsPopup for level {} ({})", m_level->m_levelID, m_level->m_levelName);
         
-        auto popup = CollabSettingsPopup::create(m_level->m_levelID, m_level->m_levelName);
-        if (popup) {
-            log::debug("CollabSettingsPopup created successfully, showing...");
-            popup->show();
-        } else {
-            log::error("Failed to create CollabSettingsPopup");
-        }
+        // Placeholder functionality for now
+        FLAlertLayer::create("Collab Settings", "Collab settings functionality coming soon!", "OK")->show();
     }
 
     void updateHeartbeat(float dt) {
