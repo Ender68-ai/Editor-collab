@@ -14,4 +14,5 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo [SUCCESS] Mod compiled! You can open GD now.
+cmd /k
 pause
