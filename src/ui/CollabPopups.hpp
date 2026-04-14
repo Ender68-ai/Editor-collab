@@ -1,6 +1,6 @@
 #pragma once
 #include <Geode/Geode.hpp>
-#include "CollabManager.hpp"
+#include "../core/CollabManager.hpp"
 #include <Geode/ui/Popup.hpp>
 
 using namespace geode::prelude;

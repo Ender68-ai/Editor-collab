@@ -2,7 +2,7 @@
 #include <Geode/modify/EditLevelLayer.hpp>
 #include <Geode/binding/EditLevelLayer.hpp>
 #include <Geode/binding/GJGameLevel.hpp>
-#include "fnc/CollabRoomPopup.hpp"
+#include "CollabRoomPopup.hpp"
 
 using namespace geode::prelude;
 
@@ -51,7 +51,7 @@ class $modify(CollabEditLevelLayer, EditLevelLayer) {
             }
             
             if (sprite) {
-                sprite->setScale(0.7f);
+                sprite->setScale(0.6f);
                 
                 auto btn = CCMenuItemSpriteExtra::create(
                     sprite, 
@@ -64,6 +64,7 @@ class $modify(CollabEditLevelLayer, EditLevelLayer) {
                 
                 // Force the menu to recalculate the layout of its children
                 menu->updateLayout();
+                log::debug("Added Collab button to menu");
             }
         }
 

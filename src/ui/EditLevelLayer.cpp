@@ -1,7 +1,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/LevelEditorLayer.hpp>
-#include "core/CollabNetworkManager.hpp"
-#include "CollabManager.hpp"
+#include "../core/CollabNetworkManager.hpp"
+#include "../core/CollabManager.hpp"
 #include <Geode/binding/GJGameLevel.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
 

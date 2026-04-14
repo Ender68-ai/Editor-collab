@@ -2,7 +2,7 @@
 #include <Geode/modify/MenuLayer.hpp>
 #include <Geode/binding/MenuLayer.hpp>
 #include "CollabManager.hpp"
-#include "CollabPopups.hpp"
+#include "../ui/CollabPopups.hpp"
 
 using namespace geode::prelude;
 
