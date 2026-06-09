@@ -1,6 +1,8 @@
 #include "NetworkManager.hpp"
 #include <ixwebsocket/IXNetSystem.h>
 #include <ixwebsocket/IXSocketTLSOptions.h>
+#include <thread>
+#include <chrono>
 
 using namespace geode::prelude;
 
@@ -57,6 +59,8 @@ namespace mpedit {
             std::lock_guard lock(m_stateMutex);
             m_state = State::Connecting;
             m_error.clear();
+            m_retryCount = 0;
+            m_isRetrying = false;
         }
         
         m_webSocket.setUrl(url);
@@ -69,6 +73,7 @@ namespace mpedit {
             std::lock_guard lock(m_stateMutex);
             m_state = State::Disconnected;
             m_error.clear();
+            m_isRetrying = false;
         }
 
         // Always stop — ix::WebSocket::stop() is safe to call even if already stopped
@@ -173,6 +178,7 @@ namespace mpedit {
             {
                 std::lock_guard lock(m_stateMutex);
                 m_state = State::Connected;
+                m_retryCount = 0;
             }
             log::info("NetworkManager: Connected to server");
 
@@ -193,6 +199,9 @@ namespace mpedit {
             bool wasConnectedOrConnecting = false;
             {
                 std::lock_guard lock(m_stateMutex);
+                // During retry, suppress close handling — stop()/start() triggers
+                // a Close event that would otherwise show a false error to the user
+                if (m_isRetrying) return;
                 wasConnectedOrConnecting = (m_state == State::Connected || m_state == State::Connecting);
                 m_state = State::Disconnected;
             }
@@ -212,6 +221,61 @@ namespace mpedit {
             processIncoming(msg->str);
         }
         else if (msg->type == ix::WebSocketMessageType::Error) {
+            // Check if we should retry (only during initial connection, not mid-session)
+            bool shouldRetry = false;
+            {
+                std::lock_guard lock(m_stateMutex);
+                if (m_state == State::Connecting && m_retryCount < 3) {
+                    shouldRetry = true;
+                }
+            }
+
+            if (shouldRetry) {
+                int attempt;
+                {
+                    std::lock_guard lock(m_stateMutex);
+                    m_retryCount++;
+                    m_isRetrying = true;
+                    attempt = m_retryCount;
+                }
+                log::warn("NetworkManager: Connection attempt {}/4 failed ({}), retrying in 2s...",
+                    attempt, msg->errorInfo.reason);
+
+                // Retry on a separate thread after a delay
+                std::thread([this]() {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+
+                    // Only retry if still in Connecting state (user may have cancelled)
+                    {
+                        std::lock_guard lock(m_stateMutex);
+                        if (m_state != State::Connecting) {
+                            log::info("NetworkManager: Retry cancelled (state={})",
+                                static_cast<int>(m_state));
+                            m_isRetrying = false;
+                            return;
+                        }
+                    }
+
+                    log::info("NetworkManager: Retrying connection...");
+                    m_webSocket.stop();
+
+                    // Re-check after stop — disconnect() may have been called concurrently
+                    {
+                        std::lock_guard lock(m_stateMutex);
+                        if (m_state != State::Connecting) {
+                            log::info("NetworkManager: Retry cancelled after stop");
+                            m_isRetrying = false;
+                            return;
+                        }
+                        m_isRetrying = false;
+                    }
+
+                    m_webSocket.start();
+                }).detach();
+                return;
+            }
+
+            // Retries exhausted or error during established connection
             std::string errMsg;
             {
                 std::lock_guard lock(m_stateMutex);

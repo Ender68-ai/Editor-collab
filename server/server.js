@@ -169,11 +169,31 @@ wss.on('connection', (ws) => {
                 clearTimeout(ws._handshakeTimeout);
                 ws._handshakeTimeout = null;
             }
-            const message = JSON.parse(raw.toString());
-            handleMessage(ws, message);
+
+            const rawStr = raw.toString();
+
+            // Fast-extract the action field without parsing the entire JSON.
+            // Full JSON.parse on multi-MB level syncs blocks the event loop
+            // for seconds, killing new connection handshakes.
+            const actionMatch = rawStr.match(/"action"\s*:\s*"([^"]+)"/);
+            if (!actionMatch) {
+                ws.send(JSON.stringify({ event: 'error', message: 'Missing action field' }));
+                return;
+            }
+
+            const action = actionMatch[1];
+
+            // Small control messages: full JSON parse (these are always tiny)
+            if (action === 'host' || action === 'join' || action === 'leave') {
+                const message = JSON.parse(rawStr);
+                handleMessage(ws, message);
+            } else {
+                // Relay messages: raw string pass-through to avoid blocking
+                handleRelayRaw(ws, action, rawStr);
+            }
         } catch (e) {
-            console.error(`[WS] Failed to parse message:`, e.message);
-            ws.send(JSON.stringify({ event: 'error', message: 'Invalid JSON' }));
+            console.error(`[WS] Failed to process message:`, e.message);
+            ws.send(JSON.stringify({ event: 'error', message: 'Invalid message' }));
         }
     });
 
@@ -217,23 +237,12 @@ function handleMessage(ws, message, httpClientId = null) {
             handleLeave(ws);
             break;
 
-        case 'place_objects':
-        case 'delete_objects':
-        case 'move_objects':
-        case 'transform_objects':
-        case 'update_objects':
-        case 'lock_objects':
-        case 'sync_level':
-        case 'update_settings':
-            handleEditorAction(ws, message);
-            break;
-
-        case 'cursor_update':
-            handleCursorUpdate(ws, message);
-            break;
-
         default:
-            sendError(ws, `Unknown action: ${action}`);
+            // Relay actions are handled via handleRelayRaw for WebSocket clients.
+            // HTTP fallback clients can only host/join, so unknown actions are ignored.
+            if (ws) {
+                sendError(ws, `Unknown action: ${action}`);
+            }
     }
 }
 
@@ -339,66 +348,66 @@ function handleLeave(ws) {
     console.log(`[Room] Player ${playerId} left room ${ws._roomCode}`);
 }
 
-function handleEditorAction(ws, message) {
+// ============================================================
+// Raw Relay Handler (avoids event-loop-blocking JSON round-trips)
+// ============================================================
+
+// Action type → event type mapping
+const ACTION_TO_EVENT = {
+    'place_objects': 'objects_placed',
+    'delete_objects': 'objects_deleted',
+    'move_objects': 'objects_moved',
+    'transform_objects': 'objects_transformed',
+    'update_objects': 'update_objects',
+    'lock_objects': 'lock_objects',
+    'sync_level': 'sync_level',
+    'update_settings': 'update_settings',
+    'cursor_update': 'cursor_moved'
+};
+
+function handleRelayRaw(ws, action, rawStr) {
     if (!ws || !ws._roomCode) return;
 
     const room = rooms.get(ws._roomCode);
     if (!room) return;
 
-    // Map action type to event type
-    const actionToEvent = {
-        'place_objects': 'objects_placed',
-        'delete_objects': 'objects_deleted',
-        'move_objects': 'objects_moved',
-        'transform_objects': 'objects_transformed',
-        'update_objects': 'update_objects',
-        'lock_objects': 'lock_objects',
-        'sync_level': 'sync_level',
-        'update_settings': 'update_settings'
-    };
+    const eventType = ACTION_TO_EVENT[action];
+    if (!eventType) {
+        sendError(ws, `Unknown action: ${action}`);
+        return;
+    }
 
-    const eventType = actionToEvent[message.action];
-    if (!eventType) return;
+    // Replace "action":"xxx" with "event":"yyy","playerId":N directly in the
+    // raw string. This avoids the expensive JSON.parse → object spread →
+    // JSON.stringify cycle that was blocking the event loop on multi-MB syncs.
+    const outgoing = rawStr.replace(
+        /"action"\s*:\s*"[^"]+"/,
+        `"event":"${eventType}","playerId":${ws._playerId}`
+    );
 
-    // Broadcast to all other players with the sender's ID
-    const broadcastMsg = {
-        ...message,
-        event: eventType,
-        playerId: ws._playerId
-    };
-    delete broadcastMsg.action;
-
-    if (eventType === 'sync_level' && message.targetPlayerId !== undefined) {
-        const targetPlayer = room.players.get(message.targetPlayerId);
-        if (targetPlayer && targetPlayer.ws) {
-            targetPlayer.ws.send(JSON.stringify(broadcastMsg));
+    if (action === 'sync_level') {
+        // Directed sync: extract targetPlayerId and send only to that player
+        const targetMatch = rawStr.match(/"targetPlayerId"\s*:\s*(\d+)/);
+        if (targetMatch) {
+            const targetId = parseInt(targetMatch[1]);
+            const target = room.players.get(targetId);
+            if (target && target.ws && target.ws.readyState === WebSocket.OPEN) {
+                target.ws.send(outgoing);
+            }
+        } else {
+            broadcastRaw(room, outgoing, ws._playerId);
         }
     } else {
-        room.broadcast(broadcastMsg, ws._playerId);
+        broadcastRaw(room, outgoing, ws._playerId);
     }
 }
 
-function handleCursorUpdate(ws, message) {
-    if (!ws || !ws._roomCode) return;
-
-    const room = rooms.get(ws._roomCode);
-    if (!room) return;
-
-    const player = room.players.get(ws._playerId);
-    if (player) {
-        player.cursorX = message.x || 0;
-        player.cursorY = message.y || 0;
-        player.status = message.status || "";
+function broadcastRaw(room, rawStr, excludePlayerId) {
+    for (const [id, player] of room.players) {
+        if (id !== excludePlayerId && player.ws.readyState === WebSocket.OPEN) {
+            player.ws.send(rawStr);
+        }
     }
-
-    // Broadcast cursor position to other players
-    room.broadcast({
-        event: 'cursor_moved',
-        playerId: ws._playerId,
-        x: message.x || 0,
-        y: message.y || 0,
-        status: message.status || ""
-    }, ws._playerId);
 }
 
 function handleDisconnect(ws) {
