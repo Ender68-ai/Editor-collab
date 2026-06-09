@@ -1,3 +1,7 @@
+# 0.2.3
+- Increased max payload to 50mb.
+- Optimized server loads to prevent dropped connections.
+
 # 0.2.2
 - Fixed player icons not showing up when playtesting.
 - Fixed random host connection drops/disconnections by forwarding WebSocket `ping` and `pong` to server.
