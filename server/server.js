@@ -11,7 +11,8 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ 
     server,
     // Handle both ws:// and wss:// (Render terminates TLS for us)
-    perMessageDeflate: false
+    perMessageDeflate: false,
+    maxPayload: 52428800 // 50 MB limit
 });
 
 const PORT = process.env.PORT || 8765;
@@ -105,7 +106,7 @@ const rooms = new Map();
 // HTTP Endpoints (for polling fallback)
 // ============================================================
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 // Health check
 app.get('/', (req, res) => {

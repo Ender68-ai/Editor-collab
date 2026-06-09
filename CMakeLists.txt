@@ -5,6 +5,12 @@ project(MultiplayerEdit VERSION 0.1.0)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "iOS" OR IOS)
+    set(CMAKE_OSX_ARCHITECTURES "arm64")
+else()
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+endif()
+
 add_compile_definitions(WIN32_LEAN_AND_MEAN)
 add_compile_definitions(_WINSOCKAPI_)
 
