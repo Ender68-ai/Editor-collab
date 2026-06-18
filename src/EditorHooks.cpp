@@ -13,6 +13,7 @@
 #include "ui/MultiplayerPopup.hpp"
 #include "ui/SessionStatusNode.hpp"
 #include "ui/CursorNode.hpp"
+#include "ui/UpdateHelperNode.hpp"
 
 using namespace geode::prelude;
 using namespace mpedit;
@@ -21,36 +22,6 @@ namespace {
     int s_selectedObjectID = 1;
     cocos2d::CCPoint s_lastTouchPos = {0.f, 0.f};
     bool s_isTouching = false;
-
-    class UpdateHelperNode : public cocos2d::CCNode {
-    public:
-        using UpdateCallback = std::function<void(float)>;
-
-        static UpdateHelperNode* create(UpdateCallback callback, float interval) {
-            auto* ret = new UpdateHelperNode();
-            if (ret && ret->init(std::move(callback), interval)) {
-                ret->autorelease();
-                return ret;
-            }
-            delete ret;
-            return nullptr;
-        }
-
-        bool init(UpdateCallback callback, float interval) {
-            m_callback = std::move(callback);
-            this->schedule(schedule_selector(UpdateHelperNode::onUpdate), interval);
-            return true;
-        }
-
-        void onUpdate(float dt) {
-            if (m_callback) {
-                m_callback(dt);
-            }
-        }
-
-    private:
-        UpdateCallback m_callback;
-    };
 }
 
 // ============================================================
@@ -266,6 +237,84 @@ class $modify(MPLevelBrowserLayer, LevelBrowserLayer) {
 // LevelEditorLayer — Hook editor lifecycle for session management
 // ============================================================
 
+namespace {
+    // Builds a sync_level payload for a target player from the host's current
+    // editor state. The split MUST be: objectsString = the per-object save
+    // strings (concatenated as GD expects), settings.saveString = the
+    // LevelSettingsObject save string (colors, portals, song, etc.) only.
+    //
+    // Previously the host stuffed the full level string into settings.saveString
+    // and left objectsString empty, which broke UUID registration on the client
+    // and made every post-sync remote edit silently no-op (the "synchronizing
+    // level screen doesn't load" bug).
+    matjson::Value buildSyncLevelMessage(LevelEditorLayer* editor, int targetPlayerId) {
+        auto& handler = RemoteActionHandler::get();
+
+        // Per-object save strings in spawn order, aligned with the uuids array.
+        std::string objectsString;
+        std::vector<std::string> uuids;
+        if (editor->m_objects) {
+            uuids.reserve(editor->m_objects->count());
+            for (auto* obj : CCArrayExt<GameObject*>(editor->m_objects)) {
+                if (!obj) continue;
+                auto uuid = handler.getUUIDForObject(obj);
+                if (uuid.empty()) {
+                    uuid = RemoteActionHandler::generateUUID();
+                    handler.registerObject(uuid, obj);
+                }
+                uuids.push_back(uuid);
+                if (!objectsString.empty()) objectsString += ";";
+                objectsString += obj->getSaveString(editor);
+            }
+        }
+
+        // Settings only: LevelSettingsObject::getSaveString() uses the ','
+        // separator and carries colors (EffectManager), start mode, song, etc.
+        ActionSerializer::LevelSettingsData settings;
+        if (editor->m_levelSettings) {
+            settings.saveString = editor->m_levelSettings->getSaveString();
+        }
+        if (editor->m_level) {
+            settings.audioTrack = editor->m_level->m_audioTrack;
+            settings.songID = editor->m_level->m_songID;
+            settings.levelLength = editor->m_level->m_levelLength;
+        }
+
+        std::vector<ActionSerializer::LockData> locks;
+        for (auto const& [uuid, lockInfo] : handler.getObjectLocks()) {
+            locks.push_back({uuid, lockInfo.playerId, lockInfo.timeLeft});
+        }
+
+        return ActionSerializer::serializeSyncLevel(targetPlayerId, objectsString, uuids, settings, locks);
+    }
+
+    // Registers UUIDs onto the editor's currently-spawned objects, aligned by
+    // index with the provided uuids list. Missing/extra objects get fresh
+    // generated UUIDs. Returns once registration is consistent.
+    void registerObjectsWithUuids(LevelEditorLayer* editor,
+                                  std::vector<std::string> const& uuids) {
+        if (!editor || !editor->m_objects) return;
+        auto& handler = RemoteActionHandler::get();
+        int index = 0;
+        for (auto* obj : CCArrayExt<GameObject*>(editor->m_objects)) {
+            if (!obj) continue;
+            if (index < static_cast<int>(uuids.size()) && !uuids[index].empty()) {
+                handler.registerObject(uuids[index], obj);
+            } else {
+                // Object count mismatch with host (rare): assign a fresh UUID.
+                if (handler.getUUIDForObject(obj).empty()) {
+                    handler.registerObject(RemoteActionHandler::generateUUID(), obj);
+                }
+            }
+            index++;
+        }
+        if (index != static_cast<int>(uuids.size())) {
+            log::warn("EditorHooks: object/uuid count mismatch on sync "
+                      "(objects={}, uuids={})", index, uuids.size());
+        }
+    }
+}
+
 class $modify(MPLevelEditorLayer, LevelEditorLayer) {
     struct Fields {
         float m_cursorSendTimer = 0.f;
@@ -334,65 +383,36 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
 
         auto& session = SessionManager::get();
         if (session.isInSession()) {
+            // Client: register UUIDs for objects natively loaded from the level
+            // string we pushed before entering the editor. applyPendingSync()
+            // relies on this mapping existing so subsequent remote edits resolve.
             auto const& expected = handler.getExpectedUuids();
-            if (!expected.empty() && this->m_objects) {
-                int index = 0;
-                for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
-                    if (index < expected.size()) {
-                        handler.registerObject(expected[index], obj);
-                        index++;
-                    } else {
-                        auto uuid = RemoteActionHandler::generateUUID();
-                        handler.registerObject(uuid, obj);
-                    }
-                }
-                handler.clearExpectedUuids();
-            } else {
+            if (!expected.empty()) {
                 if (this->m_objects) {
-                    for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
-                        if (handler.getUUIDForObject(obj).empty()) {
-                            auto uuid = RemoteActionHandler::generateUUID();
-                            handler.registerObject(uuid, obj);
-                        }
+                    registerObjectsWithUuids(this, expected);
+                }
+                // (If m_objects isn't populated yet, applyPendingSync below will
+                //  still run and create objects from objectsString + register.)
+                handler.clearExpectedUuids();
+            } else if (this->m_objects) {
+                // No expected UUIDs (e.g. host just started): just ensure every
+                // object has a UUID so future edits can be tracked.
+                for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
+                    if (obj && handler.getUUIDForObject(obj).empty()) {
+                        handler.registerObject(RemoteActionHandler::generateUUID(), obj);
                     }
                 }
             }
-            
+
             // Unconditionally mark initial sync as completed for the client
             handler.setInitialSyncCompleted(true);
 
-            // Immediately broadcast level sync to already connected players if we are the host
+            // Host: immediately broadcast the level state to every already
+            // connected player (e.g. client joined while host editor was open).
             if (session.getRole() == SessionManager::Role::Host) {
-                std::string objectsString = "";
-                std::vector<std::string> uuids;
-                
-                std::string fullLevelString = std::string(this->getLevelString());
-
-                if (this->m_objects) {
-                    uuids.reserve(this->m_objects->count());
-                    for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
-                        auto uuid = handler.getUUIDForObject(obj);
-                        if (uuid.empty()) {
-                            uuid = RemoteActionHandler::generateUUID();
-                            handler.registerObject(uuid, obj);
-                        }
-                        uuids.push_back(uuid);
-                    }
-                }
-                ActionSerializer::LevelSettingsData settings;
-                settings.saveString = fullLevelString;
-                if (this->m_level) {
-                    settings.audioTrack = this->m_level->m_audioTrack;
-                    settings.songID = this->m_level->m_songID;
-                    settings.levelLength = this->m_level->m_levelLength;
-                }
-                std::vector<ActionSerializer::LockData> locks;
-                for (auto const& [uuid, lockInfo] : RemoteActionHandler::get().getObjectLocks()) {
-                    locks.push_back({uuid, lockInfo.playerId, lockInfo.timeLeft});
-                }
                 for (auto const& player : session.getPlayers()) {
                     if (player.id != session.getLocalPlayerId()) {
-                        auto msg = ActionSerializer::serializeSyncLevel(player.id, objectsString, uuids, settings, locks);
+                        auto msg = buildSyncLevelMessage(this, player.id);
                         NetworkManager::get().send(msg);
                         log::info("EditorHooks: Sent sync_level to existing player {}", player.id);
                     }
@@ -400,45 +420,20 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             }
         }
 
-        // Broadcast level sync to new players if we are the host
+        // Host: broadcast the level state to any NEW player that joins later.
+        // Registered here (inside init) so it captures `this` editor instance.
         SessionManager::get().onPlayerJoined([this](PlayerInfo const& info) {
             auto& session = SessionManager::get();
-            if (session.getRole() == SessionManager::Role::Host) {
-                std::string objectsString = "";
-                std::vector<std::string> uuids;
-                
-                std::string fullLevelString = std::string(this->getLevelString());
-
-                if (this->m_objects) {
-                    auto& h = RemoteActionHandler::get();
-                    uuids.reserve(this->m_objects->count());
-                    for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
-                        auto uuid = h.getUUIDForObject(obj);
-                        if (uuid.empty()) {
-                            uuid = RemoteActionHandler::generateUUID();
-                            h.registerObject(uuid, obj);
-                        }
-                        uuids.push_back(uuid);
-                    }
-                }
-                ActionSerializer::LevelSettingsData settings;
-                settings.saveString = fullLevelString;
-                if (this->m_level) {
-                    settings.audioTrack = this->m_level->m_audioTrack;
-                    settings.songID = this->m_level->m_songID;
-                    settings.levelLength = this->m_level->m_levelLength;
-                }
-                std::vector<ActionSerializer::LockData> locks;
-                for (auto const& [uuid, lockInfo] : RemoteActionHandler::get().getObjectLocks()) {
-                    locks.push_back({uuid, lockInfo.playerId, lockInfo.timeLeft});
-                }
-                auto msg = ActionSerializer::serializeSyncLevel(info.id, objectsString, uuids, settings, locks);
+            if (session.getRole() == SessionManager::Role::Host && info.id != session.getLocalPlayerId()) {
+                auto msg = buildSyncLevelMessage(this, info.id);
                 NetworkManager::get().send(msg);
                 log::info("EditorHooks: Sent sync_level to new player {}", info.id);
             }
         });
 
-        // Apply any pending sync_level packet that arrived early
+        // Apply any pending sync_level packet that arrived early (client path):
+        // the editor was pushed by handleRemoteSyncLevel, then init() ran and
+        // registered UUIDs above; now finish applying settings + objects.
         if (handler.hasPendingSync()) {
             handler.applyPendingSync();
         }
@@ -564,34 +559,32 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
 
         // During undo/redo, handleAction already handles sync — skip here to avoid double-sync
         bool inUndoRedo = m_fields->m_inUndoRedo;
+        bool shouldBroadcastDelete = session.isInSession()
+            && !handler.isProcessingRemote() && !inUndoRedo && obj;
 
-        if (session.isInSession() && !handler.isProcessingRemote() && !inUndoRedo && obj) {
+        if (shouldBroadcastDelete) {
             auto uuid = handler.getUUIDForObject(obj);
             if (!uuid.empty()) {
+                // Block deletion of objects locked by another player.
                 auto const& locks = handler.getObjectLocks();
                 auto it = locks.find(uuid);
                 if (it != locks.end() && it->second.playerId != session.getLocalPlayerId()) {
-                    // Locked by another player! Do not delete.
                     log::info("EditorHooks: Blocked removal of locked object (uuid={})", uuid);
                     obj->release();
                     return;
                 }
-            }
-        }
-
-        // If we're in a session and this isn't a remote action or undo/redo
-        if (session.isInSession() && !handler.isProcessingRemote() && !inUndoRedo && obj) {
-            auto uuid = handler.getUUIDForObject(obj);
-            if (!uuid.empty()) {
+                // Broadcast the deletion and unregister in one place. Callers
+                // like onDeleteSelected unregister first, so this is a no-op for
+                // them; for other deletion paths this is the single broadcast.
                 auto msg = ActionSerializer::serializeDeleteObjects({uuid});
                 NetworkManager::get().send(msg);
                 handler.unregisterObject(uuid);
-                
                 log::debug("EditorHooks: Deleted object (uuid={})", uuid);
             }
         }
 
-        // Clean up from tracked selections and mapping maps to guarantee no dangling references in RemoteActionHandler
+        // Always clean up dangling references in RemoteActionHandler maps so a
+        // later remote action can never resolve a freed GameObject pointer.
         if (obj) {
             auto uuid = handler.getUUIDForObject(obj);
             if (!uuid.empty()) {
@@ -747,8 +740,12 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
 
         // Dispatch queued network messages
         NetworkManager::get().dispatchMessages();
-        
-        RemoteActionHandler::get().updateLocks(dt);
+
+        auto& handler = RemoteActionHandler::get();
+        handler.updateLocks(dt);
+
+        // Flush any batched placements (copy/paste/duplicate) as a single message.
+        handler.flushPendingPlacements();
 
         // Send cursor position periodically
         m_fields->m_cursorSendTimer += dt;
@@ -846,9 +843,81 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
 // EditorUI — Hook object movement/transform to sync
 // ============================================================
 
+namespace {
+    // Captures the pre-edit state of a set of objects, runs a mutating lambda
+    // (the real GD call), then broadcasts transform + move deltas for any
+    // objects that changed. Shared by transformObjectCall, rotateObjects,
+    // scaleObjects, flipObjectsX and flipObjectsY so they all sync identically.
+    //
+    // This is the single source of truth for transform syncing, including
+    // flipX/flipY (mirror) which previously slipped through because GD's
+    // mirror buttons call flipObjectsX/Y rather than transformObjectCall.
+    void syncTransformedObjects(cocos2d::CCArray* objects,
+                                std::function<void()> applyBase) {
+        auto& handler = RemoteActionHandler::get();
+        auto& session = SessionManager::get();
+
+        // Pre-state: uuid + old position for every object we can track.
+        struct ObjState {
+            std::string uuid;
+            GameObject* obj;
+            cocos2d::CCPoint oldPos;
+        };
+        std::vector<ObjState> selected;
+
+        if (session.isInSession() && !handler.isProcessingRemote() && objects) {
+            for (auto* obj : CCArrayExt<GameObject*>(objects)) {
+                if (!obj) continue;
+                auto uuid = handler.getUUIDForObject(obj);
+                if (!uuid.empty()) {
+                    selected.push_back({uuid, obj, obj->getPosition()});
+                }
+            }
+        }
+
+        applyBase();
+
+        if (selected.empty()) return;
+
+        std::vector<ActionSerializer::TransformData> transforms;
+        std::vector<ActionSerializer::MoveData> moves;
+
+        for (auto& state : selected) {
+            ActionSerializer::TransformData td;
+            td.uuid = state.uuid;
+            td.rotation = state.obj->getRotation();
+            td.scaleX = state.obj->getScaleX();
+            td.scaleY = state.obj->getScaleY();
+            td.flipX = state.obj->isFlipX();
+            td.flipY = state.obj->isFlipY();
+            transforms.push_back(td);
+
+            cocos2d::CCPoint newPos = state.obj->getPosition();
+            float dx = newPos.x - state.oldPos.x;
+            float dy = newPos.y - state.oldPos.y;
+            if (dx != 0.f || dy != 0.f) {
+                ActionSerializer::MoveData md;
+                md.uuid = state.uuid;
+                md.dx = dx;
+                md.dy = dy;
+                moves.push_back(md);
+            }
+        }
+
+        NetworkManager::get().send(ActionSerializer::serializeTransformObjects(transforms));
+        if (!moves.empty()) {
+            NetworkManager::get().send(ActionSerializer::serializeMoveObjects(moves));
+        }
+    }
+}
+
 class $modify(MPEditorUI, EditorUI) {
     struct Fields {
         float m_lockRefreshTimer = 0.f;
+        // Tracks the previous-frame touch state so we run one final property
+        // diff on the frame a drag ends (syncDeselections otherwise skips the
+        // expensive getSaveString diff while not actively dragging).
+        bool m_wasTouching = false;
     };
 
     void onCreateObject(int id) {
@@ -905,7 +974,9 @@ class $modify(MPEditorUI, EditorUI) {
             auto uuid = handler.getOrCreateUUID(obj);
             auto& tracked = handler.getTrackedSelections();
             if (tracked.find(obj) == tracked.end()) {
-                tracked[obj] = obj->getSaveString(LevelEditorLayer::get());
+                if (auto* editor = LevelEditorLayer::get()) {
+                    tracked[obj] = obj->getSaveString(editor);
+                }
                 if (!handler.isProcessingRemote()) {
                     auto msg = ActionSerializer::serializeLockObjects({uuid}, true);
                     NetworkManager::get().send(msg);
@@ -1036,10 +1107,13 @@ class $modify(MPEditorUI, EditorUI) {
         if (session.isInSession() && filteredObjects) {
             std::vector<std::string> uuids;
             auto& tracked = handler.getTrackedSelections();
+            auto* editor = LevelEditorLayer::get();
             for (auto* obj : CCArrayExt<GameObject*>(filteredObjects)) {
                 auto uuid = handler.getOrCreateUUID(obj);
                 if (tracked.find(obj) == tracked.end()) {
-                    tracked[obj] = obj->getSaveString(LevelEditorLayer::get());
+                    if (editor) {
+                        tracked[obj] = obj->getSaveString(editor);
+                    }
                     uuids.push_back(uuid);
                 }
             }
@@ -1148,23 +1222,33 @@ class $modify(MPEditorUI, EditorUI) {
             }
         }
 
-        // 6. Handle deselections and update modified objects
+        // 6. Handle deselections and update modified objects.
+        // The property-diff (getSaveString) is expensive on large selections, so
+        // we only run it while the user is actively dragging (s_isTouching) or
+        // the selection set just changed — otherwise properties can't have moved
+        // and the per-frame cost was pure overhead.
         std::vector<std::string> unlockUuids;
         std::vector<ActionSerializer::ObjectData> updates;
+        // Only diff while the user is actively dragging: object properties can
+        // only change while a touch/drag is in progress, so skip the expensive
+        // getSaveString cost the rest of the time. Also run one final diff on
+        // the frame a drag ends to capture its final state.
+        bool shouldDiffProperties = s_isTouching || m_fields->m_wasTouching;
+        m_fields->m_wasTouching = s_isTouching;
 
         for (auto it = tracked.begin(); it != tracked.end(); ) {
             GameObject* obj = it->first;
-            
+
             // Check if object still exists in the editor to avoid dangling pointers
             if (!editor->m_objects->containsObject(obj)) {
                 it = tracked.erase(it);
                 continue;
             }
-            
+
             // Check if object is still selected and not scheduled for deselection
             bool isSelected = (std::find(currentSelection.begin(), currentSelection.end(), obj) != currentSelection.end()) &&
                               (std::find(toDeselect.begin(), toDeselect.end(), obj) == toDeselect.end());
-            
+
             auto uuid = handler.getUUIDForObject(obj);
             if (uuid.empty()) {
                 it = tracked.erase(it);
@@ -1173,24 +1257,27 @@ class $modify(MPEditorUI, EditorUI) {
 
             if (!isSelected) {
                 unlockUuids.push_back(uuid);
-                
-                // If the object properties changed since selection, send an update now
+
+                // On deselect, always diff — this captures the final state of an
+                // edit that just ended (cheap: it's a single object).
                 std::string currentSave = obj->getSaveString(editor);
                 if (it->second != currentSave) {
                     if (obj->m_objectID != 31) {
                         updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                     }
                 }
-                
+
                 it = tracked.erase(it);
             } else {
-                // If still selected, check if properties changed to update baseline and broadcast change
-                std::string currentSave = obj->getSaveString(editor);
-                if (it->second != currentSave) {
-                    if (obj->m_objectID != 31) {
-                        updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
+                // Only pay the getSaveString cost while actively editing.
+                if (shouldDiffProperties) {
+                    std::string currentSave = obj->getSaveString(editor);
+                    if (it->second != currentSave) {
+                        if (obj->m_objectID != 31) {
+                            updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
+                        }
+                        it->second = currentSave;
                     }
-                    it->second = currentSave;
                 }
                 ++it;
             }
@@ -1245,180 +1332,36 @@ class $modify(MPEditorUI, EditorUI) {
     }
 
     void transformObjectCall(EditCommand command) {
-        auto& handler = RemoteActionHandler::get();
-        auto& session = SessionManager::get();
-
-        struct ObjState {
-            std::string uuid;
-            GameObject* obj;
-            cocos2d::CCPoint oldPos;
-        };
-        std::vector<ObjState> selected;
-
-        if (session.isInSession() && !handler.isProcessingRemote() && m_selectedObjects) {
-            for (auto* obj : CCArrayExt<GameObject*>(m_selectedObjects)) {
-                auto uuid = handler.getUUIDForObject(obj);
-                if (!uuid.empty()) {
-                    selected.push_back({uuid, obj, obj->getPosition()});
-                }
-            }
-        }
-
-        EditorUI::transformObjectCall(command);
-
-        if (!selected.empty()) {
-            std::vector<ActionSerializer::TransformData> transforms;
-            std::vector<ActionSerializer::MoveData> moves;
-            
-            for (auto& state : selected) {
-                ActionSerializer::TransformData td;
-                td.uuid = state.uuid;
-                td.rotation = state.obj->getRotation();
-                td.scaleX = state.obj->getScaleX();
-                td.scaleY = state.obj->getScaleY();
-                td.flipX = state.obj->isFlipX();
-                td.flipY = state.obj->isFlipY();
-                transforms.push_back(td);
-                
-                cocos2d::CCPoint newPos = state.obj->getPosition();
-                float dx = newPos.x - state.oldPos.x;
-                float dy = newPos.y - state.oldPos.y;
-                
-                if (dx != 0.f || dy != 0.f) {
-                    ActionSerializer::MoveData md;
-                    md.uuid = state.uuid;
-                    md.dx = dx;
-                    md.dy = dy;
-                    moves.push_back(md);
-                }
-            }
-            
-            auto msg = ActionSerializer::serializeTransformObjects(transforms);
-            NetworkManager::get().send(msg);
-            
-            if (!moves.empty()) {
-                auto moveMsg = ActionSerializer::serializeMoveObjects(moves);
-                NetworkManager::get().send(moveMsg);
-            }
-        }
+        syncTransformedObjects(m_selectedObjects, [&]() {
+            EditorUI::transformObjectCall(command);
+        });
     }
 
     void rotateObjects(cocos2d::CCArray* objects, float rotation, cocos2d::CCPoint pivotPoint) {
-        auto& handler = RemoteActionHandler::get();
-        auto& session = SessionManager::get();
-
-        struct ObjState {
-            std::string uuid;
-            GameObject* obj;
-            cocos2d::CCPoint oldPos;
-        };
-        std::vector<ObjState> selected;
-
-        if (session.isInSession() && !handler.isProcessingRemote() && objects) {
-            for (auto* obj : CCArrayExt<GameObject*>(objects)) {
-                auto uuid = handler.getUUIDForObject(obj);
-                if (!uuid.empty()) {
-                    selected.push_back({uuid, obj, obj->getPosition()});
-                }
-            }
-        }
-
-        EditorUI::rotateObjects(objects, rotation, pivotPoint);
-
-        if (!selected.empty()) {
-            std::vector<ActionSerializer::TransformData> transforms;
-            std::vector<ActionSerializer::MoveData> moves;
-            
-            for (auto& state : selected) {
-                ActionSerializer::TransformData td;
-                td.uuid = state.uuid;
-                td.rotation = state.obj->getRotation();
-                td.scaleX = state.obj->getScaleX();
-                td.scaleY = state.obj->getScaleY();
-                td.flipX = state.obj->isFlipX();
-                td.flipY = state.obj->isFlipY();
-                transforms.push_back(td);
-                
-                cocos2d::CCPoint newPos = state.obj->getPosition();
-                float dx = newPos.x - state.oldPos.x;
-                float dy = newPos.y - state.oldPos.y;
-                
-                if (dx != 0.f || dy != 0.f) {
-                    ActionSerializer::MoveData md;
-                    md.uuid = state.uuid;
-                    md.dx = dx;
-                    md.dy = dy;
-                    moves.push_back(md);
-                }
-            }
-            
-            auto msg = ActionSerializer::serializeTransformObjects(transforms);
-            NetworkManager::get().send(msg);
-            
-            if (!moves.empty()) {
-                auto moveMsg = ActionSerializer::serializeMoveObjects(moves);
-                NetworkManager::get().send(moveMsg);
-            }
-        }
+        syncTransformedObjects(objects, [&]() {
+            EditorUI::rotateObjects(objects, rotation, pivotPoint);
+        });
     }
 
     void scaleObjects(cocos2d::CCArray* objects, float scaleX, float scaleY, cocos2d::CCPoint pivotPoint, ObjectScaleType type, bool lockMove) {
-        auto& handler = RemoteActionHandler::get();
-        auto& session = SessionManager::get();
+        syncTransformedObjects(objects, [&]() {
+            EditorUI::scaleObjects(objects, scaleX, scaleY, pivotPoint, type, lockMove);
+        });
+    }
 
-        struct ObjState {
-            std::string uuid;
-            GameObject* obj;
-            cocos2d::CCPoint oldPos;
-        };
-        std::vector<ObjState> selected;
+    // GD's "Mirror" buttons call flipObjectsX/flipObjectsY directly (NOT
+    // transformObjectCall), so without these hooks mirror was never synced
+    // to remote players. flipX/flipY are carried by the transform message.
+    void flipObjectsX(cocos2d::CCArray* objects) {
+        syncTransformedObjects(objects, [&]() {
+            EditorUI::flipObjectsX(objects);
+        });
+    }
 
-        if (session.isInSession() && !handler.isProcessingRemote() && objects) {
-            for (auto* obj : CCArrayExt<GameObject*>(objects)) {
-                auto uuid = handler.getUUIDForObject(obj);
-                if (!uuid.empty()) {
-                    selected.push_back({uuid, obj, obj->getPosition()});
-                }
-            }
-        }
-
-        EditorUI::scaleObjects(objects, scaleX, scaleY, pivotPoint, type, lockMove);
-
-        if (!selected.empty()) {
-            std::vector<ActionSerializer::TransformData> transforms;
-            std::vector<ActionSerializer::MoveData> moves;
-            
-            for (auto& state : selected) {
-                ActionSerializer::TransformData td;
-                td.uuid = state.uuid;
-                td.rotation = state.obj->getRotation();
-                td.scaleX = state.obj->getScaleX();
-                td.scaleY = state.obj->getScaleY();
-                td.flipX = state.obj->isFlipX();
-                td.flipY = state.obj->isFlipY();
-                transforms.push_back(td);
-                
-                cocos2d::CCPoint newPos = state.obj->getPosition();
-                float dx = newPos.x - state.oldPos.x;
-                float dy = newPos.y - state.oldPos.y;
-                
-                if (dx != 0.f || dy != 0.f) {
-                    ActionSerializer::MoveData md;
-                    md.uuid = state.uuid;
-                    md.dx = dx;
-                    md.dy = dy;
-                    moves.push_back(md);
-                }
-            }
-            
-            auto msg = ActionSerializer::serializeTransformObjects(transforms);
-            NetworkManager::get().send(msg);
-            
-            if (!moves.empty()) {
-                auto moveMsg = ActionSerializer::serializeMoveObjects(moves);
-                NetworkManager::get().send(moveMsg);
-            }
-        }
+    void flipObjectsY(cocos2d::CCArray* objects) {
+        syncTransformedObjects(objects, [&]() {
+            EditorUI::flipObjectsY(objects);
+        });
     }
 };
 
@@ -1452,23 +1395,12 @@ class $modify(MPBaseGameLayer, GJBaseGameLayer) {
             return;
         }
 
-        // Assign a new UUID and sync it (duplicates, copy-paste)
+        // Assign a new UUID and queue it for a batched placement flush.
+        // Copy/paste/duplicate can add dozens of objects in a single frame;
+        // queueing them lets us send one place_objects message (via the network
+        // tick) instead of one WebSocket send per object.
         auto uuid = RemoteActionHandler::generateUUID();
         handler.registerObject(uuid, obj);
-
-        geode::queueInMainThread([editor, obj = geode::Ref<GameObject>(obj), uuid]() {
-            if (LevelEditorLayer::get() != editor) return;
-            auto& handler = RemoteActionHandler::get();
-            auto& session = SessionManager::get();
-            if (session.isInSession() && !handler.isProcessingRemote()) {
-                if (editor->m_objects && editor->m_objects->containsObject(obj)) {
-                    auto objData = ActionSerializer::extractObjectData(obj, uuid);
-                    auto msg = ActionSerializer::serializePlaceObjects({objData});
-                    NetworkManager::get().send(msg);
-
-                    log::debug("EditorHooks: Sync pasted/duplicated object uuid={}", uuid);
-                }
-            }
-        });
+        handler.queueObjectForPlacement(uuid, obj);
     }
 };

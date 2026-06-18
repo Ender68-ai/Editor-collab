@@ -61,6 +61,14 @@ namespace mpedit {
         // Clear all mappings (called when leaving editor)
         void clearMappings();
 
+        // --- Batched placement sync ---
+        // Copy/paste/duplicate can spawn dozens of objects in a single frame.
+        // Instead of sending one place_objects message per object (one WS send
+        // + one getSaveString each), queue them here and flush as a single
+        // message via flushPendingPlacements() on the next network tick.
+        void queueObjectForPlacement(std::string const& uuid, GameObject* obj);
+        void flushPendingPlacements();
+
         // Flag to suppress outgoing messages when processing remote actions
         bool isProcessingRemote() const { return m_processingRemote; }
 
@@ -92,6 +100,11 @@ namespace mpedit {
 
         LevelEditorLayer* getEditorLayer() const;
 
+        // Applies a LevelSettingsData packet (settings saveString + song) onto
+        // the editor. Used by both sync_level and update_settings so the color
+        // / portal / song application logic lives in exactly one place.
+        void applyLevelSettings(LevelEditorLayer* editor, ActionSerializer::LevelSettingsData const& settings);
+
         // UUID ↔ GameObject bidirectional mapping
         std::unordered_map<std::string, GameObject*> m_uuidToObject;
         std::unordered_map<GameObject*, std::string> m_objectToUuid;
@@ -113,6 +126,15 @@ namespace mpedit {
         };
         std::optional<PendingSync> m_pendingSync;
         std::vector<std::string> m_expectedUuids;
+
+        // Objects queued for a batched place_objects flush. Stored as UUID +
+        // Ref<GameObject> (Ref keeps the object alive across the frame boundary
+        // even if GD's arrays drop it).
+        struct PendingPlacement {
+            std::string uuid;
+            geode::Ref<GameObject> obj;
+        };
+        std::vector<PendingPlacement> m_pendingPlacements;
 
         // Counter for UUID generation
         static inline int s_uuidCounter = 0;

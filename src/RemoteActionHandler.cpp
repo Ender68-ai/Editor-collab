@@ -525,8 +525,8 @@ namespace mpedit {
     }
 
     void RemoteActionHandler::handleRemoteSyncLevel(
-        int playerId, 
-        std::string const& objectsString, 
+        int playerId,
+        std::string const& objectsString,
         std::vector<std::string> const& uuids,
         ActionSerializer::LevelSettingsData const& settings,
         std::vector<ActionSerializer::LockData> const& locks,
@@ -534,9 +534,12 @@ namespace mpedit {
     ) {
         auto* editor = getEditorLayer();
         if (!editor) {
-            log::info("RemoteActionHandler: Editor not ready yet, loading level string before entering editor");
-            
-            // Build the native level string (settings only, objects will be loaded in applyPendingSync)
+            log::info("RemoteActionHandler: Editor not ready yet, opening editor with settings-only level string");
+
+            // settings.saveString is the LevelSettingsObject string (colors,
+            // start mode, song, etc.) — it becomes the level's settings.
+            // Objects come in separately via objectsString and are spawned by
+            // applyPendingSync() once the editor's init() has run.
             std::string levelString = settings.saveString;
             m_expectedUuids = uuids;
 
@@ -569,104 +572,54 @@ namespace mpedit {
         }
 
         m_pendingSync.reset();
-
-        if (isPendingSync) {
-            log::info("RemoteActionHandler: Applying pending sync locks (objects already natively loaded)");
-            // Apply locks
-            m_objectLocks.clear();
-            for (auto const& lock : locks) {
-                m_objectLocks[lock.uuid] = LockInfo { lock.playerId, lock.timeLeft };
-            }
-            m_initialSyncCompleted = true;
-            return;
-        }
-
         m_processingRemote = true;
-
-        log::info("RemoteActionHandler: Syncing level state with {} objects from player {}", uuids.size(), playerId);
 
         // Deselect all selected objects first to prevent dangling pointers in EditorUI!
         if (auto* editorUI = editor->m_editorUI) {
             editorUI->deselectAll();
         }
 
-        // Delete all existing objects
-        auto* allObjects = editor->m_objects;
-        if (allObjects) {
-            auto copy = cocos2d::CCArray::create();
-            copy->addObjectsFromArray(allObjects);
-            for (auto* obj : CCArrayExt<GameObject*>(copy)) {
-                editor->removeObject(obj, true);
+        // isPendingSync: editor was just pushed by us above; the level string
+        // was settings-only, so m_objects is empty. We must spawn the objects
+        // now (not skip them) so the world actually populates and UUIDs map.
+        if (!isPendingSync) {
+            // Resync path: clear out any existing objects/undo history first.
+            if (editor->m_objects) {
+                auto copy = cocos2d::CCArray::create();
+                copy->addObjectsFromArray(editor->m_objects);
+                for (auto* obj : CCArrayExt<GameObject*>(copy)) {
+                    editor->removeObject(obj, true);
+                }
             }
+            if (editor->m_undoObjects) editor->m_undoObjects->removeAllObjects();
+            if (editor->m_redoObjects) editor->m_redoObjects->removeAllObjects();
         }
         clearMappings();
         m_expectedUuids.clear();
 
-        // Clear local undo/redo lists since all objects are replaced
-        if (editor->m_undoObjects) {
-            editor->m_undoObjects->removeAllObjects();
-        }
-        if (editor->m_redoObjects) {
-            editor->m_redoObjects->removeAllObjects();
-        }
+        log::info("RemoteActionHandler: Syncing level state ({} objects) from player {} (pending={})",
+            uuids.size(), playerId, isPendingSync);
 
-        // Apply level settings
-        if (!settings.saveString.empty() && editor->m_levelSettings) {
-            auto* newSettings = LevelSettingsObject::objectFromString(settings.saveString);
-            if (newSettings) {
-                    // Safely swap m_effectManager to sync level colors without crashing
-                    if (newSettings->m_effectManager) {
-                        newSettings->m_effectManager->retain();
-                        if (newSettings->m_effectManager->getParent() == newSettings) {
-                            newSettings->m_effectManager->removeFromParent();
-                        }
-                        auto* oldEM = editor->m_levelSettings->m_effectManager;
-                        editor->m_levelSettings->m_effectManager = newSettings->m_effectManager;
-                        CC_SAFE_RELEASE(oldEM);
-                    }
-                    
-                    editor->m_levelSettings->m_startMode = newSettings->m_startMode;
-                    editor->m_levelSettings->m_startSpeed = newSettings->m_startSpeed;
-                    editor->m_levelSettings->m_startMini = newSettings->m_startMini;
-                    editor->m_levelSettings->m_startDual = newSettings->m_startDual;
-                    editor->m_levelSettings->m_twoPlayerMode = newSettings->m_twoPlayerMode;
-                    editor->m_levelSettings->m_isFlipped = newSettings->m_isFlipped;
-                    editor->m_levelSettings->m_songOffset = newSettings->m_songOffset;
-                    
-                    editor->updateOptions();
-            }
-        }
-        
-        if (editor->m_level) {
-            editor->m_level->m_audioTrack = settings.audioTrack;
-            editor->m_level->m_songID = settings.songID;
-            editor->m_level->m_levelLength = settings.levelLength;
-            
-            // Try to play the music
-            if (settings.songID > 0) {
-                if (MusicDownloadManager::sharedState()->isSongDownloaded(settings.songID)) {
-                    GameManager::get()->fadeInMusic(editor->m_level->getAudioFileName());
-                } else {
-                    geode::Notification::create("Custom song not downloaded locally.", geode::NotificationIcon::Info)->show();
-                }
-            } else {
-                // Official song
-                GameManager::get()->fadeInMusic(editor->m_level->getAudioFileName());
-            }
-        }
-        
-        // Spawn all objects via bulk creation
+        // Apply level settings (colors, start mode, song, etc.). This replaces
+        // the previous manual m_effectManager swap that broke object colors.
+        applyLevelSettings(editor, settings);
+
+        // Spawn all objects from the per-object save string and register the
+        // host-supplied UUIDs in spawn order.
         if (!objectsString.empty()) {
             auto newObjs = createObjectsFromSaveStringRobust(editor, objectsString);
             int index = 0;
             for (auto* obj : newObjs) {
-                if (index < uuids.size()) {
+                if (index < static_cast<int>(uuids.size())) {
                     registerObject(uuids[index], obj);
                     index++;
                 } else {
-                    auto uuid = generateUUID();
-                    registerObject(uuid, obj);
+                    registerObject(generateUUID(), obj);
                 }
+            }
+            if (index != static_cast<int>(uuids.size())) {
+                log::warn("RemoteActionHandler: object/uuid count mismatch on sync "
+                          "(spawned={}, uuids={})", index, uuids.size());
             }
         }
 
@@ -676,7 +629,7 @@ namespace mpedit {
             m_objectLocks[lock.uuid] = LockInfo { lock.playerId, lock.timeLeft };
         }
 
-        // Force UI options update (e.g. background, ground, colors)
+        // Force UI options update (background, ground, colors, etc.)
         editor->levelSettingsUpdated();
 
         geode::Notification::create("Level Synced!", geode::NotificationIcon::Success)->show();
@@ -810,8 +763,42 @@ namespace mpedit {
         m_lockedSaveStrings.clear();
         // NOTE: Do NOT clear m_expectedUuids here - they are set before init() and must survive
         m_preSelectSaveStrings.clear();
+        m_pendingPlacements.clear();
         m_initialSyncCompleted = false;
-        s_uuidCounter = 0;
+        // NOTE: s_uuidCounter is intentionally NOT reset here. Resetting it on
+        // every editor open made UUIDs collide across reconnects/sessions
+        // (playerId+counter pairs could repeat). It is process-wide and must
+        // keep growing for the lifetime of the game.
+    }
+
+    void RemoteActionHandler::queueObjectForPlacement(std::string const& uuid, GameObject* obj) {
+        if (!obj || uuid.empty()) return;
+        m_pendingPlacements.push_back(PendingPlacement { uuid, geode::Ref<GameObject>(obj) });
+    }
+
+    void RemoteActionHandler::flushPendingPlacements() {
+        if (m_pendingPlacements.empty()) return;
+
+        auto* editor = getEditorLayer();
+        if (!editor || !editor->m_objects) {
+            m_pendingPlacements.clear();
+            return;
+        }
+
+        std::vector<ActionSerializer::ObjectData> objects;
+        objects.reserve(m_pendingPlacements.size());
+        for (auto& p : m_pendingPlacements) {
+            // The object may have been deleted between queue and flush.
+            if (!p.obj || !editor->m_objects->containsObject(p.obj)) continue;
+            objects.push_back(ActionSerializer::extractObjectData(p.obj, p.uuid));
+        }
+        m_pendingPlacements.clear();
+
+        if (!objects.empty() && !m_processingRemote) {
+            auto msg = ActionSerializer::serializePlaceObjects(objects);
+            NetworkManager::get().send(msg);
+            log::debug("RemoteActionHandler: Flushed batched placement of {} objects", objects.size());
+        }
     }
 
     bool RemoteActionHandler::isInitialSyncCompleted() const {
@@ -833,6 +820,52 @@ namespace mpedit {
         geode::Notification::create("Failed to download custom song", geode::NotificationIcon::Error)->show();
     }
 
+    void RemoteActionHandler::applyLevelSettings(LevelEditorLayer* editor, ActionSerializer::LevelSettingsData const& settings) {
+        if (!editor) return;
+
+        // Parse the incoming LevelSettingsObject string and copy its fields
+        // onto the editor's current settings. We previously swapped
+        // m_effectManager by hand here, but that left already-spawned objects
+        // referencing a stale/empty color manager, producing the
+        // "color not seeable" / glitched-color bug. Instead we copy every
+        // settings field and let GD's updateOptions()/levelSettingsUpdated()
+        // rebuild the color state correctly.
+        if (!settings.saveString.empty() && editor->m_levelSettings) {
+            auto* newSettings = LevelSettingsObject::objectFromString(settings.saveString);
+            if (newSettings) {
+                editor->m_levelSettings->m_startMode = newSettings->m_startMode;
+                editor->m_levelSettings->m_startSpeed = newSettings->m_startSpeed;
+                editor->m_levelSettings->m_startMini = newSettings->m_startMini;
+                editor->m_levelSettings->m_startDual = newSettings->m_startDual;
+                editor->m_levelSettings->m_twoPlayerMode = newSettings->m_twoPlayerMode;
+                editor->m_levelSettings->m_isFlipped = newSettings->m_isFlipped;
+                editor->m_levelSettings->m_songOffset = newSettings->m_songOffset;
+
+                editor->updateOptions();
+            }
+        }
+
+        if (editor->m_level) {
+            bool songChanged = (editor->m_level->m_songID != settings.songID
+                || editor->m_level->m_audioTrack != settings.audioTrack);
+            editor->m_level->m_audioTrack = settings.audioTrack;
+            editor->m_level->m_songID = settings.songID;
+            editor->m_level->m_levelLength = settings.levelLength;
+
+            if (songChanged) {
+                if (settings.songID > 0) {
+                    if (MusicDownloadManager::sharedState()->isSongDownloaded(settings.songID)) {
+                        GameManager::get()->fadeInMusic(editor->m_level->getAudioFileName());
+                    } else {
+                        geode::Notification::create("Custom song not downloaded locally.", geode::NotificationIcon::Info)->show();
+                    }
+                } else {
+                    GameManager::get()->fadeInMusic(editor->m_level->getAudioFileName());
+                }
+            }
+        }
+    }
+
     void RemoteActionHandler::handleRemoteUpdateSettings(int playerId, ActionSerializer::LevelSettingsData const& settings) {
         auto* editor = getEditorLayer();
         if (!editor) return;
@@ -841,50 +874,7 @@ namespace mpedit {
 
         log::info("RemoteActionHandler: Updating level settings from player {}", playerId);
 
-        // Apply level settings
-        if (!settings.saveString.empty() && editor->m_levelSettings) {
-            auto* newSettings = LevelSettingsObject::objectFromString(settings.saveString);
-            if (newSettings) {
-                    // Safely swap m_effectManager to sync level colors without crashing
-                    if (newSettings->m_effectManager) {
-                        newSettings->m_effectManager->retain();
-                        if (newSettings->m_effectManager->getParent() == newSettings) {
-                            newSettings->m_effectManager->removeFromParent();
-                        }
-                        auto* oldEM = editor->m_levelSettings->m_effectManager;
-                        editor->m_levelSettings->m_effectManager = newSettings->m_effectManager;
-                        CC_SAFE_RELEASE(oldEM);
-                    }
-                    
-                    editor->m_levelSettings->m_startMode = newSettings->m_startMode;
-                    editor->m_levelSettings->m_startSpeed = newSettings->m_startSpeed;
-                    editor->m_levelSettings->m_startMini = newSettings->m_startMini;
-                    editor->m_levelSettings->m_startDual = newSettings->m_startDual;
-                    editor->m_levelSettings->m_twoPlayerMode = newSettings->m_twoPlayerMode;
-                    editor->m_levelSettings->m_isFlipped = newSettings->m_isFlipped;
-                    editor->m_levelSettings->m_songOffset = newSettings->m_songOffset;
-                    
-                    editor->updateOptions();
-            }
-        }
-        
-        if (editor->m_level) {
-            bool songChanged = (editor->m_level->m_songID != settings.songID || editor->m_level->m_audioTrack != settings.audioTrack);
-            editor->m_level->m_audioTrack = settings.audioTrack;
-            editor->m_level->m_songID = settings.songID;
-            editor->m_level->m_levelLength = settings.levelLength;
-            
-            // Try to play the music if it changed
-            if (songChanged) {
-                if (settings.songID > 0) {
-                    if (MusicDownloadManager::sharedState()->isSongDownloaded(settings.songID)) {
-                        GameManager::get()->fadeInMusic(editor->m_level->getAudioFileName());
-                    }
-                } else {
-                    GameManager::get()->fadeInMusic(editor->m_level->getAudioFileName());
-                }
-            }
-        }
+        applyLevelSettings(editor, settings);
 
         // Force UI options update (e.g. background, ground, colors)
         editor->levelSettingsUpdated();

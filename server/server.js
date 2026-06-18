@@ -76,9 +76,13 @@ class Room {
 
     broadcast(message, excludePlayerId = null) {
         const raw = JSON.stringify(message);
-        for (const [id, player] of this.players) {
-            if (id !== excludePlayerId && player.ws.readyState === WebSocket.OPEN) {
-                player.ws.send(raw);
+        // Snapshot the player list: ws.send() can trigger a synchronous
+        // close/error callback that mutates this.players mid-iteration, which
+        // would otherwise throw and drop the broadcast (a source of "random
+        // connection drops" and missed messages).
+        for (const player of [...this.players.values()]) {
+            if (player.id !== excludePlayerId && player.ws.readyState === WebSocket.OPEN) {
+                sendSafe(player.ws, raw);
             }
         }
     }
@@ -86,7 +90,7 @@ class Room {
     sendTo(playerId, message) {
         const player = this.players.get(playerId);
         if (player && player.ws.readyState === WebSocket.OPEN) {
-            player.ws.send(JSON.stringify(message));
+            sendSafe(player.ws, JSON.stringify(message));
         }
     }
 
@@ -112,7 +116,7 @@ app.use(express.json({ limit: '50mb' }));
 app.get('/', (req, res) => {
     res.json({
         name: 'Multiplayer Edit Server',
-        version: '0.1.0',
+        version: '0.2.0',
         rooms: rooms.size,
         connections: wss.clients.size
     });
@@ -391,9 +395,7 @@ function handleRelayRaw(ws, action, rawStr) {
         if (targetMatch) {
             const targetId = parseInt(targetMatch[1]);
             const target = room.players.get(targetId);
-            if (target && target.ws && target.ws.readyState === WebSocket.OPEN) {
-                target.ws.send(outgoing);
-            }
+            sendSafe(target && target.ws, outgoing);
         } else {
             broadcastRaw(room, outgoing, ws._playerId);
         }
@@ -403,9 +405,11 @@ function handleRelayRaw(ws, action, rawStr) {
 }
 
 function broadcastRaw(room, rawStr, excludePlayerId) {
-    for (const [id, player] of room.players) {
-        if (id !== excludePlayerId && player.ws.readyState === WebSocket.OPEN) {
-            player.ws.send(rawStr);
+    // Snapshot the values for the same reason as Room.broadcast: a send that
+    // triggers a close handler must not mutate the map mid-iteration.
+    for (const player of [...room.players.values()]) {
+        if (player.id !== excludePlayerId && player.ws.readyState === WebSocket.OPEN) {
+            sendSafe(player.ws, rawStr);
         }
     }
 }
@@ -414,10 +418,21 @@ function handleDisconnect(ws) {
     handleLeave(ws);
 }
 
-function sendError(ws, msg) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ event: 'error', message: msg }));
+// ws.send() can throw if the socket dies between the readyState check and the
+// call (a race on flaky/mobile connections). Wrapping it keeps one bad socket
+// from aborting a broadcast to everyone else.
+function sendSafe(ws, raw) {
+    try {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(raw);
+        }
+    } catch (e) {
+        console.error(`[WS] send failed: ${e.message}`);
     }
+}
+
+function sendError(ws, msg) {
+    sendSafe(ws, JSON.stringify({ event: 'error', message: msg }));
     console.log(`[Error] ${msg}`);
 }
 
@@ -462,7 +477,7 @@ wss.on('close', () => {
 
 server.listen(PORT, HOST, () => {
     console.log(`========================================`);
-    console.log(`  Multiplayer Edit Server v0.1.0`);
+    console.log(`  Multiplayer Edit Server v0.2.0`);
     console.log(`  Listening on ${HOST}:${PORT}`);
     console.log(`  WebSocket: ws://${HOST}:${PORT}`);
     console.log(`  HTTP:      http://${HOST}:${PORT}`);

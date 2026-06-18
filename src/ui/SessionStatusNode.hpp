@@ -12,8 +12,6 @@ namespace mpedit {
     class SessionStatusNode : public cocos2d::CCNode {
     protected:
         cocos2d::CCLabelBMFont* m_statusLabel = nullptr;
-        cocos2d::CCSprite* m_connectionDot = nullptr;
-
         // Cache for optimization
         NetworkManager::State m_cachedState = NetworkManager::State::Disconnected;
         size_t m_cachedPlayerCount = 0;
