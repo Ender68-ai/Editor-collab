@@ -1,10 +1,11 @@
 # 0.3.0
-- Fixed the "synchronizing level screen never loads" bug when joining a session.
+- Fixed the synchronizing level screen never loading bug when joining a session.
 - Fixed level colors glitching out after joining or when the host changes colors.
 - Fixed mirror (flip X/Y) not syncing to other players.
+- Fixed flipped objects showing the OPPOSITE flip state on remote players after editing them.
 - Fixed host sending a duplicate level sync to itself when a player joins.
 - Fixed objects sometimes not appearing after a level sync completes.
-- Improved server stability — one bad connection can no longer crash the broadcast to everyone else.
+- Improved server stability.
 - Copy/paste and duplicate now sync as one batched message instead of sending individually, reducing lag.
 - Reduced performance overhead in the editor by skipping unnecessary per-frame checks when not actively editing.
 - Fixed a rare issue where reconnecting could cause object sync conflicts.

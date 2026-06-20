@@ -383,25 +383,36 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
 
         auto& session = SessionManager::get();
         if (session.isInSession()) {
-            // Client: register UUIDs for objects natively loaded from the level
-            // string we pushed before entering the editor. applyPendingSync()
-            // relies on this mapping existing so subsequent remote edits resolve.
-            auto const& expected = handler.getExpectedUuids();
-            if (!expected.empty()) {
-                if (this->m_objects) {
-                    registerObjectsWithUuids(this, expected);
-                }
-                // (If m_objects isn't populated yet, applyPendingSync below will
-                //  still run and create objects from objectsString + register.)
-                handler.clearExpectedUuids();
-            } else if (this->m_objects) {
-                // No expected UUIDs (e.g. host just started): just ensure every
-                // object has a UUID so future edits can be tracked.
-                for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
-                    if (obj && handler.getUUIDForObject(obj).empty()) {
-                        handler.registerObject(RemoteActionHandler::generateUUID(), obj);
+            // If a sync_level arrived before the editor existed, we queued it as
+            // a pending sync (and stored its uuids in m_expectedUuids). The
+            // level string we pushed was settings-only, so m_objects is EMPTY
+            // right now — the objects live in objectsString and will be spawned
+            // by applyPendingSync() below. So do NOT try to register expected
+            // UUIDs onto m_objects here (it's empty; that just logged a
+            // spurious "count mismatch"). Let the pending sync own spawning.
+            bool hasPending = handler.hasPendingSync();
+
+            if (!hasPending) {
+                auto const& expected = handler.getExpectedUuids();
+                if (!expected.empty()) {
+                    if (this->m_objects) {
+                        registerObjectsWithUuids(this, expected);
+                    }
+                    handler.clearExpectedUuids();
+                } else if (this->m_objects) {
+                    // No expected UUIDs (e.g. host just started): just ensure every
+                    // object has a UUID so future edits can be tracked.
+                    for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
+                        if (obj && handler.getUUIDForObject(obj).empty()) {
+                            handler.registerObject(RemoteActionHandler::generateUUID(), obj);
+                        }
                     }
                 }
+            } else {
+                // Pending sync will create objects from objectsString and
+                // register host-supplied UUIDs in spawn order. Clear the
+                // expected-uuid staging list; it's redundant now.
+                handler.clearExpectedUuids();
             }
 
             // Unconditionally mark initial sync as completed for the client
@@ -434,8 +445,18 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         // Apply any pending sync_level packet that arrived early (client path):
         // the editor was pushed by handleRemoteSyncLevel, then init() ran and
         // registered UUIDs above; now finish applying settings + objects.
+        //
+        // NOTE: scene() runs init() synchronously, so by the time we reach here
+        // the editor is constructed but NOT yet added to the scene graph. That
+        // means LevelEditorLayer::get() / scene-walk lookups would miss it and
+        // send handleRemoteSyncLevel back into the "no editor" branch (infinite
+        // recursion). We hand it the editor explicitly via the init-bridge so
+        // it mutates `this` directly.
         if (handler.hasPendingSync()) {
+            handler.setEditorForInit(this);
             handler.applyPendingSync();
+            // applyPendingSync clears the override on return; assert defensively.
+            handler.setEditorForInit(nullptr);
         }
 
         // Add a helper node to handle network updates safely without member function pointer layout mismatch
@@ -852,6 +873,15 @@ namespace {
     // This is the single source of truth for transform syncing, including
     // flipX/flipY (mirror) which previously slipped through because GD's
     // mirror buttons call flipObjectsX/Y rather than transformObjectCall.
+    //
+    // NOTE: we deliberately do NOT also hook the umbrella EditorUI::transformObjects().
+    // Hooking that caused a stale-cache clobber on deselect: it ran the sync
+    // from a layer that committed the transform before syncDeselections had a
+    // chance to update its tracked-selection saveString baseline, so the
+    // subsequent deselect diff computed a spurious delta and re-broadcast a
+    // stale/empty transform. The property-diff in syncDeselections is already
+    // the universal fallback that syncs any transform (Q/E, buttons, mirror),
+    // so these per-command hooks are sufficient on their own.
     void syncTransformedObjects(cocos2d::CCArray* objects,
                                 std::function<void()> applyBase) {
         auto& handler = RemoteActionHandler::get();
@@ -914,10 +944,6 @@ namespace {
 class $modify(MPEditorUI, EditorUI) {
     struct Fields {
         float m_lockRefreshTimer = 0.f;
-        // Tracks the previous-frame touch state so we run one final property
-        // diff on the frame a drag ends (syncDeselections otherwise skips the
-        // expensive getSaveString diff while not actively dragging).
-        bool m_wasTouching = false;
     };
 
     void onCreateObject(int id) {
@@ -1223,18 +1249,17 @@ class $modify(MPEditorUI, EditorUI) {
         }
 
         // 6. Handle deselections and update modified objects.
-        // The property-diff (getSaveString) is expensive on large selections, so
-        // we only run it while the user is actively dragging (s_isTouching) or
-        // the selection set just changed — otherwise properties can't have moved
-        // and the per-frame cost was pure overhead.
+        //
+        // We run the property-diff (getSaveString) on every tracked selected
+        // object every tick. This is NOT optional: transforms that don't go
+        // through a touch (Q/E rotate, the rotate/scale buttons, Mirror/Flip X/Y)
+        // change object properties without setting s_isTouching, so gating the
+        // diff on touch (as 0.3.0 did) silently dropped those changes. The diff
+        // is the universal fallback that syncs any property change regardless of
+        // how it was triggered. Performance is fine because the loop only covers
+        // currently-selected objects, not the whole level.
         std::vector<std::string> unlockUuids;
         std::vector<ActionSerializer::ObjectData> updates;
-        // Only diff while the user is actively dragging: object properties can
-        // only change while a touch/drag is in progress, so skip the expensive
-        // getSaveString cost the rest of the time. Also run one final diff on
-        // the frame a drag ends to capture its final state.
-        bool shouldDiffProperties = s_isTouching || m_fields->m_wasTouching;
-        m_fields->m_wasTouching = s_isTouching;
 
         for (auto it = tracked.begin(); it != tracked.end(); ) {
             GameObject* obj = it->first;
@@ -1269,15 +1294,19 @@ class $modify(MPEditorUI, EditorUI) {
 
                 it = tracked.erase(it);
             } else {
-                // Only pay the getSaveString cost while actively editing.
-                if (shouldDiffProperties) {
-                    std::string currentSave = obj->getSaveString(editor);
-                    if (it->second != currentSave) {
-                        if (obj->m_objectID != 31) {
-                            updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
-                        }
-                        it->second = currentSave;
+                // If still selected, diff every tick and broadcast any change.
+                // This is the universal fallback that syncs ALL property edits
+                // regardless of how they were triggered (drag, Q/E rotate,
+                // rotate/scale/flip buttons, mirror) — those transforms don't go
+                // through a touch and don't set s_isTouching, so gating on touch
+                // (as 0.3.0 did) silently dropped them. Cost is bounded: the loop
+                // only covers currently-selected objects.
+                std::string currentSave = obj->getSaveString(editor);
+                if (it->second != currentSave) {
+                    if (obj->m_objectID != 31) {
+                        updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                     }
+                    it->second = currentSave;
                 }
                 ++it;
             }

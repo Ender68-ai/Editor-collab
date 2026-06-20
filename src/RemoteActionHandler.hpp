@@ -78,6 +78,15 @@ namespace mpedit {
         void applyPendingSync();
         bool hasPendingSync() const { return m_pendingSync.has_value(); }
 
+        // Init-bridge: lets applyPendingSync() resolve the editor while it runs
+        // from inside LevelEditorLayer::init() — at that point the editor is not
+        // yet in the scene graph, so getEditorLayer() (which walks the running
+        // scene) cannot find it. Setting this temporarily makes getEditorLayer()
+        // return the editor passed in, so handleRemoteSyncLevel() mutates the
+        // right one instead of re-entering the "no editor" branch (recursion).
+        void setEditorForInit(LevelEditorLayer* editor) { m_editorForInit = editor; }
+        LevelEditorLayer* getEditorForInit() const { return m_editorForInit; }
+
         std::vector<std::string> const& getExpectedUuids() const { return m_expectedUuids; }
         void setExpectedUuids(std::vector<std::string> const& uuids) { m_expectedUuids = uuids; }
         void clearExpectedUuids() { m_expectedUuids.clear(); }
@@ -111,11 +120,32 @@ namespace mpedit {
 
         // UUID ↔ Lock info
         std::unordered_map<std::string, LockInfo> m_objectLocks;
-        std::unordered_map<std::string, std::string> m_lockedSaveStrings;
+        // Pending final state for an object being edited by a remote player.
+        // We update its transform in-place every tick while it's locked, and
+        // store the latest saveString here so that on unlock we can recreate it
+        // (to pick up non-transform properties). The authoritative transform is
+        // carried alongside because GD's saveString flip round-trip
+        // (createObjectsFromString) can land on the OPPOSITE runtime m_isFlipX
+        // from what the sender observed — re-applying it after recreate prevents
+        // the remote from showing an inverted flip state.
+        struct LockedState {
+            std::string saveString;
+            float rotation = 0.f;
+            float scaleX = 1.f;
+            float scaleY = 1.f;
+            bool flipX = false;
+            bool flipY = false;
+        };
+        std::unordered_map<std::string, LockedState> m_lockedSaveStrings;
         std::unordered_map<GameObject*, std::string> m_preSelectSaveStrings;
 
         bool m_processingRemote = false;
         bool m_initialSyncCompleted = false;
+
+        // When non-null, getEditorLayer() returns this instead of searching the
+        // scene graph. Used to bridge applyPendingSync() → handleRemoteSyncLevel()
+        // during LevelEditorLayer::init() (see setEditorForInit comment above).
+        LevelEditorLayer* m_editorForInit = nullptr;
 
         struct PendingSync {
             int playerId;

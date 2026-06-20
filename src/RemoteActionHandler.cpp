@@ -6,32 +6,88 @@
 #include <random>
 #include <sstream>
 #include <iomanip>
+#include <set>
+#include <cmath>
 
 using namespace geode::prelude;
 
 namespace mpedit {
 
     namespace {
+        // Captures the set of object pointers currently in the editor, so that
+        // after a bulk createObjectsFromString() call we can identify exactly
+        // which objects are new — regardless of whether GD appended them to the
+        // front or the back of m_objects (the insertion position is not a stable
+        // contract and varies across GD versions).
+        std::set<GameObject*> snapshotExistingObjects(LevelEditorLayer* editor) {
+            std::set<GameObject*> existing;
+            if (editor && editor->m_objects) {
+                for (auto* obj : CCArrayExt<GameObject*>(editor->m_objects)) {
+                    if (obj) existing.insert(obj);
+                }
+            }
+            return existing;
+        }
+
         std::vector<GameObject*> createObjectsFromSaveStringRobust(LevelEditorLayer* editor, std::string const& saveStr) {
             std::vector<GameObject*> newObjects;
             if (!editor || saveStr.empty()) return newObjects;
-            
-            size_t beforeCount = editor->m_objects ? editor->m_objects->count() : 0;
-            
+
+            // Snapshot existing objects BEFORE creating, so we can tell new from old
+            // without depending on m_objects insertion order.
+            auto existing = snapshotExistingObjects(editor);
+
             editor->createObjectsFromString(saveStr, true, true);
-            
-            size_t afterCount = editor->m_objects ? editor->m_objects->count() : 0;
-            
-            if (afterCount > beforeCount && editor->m_objects) {
-                size_t addedCount = afterCount - beforeCount;
-                newObjects.reserve(addedCount);
-                for (size_t i = afterCount - addedCount; i < afterCount; ++i) {
-                    if (auto* obj = static_cast<GameObject*>(editor->m_objects->objectAtIndex(i))) {
+
+            // Return the freshly created objects in m_objects iteration order.
+            // This is the same relative order the host serialized them in
+            // (getSaveString per object, joined by ';'), so it aligns 1:1 with
+            // the host-supplied uuids[] array.
+            if (editor->m_objects) {
+                for (auto* obj : CCArrayExt<GameObject*>(editor->m_objects)) {
+                    if (obj && !existing.count(obj)) {
                         newObjects.push_back(obj);
                     }
                 }
             }
             return newObjects;
+        }
+
+        // Applies rotation/scale/flip to an object in a way that is IDENTITY on a
+        // healthy object and self-correcting on a corrupted one.
+        //
+        // Why this exists: in GD, "flip" is encoded BOTH as the m_isFlipX/Y bool
+        // AND as the SIGN of scaleX/scaleY (e.g. flipX=true  <=>  scaleX<0). GD's
+        // GameObject::setFlipX(bool) only negates the scale when the flip state
+        // *changes*, and our naive sequence
+        //     obj->setScaleX(signedScaleX); obj->setFlipX(flipX);
+        // was double-applying the flip on some calls and skipping it on others,
+        // so the remote oscillated and landed at the OPPOSITE flip from the host.
+        //
+        // Fix: the flip BOOL is the source of truth (it's what getSaveString
+        // emits as key 4/5, and it survives round-trips cleanly). We set it
+        // first, then REBUILD the scale from its magnitude and the authoritative
+        // flip flag, so the sign is always consistent with the flag regardless
+        // of the object's incoming sign state. This is idempotent: applying it
+        // twice to the same object yields the same result as once.
+        void applyTransformSafe(GameObject* obj, float rotation, float scaleX, float scaleY, bool flipX, bool flipY) {
+            if (!obj) return;
+            obj->setRotation(rotation);
+
+            // The sender's scaleX/Y already carry the flip sign (it read it via
+            // getScaleX()). Take the magnitude as the intended size and re-sign
+            // it from the authoritative flip flag.
+            float magX = std::fabs(scaleX);
+            float magY = std::fabs(scaleY);
+            // Guard against a zero magnitude (which would make the object
+            // invisible) by defaulting to 1.
+            if (magX < 0.0001f) magX = 1.f;
+            if (magY < 0.0001f) magY = 1.f;
+
+            obj->setFlipX(flipX);
+            obj->setFlipY(flipY);
+            obj->setScaleX(flipX ? -magX : magX);
+            obj->setScaleY(flipY ? -magY : magY);
         }
     }
 
@@ -170,18 +226,52 @@ namespace mpedit {
         return nullptr;
     }
 
+    // Returns true only when the editor has finished init() — m_editorUI is the
+    // last field GD wires up during LevelEditorLayer::init(), so its presence is
+    // a reliable "ready to receive mutations" signal. Using a half-initialized
+    // editor (e.g. one discovered via getNextScene() mid-transition) risks
+    // spawning objects into a broken editor state.
+    bool isEditorReady(LevelEditorLayer* editor) {
+        return editor && editor->m_editorUI;
+    }
+
     LevelEditorLayer* RemoteActionHandler::getEditorLayer() const {
-        if (auto* editor = LevelEditorLayer::get()) {
-            return editor;
+        // Init-bridge: when applyPendingSync() runs from inside init(), the
+        // editor isn't in the scene graph yet, so the searches below would miss
+        // it and re-enter the "no editor" branch (recursion). Honor an explicit
+        // override set by the init() code path.
+        if (m_editorForInit) {
+            return m_editorForInit;
         }
+
+        // Preferred path: GD's own lookup, which only returns the *currently
+        // running* editor (so it can't hand back a tearing-down instance).
+        if (auto* editor = LevelEditorLayer::get()) {
+            if (isEditorReady(editor)) {
+                return editor;
+            }
+            // GD's static returned something but init() isn't done yet — fall
+            // through to the scene walk so callers can decide via the pending
+            // sync path rather than mutating a half-built editor.
+            log::debug("RemoteActionHandler: LevelEditorLayer::get() returned an unready editor, falling through");
+        }
+
         auto* dir = CCDirector::sharedDirector();
         if (auto* scene = dir->getRunningScene()) {
             if (auto* editor = findEditorLayer(scene)) {
-                return editor;
+                if (isEditorReady(editor)) {
+                    return editor;
+                }
             }
         }
+        // Next-scene fallback: during pushScene() the editor exists in the
+        // upcoming scene but isn't the running one yet. We intentionally return
+        // it here (still possibly mid-init) because the pending-sync flow needs
+        // to detect its existence and defer spawning until init() completes.
         if (auto* nextScene = dir->getNextScene()) {
             if (auto* editor = findEditorLayer(nextScene)) {
+                log::debug("RemoteActionHandler: editor resolved via getNextScene() (ready={})",
+                    isEditorReady(editor));
                 return editor;
             }
         }
@@ -189,10 +279,20 @@ namespace mpedit {
     }
 
     void RemoteActionHandler::applyPendingSync() {
-        if (!m_pendingSync) return;
+        if (!m_pendingSync) {
+            log::debug("RemoteActionHandler: applyPendingSync called but no pending sync");
+            return;
+        }
         auto sync = m_pendingSync.value();
         m_pendingSync.reset();
+        log::info("RemoteActionHandler: Applying pending sync (objectsStringLen={}, uuids={}, settingsLen={}, locks={})",
+            sync.objectsString.size(), sync.uuids.size(), sync.settings.saveString.size(), sync.locks.size());
+        // If we were given an editor override (init-bridge), make sure it's
+        // cleared afterwards so we don't pin a possibly-destroyed editor.
+        LevelEditorLayer* override = m_editorForInit;
         handleRemoteSyncLevel(sync.playerId, sync.objectsString, sync.uuids, sync.settings, sync.locks, true);
+        m_editorForInit = nullptr;
+        (void)override;
     }
 
     void RemoteActionHandler::handleRemotePlaceObjects(
@@ -213,6 +313,12 @@ namespace mpedit {
                 auto newObjs = createObjectsFromSaveStringRobust(editor, objData.saveString);
                 if (!newObjs.empty()) {
                     auto* obj = newObjs.front();
+                    // Re-apply the authoritative transform read by the sender via
+                    // the same getter APIs. Use applyTransformSafe so the flip
+                    // flag and the scale sign stay consistent (see its comment) —
+                    // a naive setScaleX+setFlipX here double-applies the flip and
+                    // lands the remote at the OPPOSITE state from the host.
+                    applyTransformSafe(obj, objData.rotation, objData.scaleX, objData.scaleY, objData.flipX, objData.flipY);
                     registerObject(objData.uuid, obj);
                     log::debug("RemoteActionHandler: Placed object {} via saveString (uuid={})", objData.objectID, objData.uuid);
                     continue;
@@ -226,11 +332,7 @@ namespace mpedit {
                 continue;
             }
 
-            obj->setRotation(objData.rotation);
-            obj->setScaleX(objData.scaleX);
-            obj->setScaleY(objData.scaleY);
-            obj->setFlipX(objData.flipX);
-            obj->setFlipY(objData.flipY);
+            applyTransformSafe(obj, objData.rotation, objData.scaleX, objData.scaleY, objData.flipX, objData.flipY);
             obj->m_editorLayer = objData.editorLayer;
             obj->m_editorLayer2 = objData.editorLayer2;
 
@@ -305,12 +407,13 @@ namespace mpedit {
     }
 
     void RemoteActionHandler::handleRemoteTransformObjects(
-        int playerId, 
+        int playerId,
         std::vector<ActionSerializer::TransformData> const& transforms
     ) {
         auto* editor = getEditorLayer();
         if (!editor) return;
 
+        log::debug("RemoteActionHandler: applying remote transform (playerId={}, n={})", playerId, transforms.size());
         m_processingRemote = true;
 
         for (auto& t : transforms) {
@@ -320,12 +423,9 @@ namespace mpedit {
                 continue;
             }
 
-            obj->setRotation(t.rotation);
-            obj->setScaleX(t.scaleX);
-            obj->setScaleY(t.scaleY);
-            obj->setFlipX(t.flipX);
-            obj->setFlipY(t.flipY);
-            log::debug("RemoteActionHandler: Transformed object (uuid={})", t.uuid);
+            applyTransformSafe(obj, t.rotation, t.scaleX, t.scaleY, t.flipX, t.flipY);
+            log::debug("RemoteActionHandler: transformed object (uuid={}..., rot={:.1f}, flipX={}, flipY={})",
+                t.uuid.substr(0, 8), t.rotation, t.flipX, t.flipY);
         }
 
         m_processingRemote = false;
@@ -356,13 +456,10 @@ namespace mpedit {
             }
 
             if (isLockedRemote) {
-                // Update transform and basic properties in place to avoid deletion and recreation during dragging
+                // Update transform and basic properties in place to avoid deletion and recreation during dragging.
+                // Use applyTransformSafe to keep flip flag and scale sign consistent.
                 oldObj->setPosition({objData.x, objData.y});
-                oldObj->setRotation(objData.rotation);
-                oldObj->setScaleX(objData.scaleX);
-                oldObj->setScaleY(objData.scaleY);
-                oldObj->setFlipX(objData.flipX);
-                oldObj->setFlipY(objData.flipY);
+                applyTransformSafe(oldObj, objData.rotation, objData.scaleX, objData.scaleY, objData.flipX, objData.flipY);
                 oldObj->m_editorLayer = objData.editorLayer;
                 oldObj->m_editorLayer2 = objData.editorLayer2;
                 
@@ -370,7 +467,14 @@ namespace mpedit {
                 editor->updateObjectLabel(oldObj);
                 
                 // Store the latest saveString to apply final recreations upon unlock
-                m_lockedSaveStrings[objData.uuid] = objData.saveString;
+                m_lockedSaveStrings[objData.uuid] = LockedState{
+                    objData.saveString,
+                    objData.rotation,
+                    objData.scaleX,
+                    objData.scaleY,
+                    objData.flipX,
+                    objData.flipY
+                };
                 
                 log::debug("RemoteActionHandler: Updated locked object {} in-place", objData.uuid);
                 continue;
@@ -399,6 +503,11 @@ namespace mpedit {
             auto newObjs = createObjectsFromSaveStringRobust(editor, objData.saveString);
             if (!newObjs.empty()) {
                 auto* newObj = newObjs.front();
+                // Re-apply the authoritative transform via applyTransformSafe so
+                // the flip flag and scale sign stay consistent (a naive
+                // setScaleX+setFlipX here double-applies the flip). See the
+                // helper's comment for the full rationale.
+                applyTransformSafe(newObj, objData.rotation, objData.scaleX, objData.scaleY, objData.flipX, objData.flipY);
                 registerObject(objData.uuid, newObj);
                 log::debug("RemoteActionHandler: Updated object {} via saveString", objData.uuid);
 
@@ -409,11 +518,7 @@ namespace mpedit {
                 // Fallback: recreate with basic properties if saveString parsing failed
                 auto* fallbackObj = editor->createObject(objData.objectID, {objData.x, objData.y}, true);
                 if (fallbackObj) {
-                    fallbackObj->setRotation(objData.rotation);
-                    fallbackObj->setScaleX(objData.scaleX);
-                    fallbackObj->setScaleY(objData.scaleY);
-                    fallbackObj->setFlipX(objData.flipX);
-                    fallbackObj->setFlipY(objData.flipY);
+                    applyTransformSafe(fallbackObj, objData.rotation, objData.scaleX, objData.scaleY, objData.flipX, objData.flipY);
                     fallbackObj->m_editorLayer = objData.editorLayer;
                     fallbackObj->m_editorLayer2 = objData.editorLayer2;
                     registerObject(objData.uuid, fallbackObj);
@@ -472,7 +577,8 @@ namespace mpedit {
                     if (editor) {
                         auto saveIt = m_lockedSaveStrings.find(uuid);
                         if (saveIt != m_lockedSaveStrings.end()) {
-                            std::string saveStr = saveIt->second;
+                            LockedState state = saveIt->second;
+                            std::string saveStr = state.saveString;
                             m_lockedSaveStrings.erase(saveIt);
                             
                             auto* oldObj = getObjectByUUID(uuid);
@@ -502,8 +608,17 @@ namespace mpedit {
                                     auto newObjs = createObjectsFromSaveStringRobust(editor, saveStr);
                                     if (!newObjs.empty()) {
                                         auto* newObj = newObjs.front();
+                                        // Re-apply the authoritative transform carried
+                                        // alongside the saveString. GD's saveString flip
+                                        // round-trip can invert m_isFlipX on recreate, so
+                                        // we overwrite with the sender-observed values.
+                                        newObj->setRotation(state.rotation);
+                                        newObj->setScaleX(state.scaleX);
+                                        newObj->setScaleY(state.scaleY);
+                                        newObj->setFlipX(state.flipX);
+                                        newObj->setFlipY(state.flipY);
                                         registerObject(uuid, newObj);
-                                        
+
                                         if (wasSelected && editorUI) {
                                             editorUI->selectObject(newObj, true);
                                         }
@@ -532,6 +647,9 @@ namespace mpedit {
         std::vector<ActionSerializer::LockData> const& locks,
         bool isPendingSync
     ) {
+        log::info("RemoteActionHandler: sync_level received (playerId={}, objectsStringLen={}, uuids={}, settingsLen={}, locks={}, pending={})",
+            playerId, objectsString.size(), uuids.size(), settings.saveString.size(), locks.size(), isPendingSync);
+
         auto* editor = getEditorLayer();
         if (!editor) {
             log::info("RemoteActionHandler: Editor not ready yet, opening editor with settings-only level string");
@@ -543,6 +661,19 @@ namespace mpedit {
             std::string levelString = settings.saveString;
             m_expectedUuids = uuids;
 
+            // IMPORTANT: queue the pending sync BEFORE scene(). LevelEditorLayer::
+            // scene() runs init() *synchronously*, and init() calls
+            // applyPendingSync(). If we queue after scene() (as we used to), init()
+            // sees no pending sync, never spawns the objects, and the level loads
+            // empty (settings-only). This was the root cause of the empty-level bug.
+            m_pendingSync = PendingSync {
+                playerId,
+                objectsString,
+                uuids,
+                settings,
+                locks
+            };
+
             // Create game level
             auto* level = GJGameLevel::create();
             level->m_levelName = "Multiplayer Session";
@@ -552,8 +683,14 @@ namespace mpedit {
             level->m_songID = settings.songID;
             level->m_levelLength = settings.levelLength;
 
-            // Open the editor scene
+            // Open the editor scene (this synchronously runs the editor's init(),
+            // which will detect the pending sync above and spawn the objects).
             auto* scene = LevelEditorLayer::scene(level, false);
+            if (!scene) {
+                log::error("RemoteActionHandler: LevelEditorLayer::scene returned null — cannot open editor for sync!");
+                m_pendingSync.reset();
+                return;
+            }
             cocos2d::CCDirector::sharedDirector()->pushScene(scene);
 
             // Close MultiplayerPopup if open
@@ -561,15 +698,23 @@ namespace mpedit {
                 MultiplayerPopup::s_instance->forceClose();
             }
 
-            m_pendingSync = PendingSync {
-                playerId,
-                objectsString,
-                uuids,
-                settings,
-                locks
-            };
+            log::info("RemoteActionHandler: Pushed editor scene; pending sync will apply in init() (hasPending={})",
+                m_pendingSync.has_value());
             return;
         }
+
+        // Guard against a half-initialized editor: if init() hasn't finished
+        // wiring up m_editorUI / m_objects / m_objectLayer, defer to
+        // applyPendingSync() so we don't spawn objects into a broken editor.
+        if (!editor->m_editorUI || !editor->m_objectLayer) {
+            log::warn("RemoteActionHandler: Editor found but not fully initialized (editorUI={} objectLayer={}) — deferring as pending sync",
+                static_cast<void*>(editor->m_editorUI), static_cast<void*>(editor->m_objectLayer));
+            m_pendingSync = PendingSync { playerId, objectsString, uuids, settings, locks };
+            return;
+        }
+
+        log::info("RemoteActionHandler: Editor ready (m_objects count before sync = {})",
+            editor->m_objects ? editor->m_objects->count() : 0);
 
         m_pendingSync.reset();
         m_processingRemote = true;
@@ -608,6 +753,8 @@ namespace mpedit {
         // host-supplied UUIDs in spawn order.
         if (!objectsString.empty()) {
             auto newObjs = createObjectsFromSaveStringRobust(editor, objectsString);
+            log::info("RemoteActionHandler: Spawned {} objects from objectsString (len={})",
+                newObjs.size(), objectsString.size());
             int index = 0;
             for (auto* obj : newObjs) {
                 if (index < static_cast<int>(uuids.size())) {
@@ -621,6 +768,9 @@ namespace mpedit {
                 log::warn("RemoteActionHandler: object/uuid count mismatch on sync "
                           "(spawned={}, uuids={})", index, uuids.size());
             }
+        } else if (!uuids.empty()) {
+            log::warn("RemoteActionHandler: sync_level had {} uuids but empty objectsString — "
+                      "objects cannot be spawned (host sent no object data)", uuids.size());
         }
 
         // Apply locks
@@ -636,6 +786,8 @@ namespace mpedit {
 
         m_initialSyncCompleted = true;
         m_processingRemote = false;
+        log::info("RemoteActionHandler: sync_level complete (final m_objects count = {})",
+            editor->m_objects ? editor->m_objects->count() : 0);
     }
 
     void RemoteActionHandler::updateLocks(float dt) {
