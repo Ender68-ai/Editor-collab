@@ -1,23 +1,31 @@
 @echo off
-:: 1. Find and initialize the Visual Studio x64 Native Tools Environment
-:: This path is the default for VS 2022 Community. Update if yours is different.
-set "VS_PATH=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+setlocal EnableExtensions
 
-if exist "%VS_PATH%" (
-    call "%VS_PATH%"
-) else (
-    echo [ERROR] could not find vcvars64.bat at %VS_PATH%
-    pause
-    exit /b
-)
+rem Clean build + CMake cache (IMPORTANT fix)
+if exist build rd /s /q build
 
-:: 2. Execute your specific build commands
-echo [STATUS] Cleaning and Building...
+rem =========================
+rem MAX RUNTIME FLAGS (Clang)
+rem =========================
+set "CFLAGS=-O3 -ffast-math -DNDEBUG -march=native -mtune=native -flto"
+set "CXXFLAGS=-O3 -ffast-math -DNDEBUG -march=native -mtune=native -flto"
 
-rd /s /q build 
-geode build --ninja -- -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+echo Configuring...
 
-:: 3. Keep the window open for further commands
-echo.
-echo [DONE] Build process finished.
+cmake -S . -B build -G Ninja ^
+  -DCMAKE_BUILD_TYPE=Release ^
+  -DCMAKE_C_COMPILER=clang ^
+  -DCMAKE_CXX_COMPILER=clang++ ^
+  -DCMAKE_C_FLAGS_RELEASE="%CFLAGS%" ^
+  -DCMAKE_CXX_FLAGS_RELEASE="%CXXFLAGS%" ^
+  -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON ^
+  -DCMAKE_POLICY_DEFAULT_CMP0069=OFF ^
+  -DCMAKE_EXE_LINKER_FLAGS_RELEASE="-fuse-ld=lld" ^
+  -DCMAKE_SHARED_LINKER_FLAGS_RELEASE="-fuse-ld=lld"
+
+echo Building...
+
+cmake --build build
+
+echo Built successfully.
 cmd /k
