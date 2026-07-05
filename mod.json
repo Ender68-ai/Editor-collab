@@ -9,19 +9,23 @@
     "id": "ender68.collabeditor",
     "name": "CollabEditor",
     "version": "0.1.0",
-    "developer": "Ender68",
-    "description": "Real-time level collaboration tool for Geometry Dash.",
+    "developers": ["Ender68", "cipmtrews"],
+    "links": {
+        "source": "https://github.com/Ender68-ai/Editor-collab"
+    },
+    "description": "Collaboration mod for Geometry Dash.",
     "dependencies": {
         "geode.node-ids": ">=v1.21.0"
     },
+    "tags": [
+        "editor", "online", "interface", "utility", "enhancement"
+    ],
     "resources": {
-        "files": [
-            "resources/*"
-        ],
         "sprites": [
-            "resources/collab_logo.png",
-            "resources/cursor.png",
-            "resources/crosshair.png"
+            "resources/backbtn.png",
+            "resources/button.png",
+            "resources/crosshair.png",
+            "resources/cursor.png"
         ]
     }
 }
