@@ -1,6 +1,7 @@
 #include "SessionManager.hpp"
-#include "NetworkManager.hpp"
+#include "P2PManager.hpp"
 #include "RemoteActionHandler.hpp"
+#include "BinaryProtocol.hpp"
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
 #include <Geode/Geode.hpp>
@@ -24,17 +25,8 @@ namespace mpedit {
         m_localPlayerName = playerName;
         m_role = Role::Host;
 
-        auto& net = NetworkManager::get();
-        auto serverUrl = Mod::get()->getSettingValue<std::string>("server-url");
-        
         setupNetworkHandlers();
-        net.connect(serverUrl);
-
-        // Send host request
-        matjson::Value msg;
-        msg["action"] = "host";
-        msg["playerName"] = playerName;
-        net.send(msg);
+        P2PManager::get().hostSession(playerName);
 
         log::info("SessionManager: Hosting session as '{}'", playerName);
     }
@@ -49,18 +41,8 @@ namespace mpedit {
         m_roomCode = roomCode;
         m_role = Role::Client;
 
-        auto& net = NetworkManager::get();
-        auto serverUrl = Mod::get()->getSettingValue<std::string>("server-url");
-        
         setupNetworkHandlers();
-        net.connect(serverUrl);
-
-        // Send join request
-        matjson::Value msg;
-        msg["action"] = "join";
-        msg["roomCode"] = roomCode;
-        msg["playerName"] = playerName;
-        net.send(msg);
+        P2PManager::get().joinSession(roomCode, playerName);
 
         log::info("SessionManager: Joining room '{}' as '{}'", roomCode, playerName);
     }
@@ -68,14 +50,7 @@ namespace mpedit {
     void SessionManager::leaveSession() {
         if (!isInSession()) return;
 
-        auto& net = NetworkManager::get();
-
-        // Send leave message
-        matjson::Value msg;
-        msg["action"] = "leave";
-        net.send(msg);
-
-        net.disconnect();
+        P2PManager::get().leaveSession();
         
         auto sessionEndedCallbacks = m_onSessionEnded;
         clearNetworkHandlers();
@@ -168,194 +143,127 @@ namespace mpedit {
     }
 
     void SessionManager::setupNetworkHandlers() {
-        auto& net = NetworkManager::get();
+        auto& net = P2PManager::get();
         RemoteActionHandler::get().setupHandlers();
 
-        net.on("room_created", [this](matjson::Value const& data) {
-            handleRoomCreated(data);
+        net.onSessionStarted([this](std::string const& roomCode, int localPlayerId) {
+            m_roomCode = roomCode;
+            m_localPlayerId = localPlayerId;
+            m_role = (localPlayerId == 0) ? Role::Host : Role::Client;
+
+            m_players.clear();
+            PlayerInfo self;
+            self.id = localPlayerId;
+            self.name = m_localPlayerName;
+            self.colorIndex = (localPlayerId == 0) ? 0 : (localPlayerId % 6);
+            m_players.push_back(self);
+
+            auto callbacks = m_onSessionStarted;
+            for (auto& cb : callbacks) cb();
         });
-        net.on("room_joined", [this](matjson::Value const& data) {
-            handleRoomJoined(data);
+
+        net.onPeerConnected([this](int playerId, std::string const& name, int colorIndex) {
+            PlayerInfo info;
+            info.id = playerId;
+            info.name = name;
+            info.colorIndex = colorIndex;
+            m_players.push_back(info);
+
+            auto callbacks = m_onPlayerJoined;
+            for (auto& cb : callbacks) cb(info);
         });
-        net.on("player_joined", [this](matjson::Value const& data) {
-            handlePlayerJoined(data);
+
+        net.onPeerDisconnected([this](int playerId) {
+            PlayerInfo leftPlayer;
+            for (auto it = m_players.begin(); it != m_players.end(); ++it) {
+                if (it->id == playerId) {
+                    leftPlayer = *it;
+                    m_players.erase(it);
+                    break;
+                }
+            }
+
+            auto callbacks = m_onPlayerLeft;
+            for (auto& cb : callbacks) cb(leftPlayer);
         });
-        net.on("player_left", [this](matjson::Value const& data) {
-            handlePlayerLeft(data);
+
+        net.onError([this](std::string const& error) {
+            auto role = m_role;
+            auto callbacks = m_onError;
+            leaveSession();
+
+            for (auto& cb : callbacks) {
+                cb(error);
+            }
+
+            if (role == Role::Client) {
+                geode::queueInMainThread([error]() {
+                    if (auto* editor = LevelEditorLayer::get()) {
+                        auto* director = cocos2d::CCDirector::sharedDirector();
+                        if (auto* runningScene = director->getRunningScene()) {
+                            std::function<EditorPauseLayer*(cocos2d::CCNode*)> findPauseLayer = [&](cocos2d::CCNode* parent) -> EditorPauseLayer* {
+                                if (!parent) return nullptr;
+                                if (auto* pause = typeinfo_cast<EditorPauseLayer*>(parent)) {
+                                    return pause;
+                                }
+                                if (parent->getChildren()) {
+                                    for (auto* child : CCArrayExt<CCNode*>(parent->getChildren())) {
+                                        if (auto* p = findPauseLayer(child)) return p;
+                                    }
+                                }
+                                return nullptr;
+                            };
+
+                            auto* pauseLayer = findPauseLayer(runningScene);
+                            if (pauseLayer) {
+                                auto* dummySender = cocos2d::CCNode::create();
+                                pauseLayer->onExitEditor(dummySender);
+                            } else {
+                                director->popScene();
+                            }
+
+                            geode::Notification::create(error, geode::NotificationIcon::Error)->show();
+                        }
+                    }
+                });
+            }
         });
-        net.on("error", [this](matjson::Value const& data) {
-            handleError(data);
+
+        net.on(proto::Opcode::CursorUpdate, [this](int playerId, proto::Reader& reader) {
+            auto msg = proto::deserializeCursorUpdate(reader);
+            updatePlayerCursor(playerId, msg.x, msg.y, msg.status);
         });
-        net.on("cursor_moved", [this](matjson::Value const& data) {
-            handleCursorMoved(data);
+
+        net.on(proto::Opcode::RoomInfo, [this](int playerId, proto::Reader& reader) {
+            auto msg = proto::deserializeRoomInfo(reader);
+            PlayerInfo self;
+            for (auto const& p : m_players) {
+                if (p.id == m_localPlayerId) {
+                    self = p;
+                    break;
+                }
+            }
+            m_players.clear();
+            m_players.push_back(self);
+
+            for (auto const& p : msg.players) {
+                PlayerInfo info;
+                info.id = p.id;
+                info.name = p.name;
+                info.colorIndex = p.colorIndex;
+                m_players.push_back(info);
+            }
         });
     }
 
     void SessionManager::clearNetworkHandlers() {
-        NetworkManager::get().clearHandlers();
+        P2PManager::get().clearHandlers();
         RemoteActionHandler::get().clearHandlers();
         m_onSessionStarted.clear();
         m_onSessionEnded.clear();
         m_onPlayerJoined.clear();
         m_onPlayerLeft.clear();
         m_onError.clear();
-    }
-
-    void SessionManager::handleRoomCreated(matjson::Value const& data) {
-        if (auto rc = data.get<std::string>("roomCode")) {
-            m_roomCode = *rc;
-        }
-        if (auto pid = data.get<int>("playerId")) {
-            m_localPlayerId = *pid;
-        }
-
-        // Add self to players list
-        PlayerInfo self;
-        self.id = m_localPlayerId;
-        self.name = m_localPlayerName;
-        self.colorIndex = 0;
-        m_players.push_back(self);
-
-        log::info("SessionManager: Room created with code '{}'", m_roomCode);
-
-        auto callbacks = m_onSessionStarted;
-        for (auto& cb : callbacks) {
-            cb();
-        }
-    }
-
-    void SessionManager::handleRoomJoined(matjson::Value const& data) {
-        if (auto pid = data.get<int>("playerId")) {
-            m_localPlayerId = *pid;
-        }
-
-        // Parse player list
-        auto playersResult = data.get("players");
-        if (playersResult.isOk()) {
-            auto& playersVal = playersResult.unwrap();
-            m_players.clear();
-            for (auto& p : playersVal) {
-                PlayerInfo info;
-                if (auto id = p.get<int>("id")) info.id = *id;
-                if (auto name = p.get<std::string>("name")) info.name = *name;
-                if (auto color = p.get<int>("colorIndex")) info.colorIndex = *color;
-                if (auto status = p.get<std::string>("status")) info.status = *status;
-                m_players.push_back(info);
-            }
-        }
-
-        log::info("SessionManager: Joined room '{}' with {} players", m_roomCode, m_players.size());
-
-        auto callbacks = m_onSessionStarted;
-        for (auto& cb : callbacks) {
-            cb();
-        }
-    }
-
-    void SessionManager::handlePlayerJoined(matjson::Value const& data) {
-        PlayerInfo info;
-        if (auto id = data.get<int>("playerId")) info.id = *id;
-        if (auto name = data.get<std::string>("playerName")) info.name = *name;
-        if (auto color = data.get<int>("colorIndex")) info.colorIndex = *color;
-        if (auto status = data.get<std::string>("status")) info.status = *status;
-
-        m_players.push_back(info);
-
-        log::info("SessionManager: Player '{}' joined (id={})", info.name, info.id);
-
-        auto callbacks = m_onPlayerJoined;
-        for (auto& cb : callbacks) {
-            cb(info);
-        }
-    }
-
-    void SessionManager::handlePlayerLeft(matjson::Value const& data) {
-        auto idRes = data.get<int>("playerId");
-        if (!idRes) return;
-
-        int playerId = *idRes;
-        PlayerInfo leftPlayer;
-
-        for (auto it = m_players.begin(); it != m_players.end(); ++it) {
-            if (it->id == playerId) {
-                leftPlayer = *it;
-                m_players.erase(it);
-                break;
-            }
-        }
-
-        log::info("SessionManager: Player '{}' left (id={})", leftPlayer.name, playerId);
-
-        auto callbacks = m_onPlayerLeft;
-        for (auto& cb : callbacks) {
-            cb(leftPlayer);
-        }
-    }
-
-    void SessionManager::handleError(matjson::Value const& data) {
-        std::string errorMsg = "Unknown error";
-        if (auto msg = data.get<std::string>("message")) {
-            errorMsg = *msg;
-        }
-
-        log::error("SessionManager: Server error: {}", errorMsg);
-
-        auto role = m_role;
-
-        // Copy callbacks since leaveSession clears them
-        auto callbacks = m_onError;
-        leaveSession();
-
-        for (auto& cb : callbacks) {
-            cb(errorMsg);
-        }
-
-        // If client/guest encountered an error (e.g. host left or connection lost) while inside the editor, close the level and exit
-        if (role == Role::Client) {
-            geode::queueInMainThread([errorMsg]() {
-                if (auto* editor = LevelEditorLayer::get()) {
-                    auto* director = cocos2d::CCDirector::sharedDirector();
-                    if (auto* runningScene = director->getRunningScene()) {
-                        std::function<EditorPauseLayer*(cocos2d::CCNode*)> findPauseLayer = [&](cocos2d::CCNode* parent) -> EditorPauseLayer* {
-                            if (!parent) return nullptr;
-                            if (auto* pause = typeinfo_cast<EditorPauseLayer*>(parent)) {
-                                return pause;
-                            }
-                            if (parent->getChildren()) {
-                                for (auto* child : CCArrayExt<CCNode*>(parent->getChildren())) {
-                                    if (auto* p = findPauseLayer(child)) return p;
-                                }
-                            }
-                            return nullptr;
-                        };
-
-                        auto* pauseLayer = findPauseLayer(runningScene);
-                        if (pauseLayer) {
-                            auto* dummySender = cocos2d::CCNode::create();
-                            pauseLayer->onExitEditor(dummySender);
-                        } else {
-                            director->popScene();
-                        }
-
-                        geode::Notification::create(errorMsg, geode::NotificationIcon::Error)->show();
-                    }
-                }
-            });
-        }
-    }
-
-    void SessionManager::handleCursorMoved(matjson::Value const& data) {
-        auto idRes = data.get<int>("playerId");
-        auto xRes = data.get<double>("x");
-        auto yRes = data.get<double>("y");
-        std::string status = "";
-        if (auto statusVal = data.get<std::string>("status")) {
-            status = *statusVal;
-        }
-
-        if (idRes && xRes && yRes) {
-            updatePlayerCursor(*idRes, static_cast<float>(*xRes), static_cast<float>(*yRes), status);
-        }
     }
 
 } // namespace mpedit

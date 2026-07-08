@@ -7,7 +7,9 @@
 #include <Geode/binding/TeleportPortalObject.hpp>
 
 #include "SessionManager.hpp"
-#include "NetworkManager.hpp"
+#include "P2PManager.hpp"
+#include "BinaryProtocol.hpp"
+#include "MessageBatcher.hpp"
 #include "ActionSerializer.hpp"
 #include "RemoteActionHandler.hpp"
 #include "ui/MultiplayerPopup.hpp"
@@ -20,6 +22,7 @@ using namespace mpedit;
 
 namespace {
     int s_selectedObjectID = 1;
+    bool s_inTransformSync = false;
     cocos2d::CCPoint s_lastTouchPos = {0.f, 0.f};
     bool s_isTouching = false;
 }
@@ -238,33 +241,40 @@ class $modify(MPLevelBrowserLayer, LevelBrowserLayer) {
 // ============================================================
 
 namespace {
-    // Builds a sync_level payload for a target player from the host's current
-    // editor state. The split MUST be: objectsString = the per-object save
-    // strings (concatenated as GD expects), settings.saveString = the
-    // LevelSettingsObject save string (colors, portals, song, etc.) only.
-    //
-    // Previously the host stuffed the full level string into settings.saveString
-    // and left objectsString empty, which broke UUID registration on the client
-    // and made every post-sync remote edit silently no-op (the "synchronizing
-    // level screen doesn't load" bug).
-    matjson::Value buildSyncLevelMessage(LevelEditorLayer* editor, int targetPlayerId) {
+    void sendChunkedSync(LevelEditorLayer* editor, int targetPlayerId) {
         auto& handler = RemoteActionHandler::get();
 
-        // Per-object save strings in spawn order, aligned with the uuids array.
-        std::string objectsString;
-        std::vector<std::string> uuids;
+        constexpr size_t BATCH_SIZE = 200;
+        struct ChunkData {
+            std::string objectsString;
+            std::vector<std::string> uuids;
+        };
+        std::vector<ChunkData> chunks;
+        ChunkData currentChunk;
+
         if (editor->m_objects) {
-            uuids.reserve(editor->m_objects->count());
             for (auto* obj : CCArrayExt<GameObject*>(editor->m_objects)) {
                 if (!obj) continue;
+                if (obj->m_objectID == 31) continue; // Skip start pos
                 auto uuid = handler.getUUIDForObject(obj);
                 if (uuid.empty()) {
                     uuid = RemoteActionHandler::generateUUID();
                     handler.registerObject(uuid, obj);
                 }
-                uuids.push_back(uuid);
-                if (!objectsString.empty()) objectsString += ";";
-                objectsString += obj->getSaveString(editor);
+                currentChunk.uuids.push_back(uuid);
+                currentChunk.objectsString += obj->getSaveString(editor) + ";";
+                
+                if (currentChunk.uuids.size() >= BATCH_SIZE) {
+                    chunks.push_back(std::move(currentChunk));
+                    currentChunk = ChunkData();
+                }
+            }
+        }
+        if (!currentChunk.uuids.empty() || chunks.empty()) {
+            if (chunks.empty() && currentChunk.uuids.empty()) {
+                chunks.push_back(ChunkData()); // Ensure at least 1 chunk for empty level
+            } else {
+                chunks.push_back(std::move(currentChunk));
             }
         }
 
@@ -280,12 +290,36 @@ namespace {
             settings.levelLength = editor->m_level->m_levelLength;
         }
 
+        uint32_t totalChunks = static_cast<uint32_t>(chunks.size());
+        uint32_t totalObjects = 0;
+        for (auto const& chunk : chunks) {
+            totalObjects += chunk.uuids.size();
+        }
+
+        // 4. Send SyncLevelStart
+        auto startMsg = proto::serializeSyncLevelStart(totalChunks, totalObjects, settings);
+        P2PManager::get().sendTo(targetPlayerId, startMsg, ChannelType::Reliable);
+
+        // 5. Send chunks sequentially
+        for (uint32_t i = 0; i < totalChunks; ++i) {
+            auto chunkMsg = proto::serializeSyncLevelChunk(
+                i, 
+                reinterpret_cast<const uint8_t*>(chunks[i].objectsString.data()), 
+                chunks[i].objectsString.size(),
+                chunks[i].uuids
+            );
+            P2PManager::get().sendTo(targetPlayerId, chunkMsg, ChannelType::Reliable);
+        }
+
+        // 6. Gather locks
         std::vector<ActionSerializer::LockData> locks;
         for (auto const& [uuid, lockInfo] : handler.getObjectLocks()) {
             locks.push_back({uuid, lockInfo.playerId, lockInfo.timeLeft});
         }
 
-        return ActionSerializer::serializeSyncLevel(targetPlayerId, objectsString, uuids, settings, locks);
+        // 7. Send SyncLevelEnd
+        auto endMsg = proto::serializeSyncLevelEnd(locks);
+        P2PManager::get().sendTo(targetPlayerId, endMsg, ChannelType::Reliable);
     }
 
     // Registers UUIDs onto the editor's currently-spawned objects, aligned by
@@ -349,8 +383,8 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                 settings.songID = this->m_level->m_songID;
                 settings.levelLength = this->m_level->m_levelLength;
             }
-            auto msg = ActionSerializer::serializeUpdateSettings(settings);
-            NetworkManager::get().send(msg);
+            auto data = proto::serializeUpdateSettings(settings);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
             log::info("EditorHooks: Broadcasted update_settings");
         }
     }
@@ -423,9 +457,8 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             if (session.getRole() == SessionManager::Role::Host) {
                 for (auto const& player : session.getPlayers()) {
                     if (player.id != session.getLocalPlayerId()) {
-                        auto msg = buildSyncLevelMessage(this, player.id);
-                        NetworkManager::get().send(msg);
-                        log::info("EditorHooks: Sent sync_level to existing player {}", player.id);
+                        sendChunkedSync(this, player.id);
+                        log::info("EditorHooks: Sent chunked sync_level to existing player {}", player.id);
                     }
                 }
             }
@@ -436,9 +469,8 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         SessionManager::get().onPlayerJoined([this](PlayerInfo const& info) {
             auto& session = SessionManager::get();
             if (session.getRole() == SessionManager::Role::Host && info.id != session.getLocalPlayerId()) {
-                auto msg = buildSyncLevelMessage(this, info.id);
-                NetworkManager::get().send(msg);
-                log::info("EditorHooks: Sent sync_level to new player {}", info.id);
+                sendChunkedSync(this, info.id);
+                log::info("EditorHooks: Sent chunked sync_level to new player {}", info.id);
             }
         });
 
@@ -597,8 +629,8 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                 // Broadcast the deletion and unregister in one place. Callers
                 // like onDeleteSelected unregister first, so this is a no-op for
                 // them; for other deletion paths this is the single broadcast.
-                auto msg = ActionSerializer::serializeDeleteObjects({uuid});
-                NetworkManager::get().send(msg);
+                auto data = proto::serializeDeleteObjects({uuid});
+                P2PManager::get().send(std::move(data), ChannelType::Reliable);
                 handler.unregisterObject(uuid);
                 log::debug("EditorHooks: Deleted object (uuid={})", uuid);
             }
@@ -734,22 +766,22 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
 
         // 6. Send updates
         if (!placedObjects.empty()) {
-            auto msg = ActionSerializer::serializePlaceObjects(placedObjects);
-            NetworkManager::get().send(msg);
+            auto data = proto::serializePlaceObjects(placedObjects);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
             log::info("EditorHooks: Synced redo placement of {} objects", placedObjects.size());
         }
         if (!deletedUuids.empty()) {
-            auto msg = ActionSerializer::serializeDeleteObjects(deletedUuids);
-            NetworkManager::get().send(msg);
+            auto data = proto::serializeDeleteObjects(deletedUuids);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
             log::info("EditorHooks: Synced undo deletion of {} objects", deletedUuids.size());
         }
         if (!movedObjects.empty()) {
-            auto msg = ActionSerializer::serializeMoveObjects(movedObjects);
-            NetworkManager::get().send(msg);
+            auto data = proto::serializeMoveObjects(movedObjects);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
         }
         if (!updatedObjects.empty()) {
-            auto msg = ActionSerializer::serializeUpdateObjects(updatedObjects);
-            NetworkManager::get().send(msg);
+            auto data = proto::serializeUpdateObjects(updatedObjects);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
         }
         
         m_fields->m_inUndoRedo = false;
@@ -760,10 +792,11 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         if (!session.isInSession()) return;
 
         // Dispatch queued network messages
-        NetworkManager::get().dispatchMessages();
+        P2PManager::get().dispatchMessages();
 
         auto& handler = RemoteActionHandler::get();
         handler.updateLocks(dt);
+        MessageBatcher::get().update(dt);
 
         // Flush any batched placements (copy/paste/duplicate) as a single message.
         handler.flushPendingPlacements();
@@ -853,8 +886,8 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                     }
                 }
                 
-                auto msg = ActionSerializer::serializeCursorUpdate(levelPos.x, levelPos.y, statusStr);
-                NetworkManager::get().send(msg);
+                auto data = proto::serializeCursorUpdate(levelPos.x, levelPos.y, statusStr);
+                P2PManager::get().send(std::move(data), ChannelType::Unreliable);
             }
         }
     }
@@ -898,6 +931,12 @@ namespace {
         if (session.isInSession() && !handler.isProcessingRemote() && objects) {
             for (auto* obj : CCArrayExt<GameObject*>(objects)) {
                 if (!obj) continue;
+                // Skip objects still awaiting their initial PlaceObjects flush.
+                // The remote doesn't know this UUID yet, so any transform/move
+                // message would be silently dropped. The pending PlaceObjects
+                // flush will capture the final state (including any transforms
+                // applied between creation and flush).
+                if (handler.isObjectPendingPlacement(obj)) continue;
                 auto uuid = handler.getUUIDForObject(obj);
                 if (!uuid.empty()) {
                     selected.push_back({uuid, obj, obj->getPosition()});
@@ -905,7 +944,9 @@ namespace {
             }
         }
 
+        s_inTransformSync = true;
         applyBase();
+        s_inTransformSync = false;
 
         if (selected.empty()) return;
 
@@ -934,9 +975,28 @@ namespace {
             }
         }
 
-        NetworkManager::get().send(ActionSerializer::serializeTransformObjects(transforms));
+        if (!transforms.empty()) {
+            auto data = proto::serializeTransformObjects(transforms);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        }
         if (!moves.empty()) {
-            NetworkManager::get().send(ActionSerializer::serializeMoveObjects(moves));
+            auto data = proto::serializeMoveObjects(moves);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        }
+
+        // Update tracked saveString baselines so syncDeselections does NOT
+        // see a stale diff for these changes and send a redundant
+        // UpdateObjects (which would cause double-move / double-transform
+        // on the remote side).
+        auto& tracked = handler.getTrackedSelections();
+        auto* editor = LevelEditorLayer::get();
+        if (editor) {
+            for (auto& state : selected) {
+                auto tIt = tracked.find(state.obj);
+                if (tIt != tracked.end()) {
+                    tIt->second = state.obj->getSaveString(editor);
+                }
+            }
         }
     }
 }
@@ -971,11 +1031,17 @@ class $modify(MPEditorUI, EditorUI) {
     void ccTouchEnded(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) {
         EditorUI::ccTouchEnded(touch, event);
         s_isTouching = false;
+        if (SessionManager::get().isInSession()) {
+            MessageBatcher::get().flush();
+        }
     }
 
     void ccTouchCancelled(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) {
         EditorUI::ccTouchCancelled(touch, event);
         s_isTouching = false;
+        if (SessionManager::get().isInSession()) {
+            MessageBatcher::get().flush();
+        }
     }
 
     void selectObject(GameObject* obj, bool filter) {
@@ -1004,8 +1070,21 @@ class $modify(MPEditorUI, EditorUI) {
                     tracked[obj] = obj->getSaveString(editor);
                 }
                 if (!handler.isProcessingRemote()) {
-                    auto msg = ActionSerializer::serializeLockObjects({uuid}, true);
-                    NetworkManager::get().send(msg);
+                    auto data = proto::serializeLockObjects({uuid}, true);
+                    P2PManager::get().send(std::move(data), ChannelType::Reliable);
+
+                    // Auto-sync: broadcast the object's full current state on
+                    // select. This acts as a reconciliation point — if the
+                    // object drifted due to fast actions or dropped deltas,
+                    // selecting it snaps all remotes back to the truth.
+                    // Skip objects still pending their initial PlaceObjects.
+                    if (!handler.isObjectPendingPlacement(obj) && obj->m_objectID != 31) {
+                        if (auto* editor = LevelEditorLayer::get()) {
+                            auto objData = ActionSerializer::extractObjectData(obj, uuid);
+                            auto syncData = proto::serializeUpdateObjects({objData});
+                            P2PManager::get().send(std::move(syncData), ChannelType::Reliable);
+                        }
+                    }
                 }
             }
         }
@@ -1017,14 +1096,31 @@ class $modify(MPEditorUI, EditorUI) {
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
         if (session.isInSession() && obj) {
-            handler.getTrackedSelections().erase(obj);
+            auto& tracked = handler.getTrackedSelections();
             if (!handler.isProcessingRemote()) {
                 auto uuid = handler.getUUIDForObject(obj);
                 if (!uuid.empty()) {
-                    auto msg = ActionSerializer::serializeLockObjects({uuid}, false);
-                    NetworkManager::get().send(msg);
+                    // Send a final UpdateObjects if the object changed since
+                    // selection. This catches fast edits (e.g. rotate then
+                    // immediately copy+paste) that slipped past the
+                    // syncDeselections tick.
+                    auto tIt = tracked.find(obj);
+                    if (tIt != tracked.end() && obj->m_objectID != 31) {
+                        if (auto* editor = LevelEditorLayer::get()) {
+                            std::string currentSave = obj->getSaveString(editor);
+                            if (tIt->second != currentSave) {
+                                auto objData = ActionSerializer::extractObjectData(obj, uuid);
+                                auto data = proto::serializeUpdateObjects({objData});
+                                P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                            }
+                        }
+                    }
+
+                    auto data = proto::serializeLockObjects({uuid}, false);
+                    P2PManager::get().send(std::move(data), ChannelType::Reliable);
                 }
             }
+            tracked.erase(obj);
         }
     }
 
@@ -1045,8 +1141,8 @@ class $modify(MPEditorUI, EditorUI) {
                     }
                 }
                 if (!uuids.empty()) {
-                    auto msg = ActionSerializer::serializeLockObjects(uuids, false);
-                    NetworkManager::get().send(msg);
+                    auto data = proto::serializeLockObjects(uuids, false);
+                    P2PManager::get().send(std::move(data), ChannelType::Reliable);
                 }
             }
             handler.getTrackedSelections().clear();
@@ -1078,8 +1174,8 @@ class $modify(MPEditorUI, EditorUI) {
             }
 
             if (!uuids.empty()) {
-                auto msg = ActionSerializer::serializeDeleteObjects(uuids);
-                NetworkManager::get().send(msg);
+                auto data = proto::serializeDeleteObjects(uuids);
+                P2PManager::get().send(std::move(data), ChannelType::Reliable);
             }
         }
 
@@ -1110,20 +1206,35 @@ class $modify(MPEditorUI, EditorUI) {
 
         cocos2d::CCArray* filteredObjects = objects;
         if (session.isInSession() && !handler.isProcessingRemote() && objects) {
-            filteredObjects = cocos2d::CCArray::create();
             auto const& locks = handler.getObjectLocks();
             int localId = session.getLocalPlayerId();
+            
+            bool hasLocked = false;
             for (auto* obj : CCArrayExt<GameObject*>(objects)) {
                 auto uuid = handler.getUUIDForObject(obj);
-                bool isLockedByOther = false;
                 if (!uuid.empty()) {
                     auto it = locks.find(uuid);
                     if (it != locks.end() && it->second.playerId != localId) {
-                        isLockedByOther = true;
+                        hasLocked = true;
+                        break;
                     }
                 }
-                if (!isLockedByOther) {
-                    filteredObjects->addObject(obj);
+            }
+
+            if (hasLocked) {
+                filteredObjects = cocos2d::CCArray::create();
+                for (auto* obj : CCArrayExt<GameObject*>(objects)) {
+                    auto uuid = handler.getUUIDForObject(obj);
+                    bool isLockedByOther = false;
+                    if (!uuid.empty()) {
+                        auto it = locks.find(uuid);
+                        if (it != locks.end() && it->second.playerId != localId) {
+                            isLockedByOther = true;
+                        }
+                    }
+                    if (!isLockedByOther) {
+                        filteredObjects->addObject(obj);
+                    }
                 }
             }
         }
@@ -1144,8 +1255,8 @@ class $modify(MPEditorUI, EditorUI) {
                 }
             }
             if (!uuids.empty() && !handler.isProcessingRemote()) {
-                auto msg = ActionSerializer::serializeLockObjects(uuids, true);
-                NetworkManager::get().send(msg);
+                auto data = proto::serializeLockObjects(uuids, true);
+                P2PManager::get().send(std::move(data), ChannelType::Reliable);
             }
         }
     }
@@ -1225,8 +1336,8 @@ class $modify(MPEditorUI, EditorUI) {
 
         // 4. Send lock messages for newly selected objects
         if (!toLockUuids.empty()) {
-            auto msg = ActionSerializer::serializeLockObjects(toLockUuids, true);
-            NetworkManager::get().send(msg);
+            auto data = proto::serializeLockObjects(toLockUuids, true);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
         }
 
         // 5. selection lock refresh timer (for already tracked selections)
@@ -1243,8 +1354,8 @@ class $modify(MPEditorUI, EditorUI) {
                 }
             }
             if (!refreshUuids.empty()) {
-                auto msg = ActionSerializer::serializeLockObjects(refreshUuids, true);
-                NetworkManager::get().send(msg);
+                auto data = proto::serializeLockObjects(refreshUuids, true);
+                P2PManager::get().send(std::move(data), ChannelType::Reliable);
             }
         }
 
@@ -1313,12 +1424,12 @@ class $modify(MPEditorUI, EditorUI) {
         }
 
         if (!unlockUuids.empty()) {
-            auto msg = ActionSerializer::serializeLockObjects(unlockUuids, false);
-            NetworkManager::get().send(msg);
+            auto data = proto::serializeLockObjects(unlockUuids, false);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
         }
         if (!updates.empty()) {
-            auto msg = ActionSerializer::serializeUpdateObjects(updates);
-            NetworkManager::get().send(msg);
+            auto data = proto::serializeUpdateObjects(updates);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
         }
     }
 
@@ -1345,16 +1456,30 @@ class $modify(MPEditorUI, EditorUI) {
 
         if (session.isInSession() && !handler.isProcessingRemote()) {
             auto uuid = handler.getUUIDForObject(obj);
-            if (!uuid.empty()) {
+            if (!uuid.empty() && !handler.isObjectPendingPlacement(obj)) {
                 CCPoint newPos = obj->getPosition();
                 ActionSerializer::MoveData move;
                 move.uuid = uuid;
                 move.dx = newPos.x - oldPos.x;
                 move.dy = newPos.y - oldPos.y;
 
-                if (move.dx != 0.f || move.dy != 0.f) {
-                    auto msg = ActionSerializer::serializeMoveObjects({move});
-                    NetworkManager::get().send(msg);
+                if ((move.dx != 0.f || move.dy != 0.f) && !s_inTransformSync) {
+                    MessageBatcher::get().queueMove(uuid, move.dx, move.dy);
+
+                    // Update the tracked saveString baseline so that
+                    // syncDeselections does NOT see a stale diff for this
+                    // position change and send a redundant UpdateObjects.
+                    // Without this, both MoveBatch (relative delta) AND
+                    // UpdateObjects (absolute pos via saveString rebuild)
+                    // reach the remote — if UpdateObjects arrives first the
+                    // delta gets applied on top → double-move.
+                    auto& tracked = handler.getTrackedSelections();
+                    auto tIt = tracked.find(obj);
+                    if (tIt != tracked.end()) {
+                        if (auto* editor = LevelEditorLayer::get()) {
+                            tIt->second = obj->getSaveString(editor);
+                        }
+                    }
                 }
             }
         }
@@ -1431,5 +1556,83 @@ class $modify(MPBaseGameLayer, GJBaseGameLayer) {
         auto uuid = RemoteActionHandler::generateUUID();
         handler.registerObject(uuid, obj);
         handler.queueObjectForPlacement(uuid, obj);
+    }
+};
+
+#include <Geode/modify/GJColorSetupLayer.hpp>
+class $modify(MPGJColorSetupLayer, GJColorSetupLayer) {
+    void syncColors() {
+        auto& handler = RemoteActionHandler::get();
+        if (handler.isProcessingRemote() || !handler.isInitialSyncCompleted()) return;
+
+        auto& session = SessionManager::get();
+        if (!session.isInSession()) return;
+        
+        auto editor = LevelEditorLayer::get();
+        if (editor && editor->m_levelSettings) {
+            ActionSerializer::LevelSettingsData settings;
+            settings.saveString = editor->m_levelSettings->getSaveString();
+            settings.audioTrack = editor->m_level->m_audioTrack;
+            settings.songID = editor->m_level->m_songID;
+            settings.levelLength = editor->m_level->m_levelLength;
+            
+            auto packet = proto::serializeUpdateSettings(settings);
+            P2PManager::get().send(std::move(packet), ChannelType::Reliable);
+        }
+    }
+
+    void colorSelectClosed(cocos2d::CCNode* popup) {
+        GJColorSetupLayer::colorSelectClosed(popup);
+        
+        auto* editor = LevelEditorLayer::get();
+        if (editor && editor->m_levelSettings && editor->m_levelSettings->m_effectManager) {
+            auto* dict = editor->m_levelSettings->m_effectManager->m_colorActionDict;
+            if (dict) {
+                log::info("m_colorActionDict contains {} items.", dict->count());
+                auto* keys = dict->allKeys();
+                if (keys) {
+                    for (int i = 0; i < keys->count(); i++) {
+                        auto* keyObj = keys->objectAtIndex(i);
+                        if (auto* strKey = typeinfo_cast<cocos2d::CCString*>(keyObj)) {
+                            log::info("Key type: String, val: {}", strKey->getCString());
+                        } else if (auto* intKey = typeinfo_cast<cocos2d::CCInteger*>(keyObj)) {
+                            log::info("Key type: Int, val: {}", intKey->getValue());
+                        }
+                    }
+                }
+            }
+        }
+        
+        syncColors();
+    }
+
+    void onClose(cocos2d::CCObject* sender) {
+        GJColorSetupLayer::onClose(sender);
+        syncColors();
+    }
+};
+
+#include <Geode/modify/CustomizeObjectLayer.hpp>
+class $modify(MPCustomizeObjectLayer, CustomizeObjectLayer) {
+    void colorSelectClosed(cocos2d::CCNode* popup) {
+        CustomizeObjectLayer::colorSelectClosed(popup);
+        
+        auto& handler = RemoteActionHandler::get();
+        if (handler.isProcessingRemote() || !handler.isInitialSyncCompleted()) return;
+
+        auto& session = SessionManager::get();
+        if (!session.isInSession()) return;
+        
+        auto editor = LevelEditorLayer::get();
+        if (editor && editor->m_levelSettings) {
+            ActionSerializer::LevelSettingsData settings;
+            settings.saveString = editor->m_levelSettings->getSaveString();
+            settings.audioTrack = editor->m_level->m_audioTrack;
+            settings.songID = editor->m_level->m_songID;
+            settings.levelLength = editor->m_level->m_levelLength;
+            
+            auto packet = proto::serializeUpdateSettings(settings);
+            P2PManager::get().send(std::move(packet), ChannelType::Reliable);
+        }
     }
 };

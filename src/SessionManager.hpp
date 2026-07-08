@@ -2,36 +2,25 @@
 
 #include <string>
 #include <vector>
-#include <unordered_map>
 #include <functional>
-#include <matjson.hpp>
 
 namespace mpedit {
 
-    /**
-     * Represents a connected player in the session.
-     */
     struct PlayerInfo {
         int id = -1;
         std::string name;
-        // Color index for cursor/highlight (assigned by server)
         int colorIndex = 0;
-        // Last known cursor position
         float cursorX = 0.f;
         float cursorY = 0.f;
         std::string status;
     };
 
-    /**
-     * Manages the multiplayer session state.
-     * Tracks room code, connected players, and session lifecycle.
-     */
     class SessionManager {
     public:
         enum class Role {
-            None,       // Not in a session
-            Host,       // Created the room
-            Client      // Joined an existing room
+            None,
+            Host,
+            Client
         };
 
         static SessionManager& get();
@@ -75,13 +64,6 @@ namespace mpedit {
 
         void setupNetworkHandlers();
         void clearNetworkHandlers();
-
-        void handleRoomCreated(matjson::Value const& data);
-        void handleRoomJoined(matjson::Value const& data);
-        void handlePlayerJoined(matjson::Value const& data);
-        void handlePlayerLeft(matjson::Value const& data);
-        void handleError(matjson::Value const& data);
-        void handleCursorMoved(matjson::Value const& data);
 
         Role m_role = Role::None;
         std::string m_roomCode;

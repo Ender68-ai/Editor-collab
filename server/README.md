@@ -1,38 +1,32 @@
-# Multiplayer Edit — Relay Server
+# Multiplayer Edit — Signaling Server
 
-This is the WebSocket relay server that facilitates real-time communication between Multiplayer Edit mod clients.
+This is the Deno Deploy signaling server that handles matchmaking and WebRTC SDP (Session Description Protocol) exchange for the Multiplayer Edit mod.
+
+> **Note**: As of v0.4.0, Multiplayer Edit uses WebRTC P2P connections and a new Deno Deploy signaling server. If you want to use the old NodeJS WebSocket relay server, please refer to the `MultiplayerEdit-LEGACY-0.3.0` release/branch for the 0.3.0 files.
+
+Because the mod uses WebRTC Data Channels, players connect directly to each other peer-to-peer (P2P). This server is **only** used for the initial handshake to exchange IP addresses and connection metadata. Once a player joins a room, all game data flows directly between players.
 
 ## Requirements
 
-- Node.js 18+ 
+- A [Deno Deploy](https://deno.com/deploy) account
 
-## Setup
+## Setup and Hosting
 
-```bash
-cd server
-npm install
-```
+1. Go to [Deno Deploy](https://dash.deno.com) and click **New Playground**.
+2. Copy the contents of `signaling/worker.js` and paste it into the editor, replacing the contents of `main.ts`.
+3. Click the **"Databases"** tab on your new project and connect a new KV database to it.
+4. Click **Deploy**.
+5. Copy the URL of your new playground.
 
-## Running
+## Using Your Custom Server
 
-```bash
-npm start
-```
-
-The server will start on port **8765** by default. You can change this with the `PORT` environment variable:
-
-```bash
-PORT=3000 npm start
-```
+In Geometry Dash, go to the Multiplayer Edit mod settings and change the **Signaling Server URL** to the URL you copied above. Make sure it uses `https://`.
 
 ## How It Works
 
-1. **Host** creates a room → gets a 6-character room code
-2. **Guests** join using the room code
-3. All editor actions (place, delete, move objects) are relayed to all other players in the room
-4. Cursor positions are broadcast at 10Hz
-5. Rooms auto-cleanup after 30 minutes of inactivity
-
-## Protocol
-
-The server uses JSON messages over WebSocket. See the implementation plan for the full protocol specification.
+1. **Host** creates a room → POSTs to `/rooms` and receives a 6-character room code.
+2. **Guests** join using the room code → POSTs to `/rooms/:code/join` and gets the Host's metadata.
+3. **Guest** generates a WebRTC Offer and POSTs it to the signaling server.
+4. **Host** polls for Offers, retrieves the Guest's Offer, generates an Answer, and POSTs it back.
+5. **Guest** polls for Answers and retrieves the Host's Answer.
+6. The direct P2P connection is established! The signaling server is no longer used for this session.

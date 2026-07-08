@@ -1,6 +1,8 @@
 #include "RemoteActionHandler.hpp"
-#include "NetworkManager.hpp"
+#include "P2PManager.hpp"
+#include "BinaryProtocol.hpp"
 #include "SessionManager.hpp"
+#include "MessageBatcher.hpp"
 #include "ui/MultiplayerPopup.hpp"
 #include <Geode/Geode.hpp>
 #include <random>
@@ -99,105 +101,149 @@ namespace mpedit {
     void RemoteActionHandler::setupHandlers() {
         MusicDownloadManager::sharedState()->addMusicDownloadDelegate(this);
 
-        auto& net = NetworkManager::get();
+        auto& net = P2PManager::get();
 
-        net.on("objects_placed", [this](matjson::Value const& data) {
-            auto idRes = data.get<int>("playerId");
-            if (!idRes) return;
-            int playerId = *idRes;
-            if (playerId == SessionManager::get().getLocalPlayerId()) return;
-
-            auto objects = ActionSerializer::deserializePlacedObjects(data);
-            handleRemotePlaceObjects(playerId, objects);
-        });
-
-        net.on("objects_deleted", [this](matjson::Value const& data) {
-            auto idRes = data.get<int>("playerId");
-            if (!idRes) return;
-            int playerId = *idRes;
-            if (playerId == SessionManager::get().getLocalPlayerId()) return;
-
-            auto uuids = ActionSerializer::deserializeDeletedObjects(data);
-            handleRemoteDeleteObjects(playerId, uuids);
-        });
-
-        net.on("objects_moved", [this](matjson::Value const& data) {
-            auto idRes = data.get<int>("playerId");
-            if (!idRes) return;
-            int playerId = *idRes;
-            if (playerId == SessionManager::get().getLocalPlayerId()) return;
-
-            auto moves = ActionSerializer::deserializeMovedObjects(data);
-            handleRemoteMoveObjects(playerId, moves);
-        });
-
-        net.on("objects_transformed", [this](matjson::Value const& data) {
-            auto idRes = data.get<int>("playerId");
-            if (!idRes) return;
-            int playerId = *idRes;
-            if (playerId == SessionManager::get().getLocalPlayerId()) return;
-
-            auto transforms = ActionSerializer::deserializeTransformedObjects(data);
-            handleRemoteTransformObjects(playerId, transforms);
-        });
-
-        net.on("update_objects", [this](matjson::Value const& data) {
-            auto idRes = data.get<int>("playerId");
-            if (!idRes) return;
-            int playerId = *idRes;
-            if (playerId == SessionManager::get().getLocalPlayerId()) return;
-
-            auto updates = ActionSerializer::deserializeUpdatedObjects(data);
-            handleRemoteUpdateObjects(playerId, updates);
-        });
-
-        net.on("lock_objects", [this](matjson::Value const& data) {
-            auto idRes = data.get<int>("playerId");
-            if (!idRes) return;
-            int playerId = *idRes;
-            if (playerId == SessionManager::get().getLocalPlayerId()) return;
-
-            bool locked = data.get<bool>("locked").unwrapOr(false);
-            auto uuids = ActionSerializer::deserializeDeletedObjects(data); // uses objectKeys array
-            handleRemoteLockObjects(playerId, uuids, locked);
-        });
-
-        net.on("sync_level", [this](matjson::Value const& data) {
-            auto idRes = data.get<int>("playerId");
-            auto targetIdRes = data.get<int>("targetPlayerId");
-            if (!idRes || !targetIdRes) return;
-            
-            int targetId = *targetIdRes;
-            if (targetId != SessionManager::get().getLocalPlayerId()) return; // Not for us
-
-            std::string objectsString = "";
-            if (auto val = data.get<std::string>("objectsString")) {
-                objectsString = *val;
+        net.on(proto::Opcode::PlaceObjects, [this](int playerId, proto::Reader& reader) {
+            if (playerId == P2PManager::get().getLocalPlayerId()) return;
+            try {
+                auto msg = proto::deserializePlaceObjects(reader);
+                handleRemotePlaceObjects(playerId, msg.objects);
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing PlaceObjects: {}", e.what());
             }
+        });
 
-            std::vector<std::string> uuids;
-            auto uuidsRes = data.get("uuids");
-            if (uuidsRes.isOk()) {
-                for (auto& item : uuidsRes.unwrap()) {
-                    if (auto str = item.asString()) {
-                        uuids.push_back(*str);
-                    }
+        net.on(proto::Opcode::DeleteObjects, [this](int playerId, proto::Reader& reader) {
+            if (playerId == P2PManager::get().getLocalPlayerId()) return;
+            try {
+                auto msg = proto::deserializeDeleteObjects(reader);
+                handleRemoteDeleteObjects(playerId, msg.uuids);
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing DeleteObjects: {}", e.what());
+            }
+        });
+
+        net.on(proto::Opcode::MoveObjects, [this](int playerId, proto::Reader& reader) {
+            if (playerId == P2PManager::get().getLocalPlayerId()) return;
+            try {
+                auto msg = proto::deserializeMoveObjects(reader);
+                handleRemoteMoveObjects(playerId, msg.moves);
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing MoveObjects: {}", e.what());
+            }
+        });
+
+        net.on(proto::Opcode::MoveBatch, [this](int playerId, proto::Reader& reader) {
+            if (playerId == P2PManager::get().getLocalPlayerId()) return;
+            try {
+                auto msg = proto::deserializeMoveBatch(reader);
+                handleRemoteMoveObjects(playerId, msg.moves);
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing MoveBatch: {}", e.what());
+            }
+        });
+
+        net.on(proto::Opcode::TransformObjects, [this](int playerId, proto::Reader& reader) {
+            if (playerId == P2PManager::get().getLocalPlayerId()) return;
+            try {
+                auto msg = proto::deserializeTransformObjects(reader);
+                handleRemoteTransformObjects(playerId, msg.transforms);
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing TransformObjects: {}", e.what());
+            }
+        });
+
+        net.on(proto::Opcode::UpdateObjects, [this](int playerId, proto::Reader& reader) {
+            if (playerId == P2PManager::get().getLocalPlayerId()) return;
+            try {
+                auto msg = proto::deserializeUpdateObjects(reader);
+                handleRemoteUpdateObjects(playerId, msg.objects);
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing UpdateObjects: {}", e.what());
+            }
+        });
+
+        net.on(proto::Opcode::LockObjects, [this](int playerId, proto::Reader& reader) {
+            if (playerId == P2PManager::get().getLocalPlayerId()) return;
+            try {
+                auto msg = proto::deserializeLockObjects(reader);
+                handleRemoteLockObjects(playerId, msg.uuids, msg.locked);
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing LockObjects: {}", e.what());
+            }
+        });
+
+        net.on(proto::Opcode::UpdateSettings, [this](int playerId, proto::Reader& reader) {
+            if (playerId == P2PManager::get().getLocalPlayerId()) return;
+            try {
+                auto msg = proto::deserializeUpdateSettings(reader);
+                handleRemoteUpdateSettings(playerId, msg.settings);
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing UpdateSettings: {}", e.what());
+            }
+        });
+
+        net.on(proto::Opcode::SyncLevelStart, [this](int playerId, proto::Reader& reader) {
+            try {
+                auto msg = proto::deserializeSyncLevelStart(reader);
+                m_chunkedSync.hostPlayerId = playerId;
+                m_chunkedSync.totalChunks = msg.totalChunks;
+                m_chunkedSync.totalObjects = msg.totalObjects;
+                m_chunkedSync.settings = msg.settings;
+                m_chunkedSync.chunks.clear();
+                m_chunkedSync.chunks.resize(msg.totalChunks);
+                m_chunkedSync.uuidChunks.clear();
+                m_chunkedSync.uuidChunks.resize(msg.totalChunks);
+                m_chunkedSync.active = true;
+                log::info("RemoteActionHandler: SyncLevelStart received ({} chunks, {} objects)",
+                    msg.totalChunks, msg.totalObjects);
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing SyncLevelStart: {}", e.what());
+            }
+        });
+
+        net.on(proto::Opcode::SyncLevelChunk, [this](int playerId, proto::Reader& reader) {
+            try {
+                auto msg = proto::deserializeSyncLevelChunk(reader);
+                if (!m_chunkedSync.active || playerId != m_chunkedSync.hostPlayerId) return;
+                if (msg.chunkIndex < m_chunkedSync.totalChunks) {
+                    m_chunkedSync.chunks[msg.chunkIndex] = std::string(msg.data.begin(), msg.data.end());
+                    m_chunkedSync.uuidChunks[msg.chunkIndex] = msg.uuids;
+                    log::info("RemoteActionHandler: SyncLevelChunk received: {}/{}",
+                        msg.chunkIndex + 1, m_chunkedSync.totalChunks);
                 }
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing SyncLevelChunk: {}", e.what());
             }
-
-            auto settings = ActionSerializer::deserializeLevelSettings(data);
-            auto locks = ActionSerializer::deserializeSyncLevelLocks(data);
-            handleRemoteSyncLevel(*idRes, objectsString, uuids, settings, locks);
         });
 
-        net.on("update_settings", [this](matjson::Value const& data) {
-            auto idRes = data.get<int>("playerId");
-            if (!idRes) return;
-            int playerId = *idRes;
-            if (playerId == SessionManager::get().getLocalPlayerId()) return;
+        net.on(proto::Opcode::SyncLevelEnd, [this](int playerId, proto::Reader& reader) {
+            try {
+                auto msg = proto::deserializeSyncLevelEnd(reader);
+                if (!m_chunkedSync.active || playerId != m_chunkedSync.hostPlayerId) return;
 
-            auto settings = ActionSerializer::deserializeLevelSettings(data);
-            handleRemoteUpdateSettings(playerId, settings);
+                // Reconstruct objectsString
+                std::string objectsString = "";
+                for (auto const& chunk : m_chunkedSync.chunks) {
+                    objectsString += chunk;
+                }
+                
+                // Reconstruct uuids
+                std::vector<std::string> uuids;
+                uuids.reserve(m_chunkedSync.totalObjects);
+                for (auto const& uuidChunk : m_chunkedSync.uuidChunks) {
+                    uuids.insert(uuids.end(), uuidChunk.begin(), uuidChunk.end());
+                }
+
+                log::info("RemoteActionHandler: SyncLevelEnd received, processing full sync");
+                handleRemoteSyncLevel(playerId, objectsString, uuids, m_chunkedSync.settings, msg.locks);
+
+                m_chunkedSync.active = false;
+                m_chunkedSync.chunks.clear();
+                m_chunkedSync.uuidChunks.clear();
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing SyncLevelEnd: {}", e.what());
+            }
         });
     }
 
@@ -208,7 +254,10 @@ namespace mpedit {
         m_objectLocks.clear();
         m_pendingSync.reset();
         m_initialSyncCompleted = false;
-        // Handlers are cleared via NetworkManager::clearHandlers()
+        m_chunkedSync.active = false;
+        m_chunkedSync.chunks.clear();
+        m_chunkedSync.uuidChunks.clear();
+        P2PManager::get().clearHandlers();
     }
 
     static LevelEditorLayer* findEditorLayer(CCNode* parent) {
@@ -400,6 +449,18 @@ namespace mpedit {
             auto pos = obj->getPosition();
             obj->setPosition({pos.x + move.dx, pos.y + move.dy});
             editor->updateObjectSection(obj);
+
+            // Mark that the stored LockedState position is stale — the live
+            // object has the correct position from accumulated deltas.
+            // We keep the LockedState (if any) so its saveString can still
+            // carry non-transform properties (color channels, groups, etc.)
+            // that were set via UpdateObjects. The unlock handler will read
+            // the live position instead of the stored snapshot position.
+            auto lsIt = m_lockedSaveStrings.find(move.uuid);
+            if (lsIt != m_lockedSaveStrings.end()) {
+                lsIt->second.positionStale = true;
+            }
+
             log::debug("RemoteActionHandler: Moved object (uuid={}) by ({}, {})", move.uuid, move.dx, move.dy);
         }
 
@@ -424,6 +485,15 @@ namespace mpedit {
             }
 
             applyTransformSafe(obj, t.rotation, t.scaleX, t.scaleY, t.flipX, t.flipY);
+
+            // Mark that the stored LockedState transform is stale — the live
+            // object has the correct transform from this delta. Keep the
+            // LockedState so its saveString can carry non-transform properties.
+            auto lsIt = m_lockedSaveStrings.find(t.uuid);
+            if (lsIt != m_lockedSaveStrings.end()) {
+                lsIt->second.transformStale = true;
+            }
+
             log::debug("RemoteActionHandler: transformed object (uuid={}..., rot={:.1f}, flipX={}, flipY={})",
                 t.uuid.substr(0, 8), t.rotation, t.flipX, t.flipY);
         }
@@ -588,6 +658,16 @@ namespace mpedit {
                                 // we can skip the recreation completely!
                                 std::string currentSave = oldObj->getSaveString(editor);
                                 if (currentSave != saveStr) {
+                                    // Capture live position/transform BEFORE deletion
+                                    // so we can re-apply them after recreation when
+                                    // move/transform deltas made the stored snapshot stale.
+                                    cocos2d::CCPoint livePos = oldObj->getPosition();
+                                    float liveRot = oldObj->getRotation();
+                                    float liveSX = oldObj->getScaleX();
+                                    float liveSY = oldObj->getScaleY();
+                                    bool liveFX = oldObj->isFlipX();
+                                    bool liveFY = oldObj->isFlipY();
+
                                     auto* editorUI = editor->m_editorUI;
                                     bool wasSelected = false;
                                     if (editorUI && (editorUI->m_selectedObject == oldObj || (editorUI->m_selectedObjects && editorUI->m_selectedObjects->containsObject(oldObj)))) {
@@ -608,21 +688,32 @@ namespace mpedit {
                                     auto newObjs = createObjectsFromSaveStringRobust(editor, saveStr);
                                     if (!newObjs.empty()) {
                                         auto* newObj = newObjs.front();
-                                        // Re-apply the authoritative transform carried
-                                        // alongside the saveString. GD's saveString flip
-                                        // round-trip can invert m_isFlipX on recreate, so
-                                        // we overwrite with the sender-observed values.
-                                        newObj->setRotation(state.rotation);
-                                        newObj->setScaleX(state.scaleX);
-                                        newObj->setScaleY(state.scaleY);
-                                        newObj->setFlipX(state.flipX);
-                                        newObj->setFlipY(state.flipY);
+
+                                        if (state.positionStale) {
+                                            // Position was updated by move deltas
+                                            // after the snapshot — use the live pos.
+                                            newObj->setPosition(livePos);
+                                            editor->updateObjectSection(newObj);
+                                        }
+
+                                        if (state.transformStale) {
+                                            // Transform was updated by transform
+                                            // deltas — use the live transform.
+                                            applyTransformSafe(newObj, liveRot, liveSX, liveSY, liveFX, liveFY);
+                                        } else {
+                                            // Re-apply the authoritative transform carried
+                                            // alongside the saveString. GD's saveString flip
+                                            // round-trip can invert m_isFlipX on recreate, so
+                                            // we overwrite with the sender-observed values.
+                                            applyTransformSafe(newObj, state.rotation, state.scaleX, state.scaleY, state.flipX, state.flipY);
+                                        }
+
                                         registerObject(uuid, newObj);
 
                                         if (wasSelected && editorUI) {
                                             editorUI->selectObject(newObj, true);
                                         }
-                                        log::debug("RemoteActionHandler: Finished edit and applied final saveString recreate for uuid={}", uuid);
+                                        log::debug("RemoteActionHandler: Finished edit and applied final saveString recreate for uuid={} (posStale={}, xfrmStale={})", uuid, state.positionStale, state.transformStale);
                                     } else {
                                         log::warn("RemoteActionHandler: saveString recreation failed on unlock for uuid={}, object lost", uuid);
                                     }
@@ -928,6 +1019,14 @@ namespace mpedit {
         m_pendingPlacements.push_back(PendingPlacement { uuid, geode::Ref<GameObject>(obj) });
     }
 
+    bool RemoteActionHandler::isObjectPendingPlacement(GameObject* obj) const {
+        if (!obj) return false;
+        for (auto const& p : m_pendingPlacements) {
+            if (p.obj == obj) return true;
+        }
+        return false;
+    }
+
     void RemoteActionHandler::flushPendingPlacements() {
         if (m_pendingPlacements.empty()) return;
 
@@ -943,12 +1042,18 @@ namespace mpedit {
             // The object may have been deleted between queue and flush.
             if (!p.obj || !editor->m_objects->containsObject(p.obj)) continue;
             objects.push_back(ActionSerializer::extractObjectData(p.obj, p.uuid));
+            
+            // Clear any relative deltas queued into the MessageBatcher during
+            // this same frame (e.g. from the 'Copy + Paste' button's auto-offset).
+            // Since extractObjectData captures the absolute POST-offset position,
+            // sending a MoveBatch delta later would cause a double-move.
+            MessageBatcher::get().removePending(p.uuid);
         }
         m_pendingPlacements.clear();
 
         if (!objects.empty() && !m_processingRemote) {
-            auto msg = ActionSerializer::serializePlaceObjects(objects);
-            NetworkManager::get().send(msg);
+            auto data = proto::serializePlaceObjects(objects);
+            P2PManager::get().send(data, ChannelType::Reliable);
             log::debug("RemoteActionHandler: Flushed batched placement of {} objects", objects.size());
         }
     }
@@ -993,6 +1098,86 @@ namespace mpedit {
                 editor->m_levelSettings->m_isFlipped = newSettings->m_isFlipped;
                 editor->m_levelSettings->m_songOffset = newSettings->m_songOffset;
 
+                // Deep-copy colors without replacing EffectManager or ColorActions
+                if (auto* newEffectMgr = newSettings->m_effectManager) {
+                    if (auto* oldEffectMgr = editor->m_levelSettings->m_effectManager) {
+                        if (auto* newDict = newEffectMgr->m_colorActionDict) {
+                            if (auto* oldDict = oldEffectMgr->m_colorActionDict) {
+                                auto copyColor = [](ColorAction* oldAction, ColorAction* newAction) {
+                                    if (oldAction && newAction) {
+                                        oldAction->m_color = newAction->m_color;
+                                        oldAction->m_fromColor = newAction->m_fromColor;
+                                        oldAction->m_toColor = newAction->m_toColor;
+                                        oldAction->m_duration = newAction->m_duration;
+                                        oldAction->m_blending = newAction->m_blending;
+                                        oldAction->m_playerColor = newAction->m_playerColor;
+                                        oldAction->m_fromOpacity = newAction->m_fromOpacity;
+                                        oldAction->m_toOpacity = newAction->m_toOpacity;
+                                        oldAction->m_copyHSV = newAction->m_copyHSV;
+                                        oldAction->m_copyID = newAction->m_copyID;
+                                        oldAction->m_copyOpacity = newAction->m_copyOpacity;
+                                        oldAction->m_copyColorCalculated = newAction->m_copyColorCalculated;
+                                        oldAction->m_colorID = newAction->m_colorID;
+                                        oldAction->m_copyColorLoop = newAction->m_copyColorLoop;
+                                        oldAction->m_legacyHSV = newAction->m_legacyHSV;
+                                    }
+                                };
+                                
+                                // Copy the standard colors array
+                                for (size_t i = 0; i < newEffectMgr->m_colorActionVector.size(); i++) {
+                                    if (i < oldEffectMgr->m_colorActionVector.size()) {
+                                        auto* newAction = newEffectMgr->m_colorActionVector[i];
+                                        auto* oldAction = oldEffectMgr->m_colorActionVector[i];
+                                        copyColor(oldAction, newAction);
+                                        if (oldAction) {
+                                            oldEffectMgr->updateColorAction(oldAction);
+                                            oldEffectMgr->colorActionChanged(oldAction);
+                                        }
+                                    }
+                                }
+
+                                log::info("applyLevelSettings: newDict count={}, oldDict count={}", newDict->count(), oldDict->count());
+                                auto* keys = newDict->allKeys();
+                                if (keys) {
+                                    for (int i = 0; i < keys->count(); i++) {
+                                        auto* keyObj = keys->objectAtIndex(i);
+                                        intptr_t k = 0;
+                                        if (auto* strKey = typeinfo_cast<cocos2d::CCString*>(keyObj)) {
+                                            k = std::stoi(strKey->getCString());
+                                            log::info("Processing key {} (from string: {})", k, strKey->getCString());
+                                        } else if (auto* intKey = typeinfo_cast<cocos2d::CCInteger*>(keyObj)) {
+                                            k = intKey->getValue();
+                                            log::info("Processing key {} (from int)", k);
+                                        }
+                                        
+                                        auto* newAction = static_cast<ColorAction*>(newDict->objectForKey(k));
+                                        if (!newAction && keyObj) {
+                                            if (auto* strKey = typeinfo_cast<cocos2d::CCString*>(keyObj)) {
+                                                newAction = static_cast<ColorAction*>(newDict->objectForKey(strKey->getCString()));
+                                            }
+                                        }
+                                        
+                                        auto* oldAction = static_cast<ColorAction*>(oldDict->objectForKey(k));
+                                        
+                                        if (!oldAction) {
+                                            oldAction = ColorAction::create();
+                                            oldDict->setObject(oldAction, k);
+                                        }
+                                        if (newAction && oldAction) {
+                                            copyColor(oldAction, newAction);
+                                            
+                                            // Tell effect manager about the change
+                                            oldEffectMgr->updateColorAction(oldAction);
+                                            oldEffectMgr->colorActionChanged(oldAction);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                editor->m_updateColorSprites = true;
                 editor->updateOptions();
             }
         }

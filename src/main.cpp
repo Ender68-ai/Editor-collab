@@ -1,7 +1,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/loader/SettingV3.hpp>
 #include "SessionManager.hpp"
-#include "NetworkManager.hpp"
+#include "P2PManager.hpp"
 #include "RemoteActionHandler.hpp"
 
 using namespace geode::prelude;

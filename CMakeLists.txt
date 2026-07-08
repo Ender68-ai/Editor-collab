@@ -11,7 +11,9 @@ else()
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
 endif()
 
+# Windows definitions to prevent macros from breaking C++ std::min/std::max/limits
 add_compile_definitions(WIN32_LEAN_AND_MEAN)
+add_compile_definitions(NOMINMAX)
 add_compile_definitions(_WINSOCKAPI_)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
@@ -19,81 +21,95 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE src)
 
-# IXWebSocket with TLS support (statically linked via mbedtls)
-set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "" FORCE)
+# ── Skip Install Rules ──────────────────────────────────────
+# Disable install rules to prevent target export issues with built-from-source deps
+set(CMAKE_SKIP_INSTALL_RULES ON)
 
-# 1. Fetch MbedTLS
 include(FetchContent)
+
+# ── MbedTLS 3.x ─────────────────────────────────────────────
 FetchContent_Declare(
     mbedtls
     GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
-    GIT_TAG        mbedtls-2.28.10
+    GIT_TAG        v3.6.0
 )
 set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(mbedtls)
 
-# Define variables for IXWebSocket
-set(MBEDTLS_FOUND ON CACHE BOOL "" FORCE)
-set(MBEDTLS_LIBRARIES mbedtls mbedx509 mbedcrypto CACHE INTERNAL "" FORCE)
-
-# Get interface include directories from mbedtls target
-get_target_property(MBEDTLS_HEADERS mbedtls INTERFACE_INCLUDE_DIRECTORIES)
-set(MBEDTLS_INCLUDE_DIRS ${MBEDTLS_HEADERS} CACHE INTERNAL "" FORCE)
-set(MBEDTLS_VERSION_GREATER_THAN_3 OFF CACHE BOOL "" FORCE)
-
-# 2. Fetch and Patch IXWebSocket
-FetchContent_Declare(
-    ixwebsocket
-    GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
-    GIT_TAG        v11.4.6
-)
-set(USE_TLS ON CACHE BOOL "" FORCE)
-set(USE_MBED_TLS ON CACHE BOOL "" FORCE)
-set(USE_WS OFF CACHE BOOL "" FORCE)
-set(USE_ZLIB OFF CACHE BOOL "" FORCE)
-
-FetchContent_GetProperties(ixwebsocket)
-if(NOT ixwebsocket_POPULATED)
-    FetchContent_Populate(ixwebsocket)
+FetchContent_GetProperties(mbedtls)
+if(NOT mbedtls_POPULATED)
+    FetchContent_Populate(mbedtls)
     
-    # Patch IXSocketMbedTLS.cpp to fix compile errors with MbedTLS 2.x
-    set(PATCH_FILE "${ixwebsocket_SOURCE_DIR}/ixwebsocket/IXSocketMbedTLS.cpp")
-    if(EXISTS "${PATCH_FILE}")
-        message(STATUS "Patching ${PATCH_FILE} for Mbed TLS 2.x compatibility...")
-        file(READ "${PATCH_FILE}" FILE_CONTENTS)
-        
-        # 1. Include version.h to define version macros
-        string(REPLACE "#include \"IXSocketMbedTLS.h\"" "#include \"IXSocketMbedTLS.h\"\n#include <mbedtls/version.h>" FILE_CONTENTS "${FILE_CONTENTS}")
-        
-        # 2. Wrap psa_crypto_init in preprocessor conditional
-        string(REPLACE "psa_crypto_init();" "#if defined(MBEDTLS_VERSION_MAJOR) && MBEDTLS_VERSION_MAJOR >= 3\n            psa_crypto_init();\n#endif" FILE_CONTENTS "${FILE_CONTENTS}")
-        
-        # 3. Wrap mbedtls_psa_crypto_free in preprocessor conditional
-        string(REPLACE "mbedtls_psa_crypto_free();" "#if defined(MBEDTLS_VERSION_MAJOR) && MBEDTLS_VERSION_MAJOR >= 3\n            mbedtls_psa_crypto_free();\n#endif" FILE_CONTENTS "${FILE_CONTENTS}")
-        
-        file(WRITE "${PATCH_FILE}" "${FILE_CONTENTS}")
-    endif()
-
-    # Patch CMakeLists.txt to fix case-sensitivity issue with Crypt32 on Linux cross-compilers
-    set(PATCH_CMAKE "${ixwebsocket_SOURCE_DIR}/CMakeLists.txt")
-    if(EXISTS "${PATCH_CMAKE}")
-        message(STATUS "Patching ${PATCH_CMAKE} for Crypt32 case-sensitivity...")
-        file(READ "${PATCH_CMAKE}" CMAKE_CONTENTS)
-        string(REPLACE "PRIVATE Crypt32" "PRIVATE crypt32" CMAKE_CONTENTS "${CMAKE_CONTENTS}")
-        file(WRITE "${PATCH_CMAKE}" "${CMAKE_CONTENTS}")
+    # Patch MbedTLS configuration to enable DTLS-SRTP (required by WebRTC/libdatachannel)
+    set(MBEDTLS_CONFIG_H "${mbedtls_SOURCE_DIR}/include/mbedtls/mbedtls_config.h")
+    if(EXISTS "${MBEDTLS_CONFIG_H}")
+        message(STATUS "Patching ${MBEDTLS_CONFIG_H} to enable MBEDTLS_SSL_DTLS_SRTP...")
+        file(READ "${MBEDTLS_CONFIG_H}" MBEDTLS_CONFIG_CONTENTS)
+        string(REPLACE "//#define MBEDTLS_SSL_DTLS_SRTP" 
+                       "#define MBEDTLS_SSL_DTLS_SRTP" 
+                       MBEDTLS_CONFIG_CONTENTS "${MBEDTLS_CONFIG_CONTENTS}")
+        file(WRITE "${MBEDTLS_CONFIG_H}" "${MBEDTLS_CONFIG_CONTENTS}")
     endif()
     
-    add_subdirectory(${ixwebsocket_SOURCE_DIR} ${ixwebsocket_BINARY_DIR})
+    add_subdirectory(${mbedtls_SOURCE_DIR} ${mbedtls_BINARY_DIR})
 endif()
-target_link_libraries(${PROJECT_NAME} ixwebsocket)
 
+# Create the alias target that libdatachannel expects to find
+if (TARGET mbedtls AND NOT TARGET MbedTLS::MbedTLS)
+    add_library(MbedTLS::MbedTLS ALIAS mbedtls)
+endif()
+
+# ── libdatachannel (WebRTC Data Channels) ──────────────────
+FetchContent_Declare(
+    libdatachannel
+    GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
+    GIT_TAG        v0.22.4
+)
+
+# Configure libdatachannel settings
+set(NO_MEDIA ON CACHE BOOL "" FORCE)
+set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
+set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
+set(NO_TESTS ON CACHE BOOL "" FORCE)
+
+set(USE_GNUTLS OFF CACHE BOOL "" FORCE)
+set(USE_NICE OFF CACHE BOOL "" FORCE)
+set(PREFER_SYSTEM_LIB OFF CACHE BOOL "" FORCE)
+
+set(USE_OPENSSL OFF CACHE BOOL "" FORCE)
+set(USE_MBEDTLS ON CACHE BOOL "" FORCE)
+
+# Populate and patch libdatachannel before making it available
+FetchContent_GetProperties(libdatachannel)
+if(NOT libdatachannel_POPULATED)
+    FetchContent_Populate(libdatachannel)
+    
+    # Patch usrsctp warning flags for Clang cross-compilation
+    set(USRSCTP_CMAKE "${libdatachannel_SOURCE_DIR}/deps/usrsctp/CMakeLists.txt")
+    if(EXISTS "${USRSCTP_CMAKE}")
+        message(STATUS "Patching ${USRSCTP_CMAKE} for Clang compiler warning flags...")
+        file(READ "${USRSCTP_CMAKE}" USRSCTP_CONTENTS)
+        string(REPLACE "if (CMAKE_C_COMPILER_ID MATCHES \"MSVC\" OR CMAKE_C_SIMULATE_ID MATCHES \"MSVC\")" 
+                       "if ((CMAKE_C_COMPILER_ID MATCHES \"MSVC\" OR CMAKE_C_SIMULATE_ID MATCHES \"MSVC\") AND NOT CMAKE_C_COMPILER_ID MATCHES \"Clang\")" 
+                       USRSCTP_CONTENTS "${USRSCTP_CONTENTS}")
+        file(WRITE "${USRSCTP_CMAKE}" "${USRSCTP_CONTENTS}")
+    endif()
+    
+    add_subdirectory(${libdatachannel_SOURCE_DIR} ${libdatachannel_BINARY_DIR})
+endif()
+
+target_link_libraries(${PROJECT_NAME} LibDataChannel::LibDataChannelStatic)
+
+# ── Geode SDK ──────────────────────────────────────────────
 if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "Unable to find Geode SDK! Please define GEODE_SDK environment variable to point to Geode")
 else()
     message(STATUS "Found Geode: $ENV{GEODE_SDK}")
 endif()
+
+# Re-enable install rules specifically for the Geode SDK and the mod target
+set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 

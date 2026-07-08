@@ -1,3 +1,14 @@
+# 0.4.0
+- Completely overhauled netoworking by switching from a central WebSocket relay server to P2P connections using WebRTC data channels (You may need to reset the URL in the mod settings back to default if you came from an older version).
+- Players now connect directly to each other, so there should be no connection bottlenecks in theory.
+- Added a lightweight signaling server (Deno Deploy) that only handles initial matchmaking. All game data flows directly between players serverless.
+- Replaced JSON message format with a compact binary wire protocol.
+- Chunked initial level sync for large levels.
+- Removed dependency on the old Render.com relay server (will still stay up for legacy users on older versions).
+- Fixed the iOS binary (`.ios.dylib`) missing from the `.geode` package by adding the iOS platform to the automated GitHub Actions build matrix (oops).
+- Fixed objects occasionally snapping back to their original position or losing property changes (like color channels) when modifying them rapidly (e.g. copy + paste and then rotate).
+- Fixed desyncs when performing extremely fast keyboard inputs before network ticks.
+
 # 0.3.0
 - Fixed the synchronizing level screen never loading bug when joining a session.
 - Fixed level colors glitching out after joining or when the host changes colors.

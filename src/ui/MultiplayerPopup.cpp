@@ -1,7 +1,7 @@
 #include "MultiplayerPopup.hpp"
 #include "UpdateHelperNode.hpp"
 #include "../SessionManager.hpp"
-#include "../NetworkManager.hpp"
+#include "../P2PManager.hpp"
 #include <Geode/Geode.hpp>
 #include <Geode/ui/Notification.hpp>
 
@@ -305,9 +305,9 @@ namespace mpedit {
         });
 
         session.onError([this](std::string const& error) {
-            auto& net = NetworkManager::get();
+            auto& net = P2PManager::get();
             std::string fullError = error;
-            if (net.getState() == NetworkManager::State::Error) {
+            if (net.getState() == P2PManager::State::Error) {
                 fullError = fmt::format("{}\n\nNetwork: {}", error, net.getError());
             }
             
@@ -354,9 +354,9 @@ namespace mpedit {
         });
 
         session.onError([this](std::string const& error) {
-            auto& net = NetworkManager::get();
+            auto& net = P2PManager::get();
             std::string fullError = error;
-            if (net.getState() == NetworkManager::State::Error) {
+            if (net.getState() == P2PManager::State::Error) {
                 fullError = fmt::format("{}\n\nNetwork: {}", error, net.getError());
             }
             
@@ -421,7 +421,7 @@ namespace mpedit {
     }
 
     void MultiplayerPopup::pollNetwork(float dt) {
-        NetworkManager::get().dispatchMessages();
+        P2PManager::get().dispatchMessages();
     }
 
 } // namespace mpedit

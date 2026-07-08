@@ -68,6 +68,7 @@ namespace mpedit {
         // message via flushPendingPlacements() on the next network tick.
         void queueObjectForPlacement(std::string const& uuid, GameObject* obj);
         void flushPendingPlacements();
+        bool isObjectPendingPlacement(GameObject* obj) const;
 
         // Flag to suppress outgoing messages when processing remote actions
         bool isProcessingRemote() const { return m_processingRemote; }
@@ -135,6 +136,12 @@ namespace mpedit {
             float scaleY = 1.f;
             bool flipX = false;
             bool flipY = false;
+            // When true, the stored position/transform is stale because
+            // move/transform deltas have been applied in-place to the live
+            // object after this snapshot was taken. The unlock handler should
+            // read from the live object instead.
+            bool positionStale = false;
+            bool transformStale = false;
         };
         std::unordered_map<std::string, LockedState> m_lockedSaveStrings;
         std::unordered_map<GameObject*, std::string> m_preSelectSaveStrings;
@@ -156,6 +163,17 @@ namespace mpedit {
         };
         std::optional<PendingSync> m_pendingSync;
         std::vector<std::string> m_expectedUuids;
+
+        struct ChunkedSyncState {
+            int hostPlayerId = -1;
+            uint32_t totalChunks = 0;
+            uint32_t totalObjects = 0;
+            ActionSerializer::LevelSettingsData settings;
+            std::vector<std::string> chunks;
+            std::vector<std::vector<std::string>> uuidChunks;
+            bool active = false;
+        };
+        ChunkedSyncState m_chunkedSync;
 
         // Objects queued for a batched place_objects flush. Stored as UUID +
         // Ref<GameObject> (Ref keeps the object alive across the frame boundary

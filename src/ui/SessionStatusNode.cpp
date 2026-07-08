@@ -1,6 +1,6 @@
 #include "SessionStatusNode.hpp"
 #include "../SessionManager.hpp"
-#include "../NetworkManager.hpp"
+#include "../P2PManager.hpp"
 #include <Geode/Geode.hpp>
 
 using namespace geode::prelude;
@@ -41,7 +41,7 @@ namespace mpedit {
 
     void SessionStatusNode::update(float dt) {
         auto& session = SessionManager::get();
-        auto& net = NetworkManager::get();
+        auto& net = P2PManager::get();
 
         bool inSession = session.isInSession();
         auto state = net.getState();
@@ -74,7 +74,7 @@ namespace mpedit {
         ccColor3B color;
 
         switch (state) {
-            case NetworkManager::State::Connected:
+            case P2PManager::State::Connected:
                 statusText = fmt::format(
                     "MP: {} ({} players)",
                     roomCode,
@@ -83,17 +83,18 @@ namespace mpedit {
                 color = {100, 255, 100}; // Green
                 break;
 
-            case NetworkManager::State::Connecting:
+            case P2PManager::State::Connecting:
+            case P2PManager::State::Reconnecting:
                 statusText = "MP: Connecting...";
                 color = {255, 255, 100}; // Yellow
                 break;
 
-            case NetworkManager::State::Disconnected:
+            case P2PManager::State::Disconnected:
                 statusText = "MP: Disconnected";
                 color = {255, 100, 100}; // Red
                 break;
 
-            case NetworkManager::State::Error:
+            case P2PManager::State::Error:
                 statusText = fmt::format("MP: Error - {}", errStr);
                 color = {255, 100, 100}; // Red
                 break;

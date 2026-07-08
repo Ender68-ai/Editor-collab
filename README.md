@@ -53,11 +53,13 @@ geode build --platform win
 geode build --platform android64
 ```
 
-## Running the Relay Server
+## Running the Signaling Server
 
-The mod routes editor actions through a lightweight WebSocket relay server. A public default server is configured by default (`wss://multiplayeredit.onrender.com`), but you can host your own.
+The mod establishes direct Peer-to-Peer (P2P) connections between players using WebRTC. However, it requires a lightweight signaling server to exchange initial connection information to matchmake players. A public default signaling server is configured by default (`https://dewy-flea-9364.d050.deno.net`), but you can host your own.
 
-See the [server/README.md](server/README.md) file for setup and hosting instructions. You can update the **Server URL** setting in the mod settings in-game to connect to your custom server.
+See the [server/README.md](server/README.md) file for setup and hosting instructions. You can update the **Signaling Server URL** setting in the mod settings in-game to connect to your custom server.
+
+> **Note**: If you want to use the old centralized NodeJS WebSocket relay server, you will need to use version 0.3.0. Please refer to the `MultiplayerEdit-LEGACY-0.3.0` release for the older server files and compatible mod version.
 
 ## Support Development
 

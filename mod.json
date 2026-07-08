@@ -8,7 +8,7 @@
     },
     "id": "d050.multiplayeredit",
     "name": "Multiplayer Edit",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "developer": "d050",
     "description": "Collaborate with friends in real-time level editing! Host a session and build together.",
     "tags": [
@@ -18,16 +18,16 @@
         "utility"
     ],
     "settings": {
-        "server-section": {
+        "connection-section": {
             "type": "title",
-            "name": "Server Settings"
+            "name": "Connection Settings"
         },
-        "server-url": {
+        "signaling-url": {
             "type": "string",
-            "name": "Server URL",
-            "description": "The WebSocket relay server URL to connect to.",
-            "default": "wss://multiplayeredit.onrender.com",
-            "max-length": 100,
+            "name": "Signaling Server URL",
+            "description": "URL of the signaling server used for connection setup. Only change this if you're self-hosting your own signaling server.",
+            "default": "https://dewy-flea-9364.d050.deno.net",
+            "max-length": 150,
             "filter": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:/.?&=-_"
         },
         "player-name": {
