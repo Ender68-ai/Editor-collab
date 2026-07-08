@@ -630,8 +630,7 @@ namespace mpedit {
         auto reliable = pc->createDataChannel("reliable");
 
         rtc::DataChannelInit unreliableInit;
-        unreliableInit.reliability.type = rtc::Reliability::Type::Rexmit;
-        unreliableInit.reliability.rexmit = 0;
+        unreliableInit.reliability.maxRetransmits = 0;
         auto unreliable = pc->createDataChannel("unreliable", unreliableInit);
 
         PeerInfo peer;

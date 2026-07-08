@@ -262,7 +262,7 @@ namespace {
                     handler.registerObject(uuid, obj);
                 }
                 currentChunk.uuids.push_back(uuid);
-                currentChunk.objectsString += obj->getSaveString(editor) + ";";
+                currentChunk.objectsString += std::string(obj->getSaveString(editor)) + ";";
                 
                 if (currentChunk.uuids.size() >= BATCH_SIZE) {
                     chunks.push_back(std::move(currentChunk));
