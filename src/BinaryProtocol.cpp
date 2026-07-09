@@ -91,6 +91,33 @@ namespace mpedit::proto {
         return t;
     }
 
+    void writeReconcileData(Writer& w, ActionSerializer::ReconcileData const& r) {
+        w.writeString(r.uuid);
+        w.writeF32(r.x);
+        w.writeF32(r.y);
+        w.writeF32(r.rotation);
+        w.writeF32(r.scaleX);
+        w.writeF32(r.scaleY);
+        uint8_t flags = 0;
+        if (r.flipX) flags |= 0x01;
+        if (r.flipY) flags |= 0x02;
+        w.writeU8(flags);
+    }
+
+    ActionSerializer::ReconcileData readReconcileData(Reader& r) {
+        ActionSerializer::ReconcileData data;
+        data.uuid = r.readString();
+        data.x = r.readF32();
+        data.y = r.readF32();
+        data.rotation = r.readF32();
+        data.scaleX = r.readF32();
+        data.scaleY = r.readF32();
+        uint8_t flags = r.readU8();
+        data.flipX = (flags & 0x01) != 0;
+        data.flipY = (flags & 0x02) != 0;
+        return data;
+    }
+
     void writeLockData(Writer& w, ActionSerializer::LockData const& lock) {
         w.writeString(lock.uuid);
         w.writeVarInt(static_cast<uint32_t>(lock.playerId));
@@ -167,6 +194,18 @@ namespace mpedit::proto {
         w.writeVarInt(static_cast<uint32_t>(transforms.size()));
         for (auto const& t : transforms) {
             writeTransformData(w, t);
+        }
+        return std::move(w.takeData());
+    }
+
+    std::vector<uint8_t> serializeReconcileObjects(
+        std::vector<ActionSerializer::ReconcileData> const& reconciles)
+    {
+        Writer w;
+        w.writeOpcode(Opcode::ReconcileObjects);
+        w.writeVarInt(static_cast<uint32_t>(reconciles.size()));
+        for (auto const& r : reconciles) {
+            writeReconcileData(w, r);
         }
         return std::move(w.takeData());
     }
@@ -331,6 +370,16 @@ namespace mpedit::proto {
         msg.transforms.reserve(count);
         for (uint32_t i = 0; i < count; ++i) {
             msg.transforms.push_back(readTransformData(r));
+        }
+        return msg;
+    }
+
+    ReconcileObjectsMsg deserializeReconcileObjects(Reader& r) {
+        ReconcileObjectsMsg msg;
+        uint32_t count = r.readVarInt();
+        msg.reconciles.reserve(count);
+        for (uint32_t i = 0; i < count; ++i) {
+            msg.reconciles.push_back(readReconcileData(r));
         }
         return msg;
     }

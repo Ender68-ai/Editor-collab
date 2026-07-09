@@ -917,6 +917,11 @@ namespace {
     // so these per-command hooks are sufficient on their own.
     void syncTransformedObjects(cocos2d::CCArray* objects,
                                 std::function<void()> applyBase) {
+        if (s_inTransformSync) {
+            applyBase();
+            return;
+        }
+
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
 
@@ -1370,6 +1375,7 @@ class $modify(MPEditorUI, EditorUI) {
         // how it was triggered. Performance is fine because the loop only covers
         // currently-selected objects, not the whole level.
         std::vector<std::string> unlockUuids;
+        std::vector<ActionSerializer::ReconcileData> reconciles;
         std::vector<ActionSerializer::ObjectData> updates;
 
         for (auto it = tracked.begin(); it != tracked.end(); ) {
@@ -1394,10 +1400,22 @@ class $modify(MPEditorUI, EditorUI) {
             if (!isSelected) {
                 unlockUuids.push_back(uuid);
 
-                // On deselect, always diff — this captures the final state of an
-                // edit that just ended (cheap: it's a single object).
+                // Send a quick Reconcile on deselect to fix any drift!
+                ActionSerializer::ReconcileData rec;
+                rec.uuid = uuid;
+                rec.x = obj->getPositionX();
+                rec.y = obj->getPositionY();
+                rec.rotation = obj->getRotation();
+                rec.scaleX = obj->getScaleX();
+                rec.scaleY = obj->getScaleY();
+                rec.flipX = obj->isFlipX();
+                rec.flipY = obj->isFlipY();
+                reconciles.push_back(rec);
+
+                // Only send UpdateObjects if there are deep property changes (color, groups, etc.)
+                // This prevents massive lag spikes from deleting/recreating objects that were only moved.
                 std::string currentSave = obj->getSaveString(editor);
-                if (it->second != currentSave) {
+                if (ActionSerializer::hasDeepPropertyChanges(it->second, currentSave)) {
                     if (obj->m_objectID != 31) {
                         updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                     }
@@ -1413,10 +1431,13 @@ class $modify(MPEditorUI, EditorUI) {
                 // (as 0.3.0 did) silently dropped them. Cost is bounded: the loop
                 // only covers currently-selected objects.
                 std::string currentSave = obj->getSaveString(editor);
-                if (it->second != currentSave) {
+                if (ActionSerializer::hasDeepPropertyChanges(it->second, currentSave)) {
                     if (obj->m_objectID != 31) {
                         updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                     }
+                    it->second = currentSave;
+                } else if (it->second != currentSave) {
+                    // Update the cached save string anyway so we don't keep diffing position
                     it->second = currentSave;
                 }
                 ++it;
@@ -1425,6 +1446,10 @@ class $modify(MPEditorUI, EditorUI) {
 
         if (!unlockUuids.empty()) {
             auto data = proto::serializeLockObjects(unlockUuids, false);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        }
+        if (!reconciles.empty()) {
+            auto data = proto::serializeReconcileObjects(reconciles);
             P2PManager::get().send(std::move(data), ChannelType::Reliable);
         }
         if (!updates.empty()) {
@@ -1623,6 +1648,56 @@ class $modify(MPCustomizeObjectLayer, CustomizeObjectLayer) {
         auto& session = SessionManager::get();
         if (!session.isInSession()) return;
         
+        auto editor = LevelEditorLayer::get();
+        if (editor && editor->m_levelSettings) {
+            ActionSerializer::LevelSettingsData settings;
+            settings.saveString = editor->m_levelSettings->getSaveString();
+            settings.audioTrack = editor->m_level->m_audioTrack;
+            settings.songID = editor->m_level->m_songID;
+            settings.levelLength = editor->m_level->m_levelLength;
+            
+            auto packet = proto::serializeUpdateSettings(settings);
+            P2PManager::get().send(std::move(packet), ChannelType::Reliable);
+        }
+    }
+};
+
+#include <Geode/modify/LevelSettingsLayer.hpp>
+class $modify(MPLevelSettingsLayer, LevelSettingsLayer) {
+    void onClose(cocos2d::CCObject* sender) {
+        LevelSettingsLayer::onClose(sender);
+
+        auto& handler = RemoteActionHandler::get();
+        if (handler.isProcessingRemote() || !handler.isInitialSyncCompleted()) return;
+
+        auto& session = SessionManager::get();
+        if (!session.isInSession()) return;
+
+        auto editor = LevelEditorLayer::get();
+        if (editor && editor->m_levelSettings) {
+            ActionSerializer::LevelSettingsData settings;
+            settings.saveString = editor->m_levelSettings->getSaveString();
+            settings.audioTrack = editor->m_level->m_audioTrack;
+            settings.songID = editor->m_level->m_songID;
+            settings.levelLength = editor->m_level->m_levelLength;
+            
+            auto packet = proto::serializeUpdateSettings(settings);
+            P2PManager::get().send(std::move(packet), ChannelType::Reliable);
+        }
+    }
+};
+
+#include <Geode/modify/ColorSelectPopup.hpp>
+class $modify(MPColorSelectPopup, ColorSelectPopup) {
+    void closeColorSelect(cocos2d::CCObject* sender) {
+        ColorSelectPopup::closeColorSelect(sender);
+
+        auto& handler = RemoteActionHandler::get();
+        if (handler.isProcessingRemote() || !handler.isInitialSyncCompleted()) return;
+
+        auto& session = SessionManager::get();
+        if (!session.isInSession()) return;
+
         auto editor = LevelEditorLayer::get();
         if (editor && editor->m_levelSettings) {
             ActionSerializer::LevelSettingsData settings;

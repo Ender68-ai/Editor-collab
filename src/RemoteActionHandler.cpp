@@ -81,10 +81,6 @@ namespace mpedit {
             // it from the authoritative flip flag.
             float magX = std::fabs(scaleX);
             float magY = std::fabs(scaleY);
-            // Guard against a zero magnitude (which would make the object
-            // invisible) by defaulting to 1.
-            if (magX < 0.0001f) magX = 1.f;
-            if (magY < 0.0001f) magY = 1.f;
 
             obj->setFlipX(flipX);
             obj->setFlipY(flipY);
@@ -150,6 +146,16 @@ namespace mpedit {
                 handleRemoteTransformObjects(playerId, msg.transforms);
             } catch (std::exception const& e) {
                 log::error("RemoteActionHandler: Error deserializing TransformObjects: {}", e.what());
+            }
+        });
+
+        net.on(proto::Opcode::ReconcileObjects, [this](int playerId, proto::Reader& reader) {
+            if (playerId == P2PManager::get().getLocalPlayerId()) return;
+            try {
+                auto msg = proto::deserializeReconcileObjects(reader);
+                handleRemoteReconcileObjects(playerId, msg.reconciles);
+            } catch (std::exception const& e) {
+                log::error("RemoteActionHandler: Error deserializing ReconcileObjects: {}", e.what());
             }
         });
 
@@ -450,17 +456,8 @@ namespace mpedit {
             obj->setPosition({pos.x + move.dx, pos.y + move.dy});
             editor->updateObjectSection(obj);
 
-            // Mark that the stored LockedState position is stale — the live
-            // object has the correct position from accumulated deltas.
-            // We keep the LockedState (if any) so its saveString can still
-            // carry non-transform properties (color channels, groups, etc.)
-            // that were set via UpdateObjects. The unlock handler will read
-            // the live position instead of the stored snapshot position.
-            auto lsIt = m_lockedSaveStrings.find(move.uuid);
-            if (lsIt != m_lockedSaveStrings.end()) {
-                lsIt->second.positionStale = true;
-            }
-
+            // Move makes any pending position in locked state stale
+            // (Removed lockedSaveStrings handling)
             log::debug("RemoteActionHandler: Moved object (uuid={}) by ({}, {})", move.uuid, move.dx, move.dy);
         }
 
@@ -486,16 +483,43 @@ namespace mpedit {
 
             applyTransformSafe(obj, t.rotation, t.scaleX, t.scaleY, t.flipX, t.flipY);
 
-            // Mark that the stored LockedState transform is stale — the live
-            // object has the correct transform from this delta. Keep the
-            // LockedState so its saveString can carry non-transform properties.
-            auto lsIt = m_lockedSaveStrings.find(t.uuid);
-            if (lsIt != m_lockedSaveStrings.end()) {
-                lsIt->second.transformStale = true;
-            }
-
+            // Transform makes any pending transform in locked state stale
+            // (Removed lockedSaveStrings handling)
             log::debug("RemoteActionHandler: transformed object (uuid={}..., rot={:.1f}, flipX={}, flipY={})",
                 t.uuid.substr(0, 8), t.rotation, t.flipX, t.flipY);
+        }
+
+        m_processingRemote = false;
+    }
+
+    void RemoteActionHandler::handleRemoteReconcileObjects(
+        int playerId,
+        std::vector<ActionSerializer::ReconcileData> const& reconciles
+    ) {
+        auto* editor = getEditorLayer();
+        if (!editor) return;
+
+        log::debug("RemoteActionHandler: applying remote reconcile (playerId={}, n={})", playerId, reconciles.size());
+        m_processingRemote = true;
+
+        for (auto& r : reconciles) {
+            auto* obj = getObjectByUUID(r.uuid);
+            if (!obj) {
+                log::warn("RemoteActionHandler: Object with uuid '{}' not found for reconcile", r.uuid);
+                continue;
+            }
+
+            // Set absolute position
+            obj->setPosition(cocos2d::CCPoint{r.x, r.y});
+            
+            // Set absolute transform
+            applyTransformSafe(obj, r.rotation, r.scaleX, r.scaleY, r.flipX, r.flipY);
+
+            // Reconcile makes any pending transforms/moves in locked state stale
+            // (Removed lockedSaveStrings handling)
+
+            log::debug("RemoteActionHandler: reconciled object (uuid={}..., pos=({}, {}), rot={:.1f})",
+                r.uuid.substr(0, 8), r.x, r.y, r.rotation);
         }
 
         m_processingRemote = false;
@@ -517,38 +541,7 @@ namespace mpedit {
                 continue;
             }
 
-            // Check if the object is currently locked by a remote player
-            bool isLockedRemote = false;
-            auto const& locks = m_objectLocks;
-            auto it = locks.find(objData.uuid);
-            if (it != locks.end() && it->second.playerId != SessionManager::get().getLocalPlayerId()) {
-                isLockedRemote = true;
-            }
-
-            if (isLockedRemote) {
-                // Update transform and basic properties in place to avoid deletion and recreation during dragging.
-                // Use applyTransformSafe to keep flip flag and scale sign consistent.
-                oldObj->setPosition({objData.x, objData.y});
-                applyTransformSafe(oldObj, objData.rotation, objData.scaleX, objData.scaleY, objData.flipX, objData.flipY);
-                oldObj->m_editorLayer = objData.editorLayer;
-                oldObj->m_editorLayer2 = objData.editorLayer2;
-                
-                editor->updateObjectSection(oldObj);
-                editor->updateObjectLabel(oldObj);
-                
-                // Store the latest saveString to apply final recreations upon unlock
-                m_lockedSaveStrings[objData.uuid] = LockedState{
-                    objData.saveString,
-                    objData.rotation,
-                    objData.scaleX,
-                    objData.scaleY,
-                    objData.flipX,
-                    objData.flipY
-                };
-                
-                log::debug("RemoteActionHandler: Updated locked object {} in-place", objData.uuid);
-                continue;
-            }
+            // Removed deferred update for locked objects; UpdateObjects now only happens on deep property changes, so recreating immediately is safe and fixes delayed sync.
 
             // Get selection state
             auto* editorUI = editor->m_editorUI;
@@ -637,92 +630,11 @@ namespace mpedit {
                 }
             }
         } else {
-            auto* editor = getEditorLayer();
             for (auto& uuid : uuids) {
                 auto it = m_objectLocks.find(uuid);
                 if (it != m_objectLocks.end() && it->second.playerId == playerId) {
                     m_objectLocks.erase(it);
-                    
-                    // If we have a pending final saveString and editor is active, recreate the object now to apply all final properties
-                    if (editor) {
-                        auto saveIt = m_lockedSaveStrings.find(uuid);
-                        if (saveIt != m_lockedSaveStrings.end()) {
-                            LockedState state = saveIt->second;
-                            std::string saveStr = state.saveString;
-                            m_lockedSaveStrings.erase(saveIt);
-                            
-                            auto* oldObj = getObjectByUUID(uuid);
-                            if (oldObj) {
-                                // Check if the saveString has actually changed.
-                                // If it hasn't (or only transform properties changed, which are updated in-place),
-                                // we can skip the recreation completely!
-                                std::string currentSave = oldObj->getSaveString(editor);
-                                if (currentSave != saveStr) {
-                                    // Capture live position/transform BEFORE deletion
-                                    // so we can re-apply them after recreation when
-                                    // move/transform deltas made the stored snapshot stale.
-                                    cocos2d::CCPoint livePos = oldObj->getPosition();
-                                    float liveRot = oldObj->getRotation();
-                                    float liveSX = oldObj->getScaleX();
-                                    float liveSY = oldObj->getScaleY();
-                                    bool liveFX = oldObj->isFlipX();
-                                    bool liveFY = oldObj->isFlipY();
-
-                                    auto* editorUI = editor->m_editorUI;
-                                    bool wasSelected = false;
-                                    if (editorUI && (editorUI->m_selectedObject == oldObj || (editorUI->m_selectedObjects && editorUI->m_selectedObjects->containsObject(oldObj)))) {
-                                        wasSelected = true;
-                                        editorUI->deselectObject(oldObj);
-                                        if (editorUI->m_selectedObject == oldObj) {
-                                            editorUI->m_selectedObject = nullptr;
-                                        }
-                                        if (editorUI->m_selectedObjects && editorUI->m_selectedObjects->containsObject(oldObj)) {
-                                            editorUI->m_selectedObjects->removeObject(oldObj);
-                                        }
-                                    }
-                                    
-                                    pruneObjectFromHistory(editor, oldObj);
-                                    editor->removeObject(oldObj, true);
-                                    unregisterObject(uuid);
-                                    
-                                    auto newObjs = createObjectsFromSaveStringRobust(editor, saveStr);
-                                    if (!newObjs.empty()) {
-                                        auto* newObj = newObjs.front();
-
-                                        if (state.positionStale) {
-                                            // Position was updated by move deltas
-                                            // after the snapshot — use the live pos.
-                                            newObj->setPosition(livePos);
-                                            editor->updateObjectSection(newObj);
-                                        }
-
-                                        if (state.transformStale) {
-                                            // Transform was updated by transform
-                                            // deltas — use the live transform.
-                                            applyTransformSafe(newObj, liveRot, liveSX, liveSY, liveFX, liveFY);
-                                        } else {
-                                            // Re-apply the authoritative transform carried
-                                            // alongside the saveString. GD's saveString flip
-                                            // round-trip can invert m_isFlipX on recreate, so
-                                            // we overwrite with the sender-observed values.
-                                            applyTransformSafe(newObj, state.rotation, state.scaleX, state.scaleY, state.flipX, state.flipY);
-                                        }
-
-                                        registerObject(uuid, newObj);
-
-                                        if (wasSelected && editorUI) {
-                                            editorUI->selectObject(newObj, true);
-                                        }
-                                        log::debug("RemoteActionHandler: Finished edit and applied final saveString recreate for uuid={} (posStale={}, xfrmStale={})", uuid, state.positionStale, state.transformStale);
-                                    } else {
-                                        log::warn("RemoteActionHandler: saveString recreation failed on unlock for uuid={}, object lost", uuid);
-                                    }
-                                } else {
-                                    log::debug("RemoteActionHandler: Skipped unlock recreation since saveStrings are identical for uuid={}", uuid);
-                                }
-                            }
-                        }
-                    }
+                    // Object recreation on unlock removed since UpdateObjects are now applied immediately.
                 }
             }
         }
@@ -913,7 +825,6 @@ namespace mpedit {
             GameObject* obj = it->second;
             m_objectToUuid.erase(obj);
             m_uuidToObject.erase(it);
-            m_preSelectSaveStrings.erase(obj);
         }
     }
 
@@ -1003,8 +914,6 @@ namespace mpedit {
         m_uuidToObject.clear();
         m_objectToUuid.clear();
         m_objectLocks.clear();
-        m_lockedSaveStrings.clear();
-        // NOTE: Do NOT clear m_expectedUuids here - they are set before init() and must survive
         m_preSelectSaveStrings.clear();
         m_pendingPlacements.clear();
         m_initialSyncCompleted = false;

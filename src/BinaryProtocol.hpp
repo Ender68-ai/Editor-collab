@@ -19,6 +19,7 @@ namespace mpedit::proto {
         TransformObjects  = 0x04,
         UpdateObjects     = 0x05,
         LockObjects       = 0x06,
+        ReconcileObjects  = 0x07,
 
         // Level sync (reliable channel, chunked)
         SyncLevelStart    = 0x10,
@@ -249,6 +250,10 @@ namespace mpedit::proto {
     std::vector<uint8_t> serializeTransformObjects(
         std::vector<ActionSerializer::TransformData> const& transforms);
 
+    // Objects reconciled: [opcode][count:varint][ReconcileData...]
+    std::vector<uint8_t> serializeReconcileObjects(
+        std::vector<ActionSerializer::ReconcileData> const& reconciles);
+
     // Objects updated: [opcode][count:varint][ObjectData...]
     std::vector<uint8_t> serializeUpdateObjects(
         std::vector<ActionSerializer::ObjectData> const& objects);
@@ -326,6 +331,11 @@ namespace mpedit::proto {
         std::vector<ActionSerializer::TransformData> transforms;
     };
     TransformObjectsMsg deserializeTransformObjects(Reader& r);
+
+    struct ReconcileObjectsMsg {
+        std::vector<ActionSerializer::ReconcileData> reconciles;
+    };
+    ReconcileObjectsMsg deserializeReconcileObjects(Reader& r);
 
     struct UpdateObjectsMsg {
         std::vector<ActionSerializer::ObjectData> objects;

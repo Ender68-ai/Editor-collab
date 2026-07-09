@@ -35,6 +35,7 @@ namespace mpedit {
         void handleRemoteDeleteObjects(int playerId, std::vector<std::string> const& uuids);
         void handleRemoteMoveObjects(int playerId, std::vector<ActionSerializer::MoveData> const& moves);
         void handleRemoteTransformObjects(int playerId, std::vector<ActionSerializer::TransformData> const& transforms);
+        void handleRemoteReconcileObjects(int playerId, std::vector<ActionSerializer::ReconcileData> const& reconciles);
         void handleRemoteUpdateObjects(int playerId, std::vector<ActionSerializer::ObjectData> const& objects);
         void handleRemoteLockObjects(int playerId, std::vector<std::string> const& uuids, bool locked);
         void handleRemoteSyncLevel(int playerId, std::string const& objectsString, std::vector<std::string> const& uuids, ActionSerializer::LevelSettingsData const& settings, std::vector<ActionSerializer::LockData> const& locks, bool isPendingSync = false);
@@ -123,27 +124,6 @@ namespace mpedit {
         std::unordered_map<std::string, LockInfo> m_objectLocks;
         // Pending final state for an object being edited by a remote player.
         // We update its transform in-place every tick while it's locked, and
-        // store the latest saveString here so that on unlock we can recreate it
-        // (to pick up non-transform properties). The authoritative transform is
-        // carried alongside because GD's saveString flip round-trip
-        // (createObjectsFromString) can land on the OPPOSITE runtime m_isFlipX
-        // from what the sender observed — re-applying it after recreate prevents
-        // the remote from showing an inverted flip state.
-        struct LockedState {
-            std::string saveString;
-            float rotation = 0.f;
-            float scaleX = 1.f;
-            float scaleY = 1.f;
-            bool flipX = false;
-            bool flipY = false;
-            // When true, the stored position/transform is stale because
-            // move/transform deltas have been applied in-place to the live
-            // object after this snapshot was taken. The unlock handler should
-            // read from the live object instead.
-            bool positionStale = false;
-            bool transformStale = false;
-        };
-        std::unordered_map<std::string, LockedState> m_lockedSaveStrings;
         std::unordered_map<GameObject*, std::string> m_preSelectSaveStrings;
 
         bool m_processingRemote = false;

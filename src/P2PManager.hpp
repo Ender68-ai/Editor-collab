@@ -113,6 +113,11 @@ namespace mpedit {
         P2PManager& operator=(P2PManager const&) = delete;
 
         // ── ICE / WebRTC ──────────────────────────────────────
+        struct PendingMessage {
+            std::vector<uint8_t> data;
+            ChannelType channel;
+        };
+
         struct PeerInfo {
             std::shared_ptr<rtc::PeerConnection> pc;
             std::shared_ptr<rtc::DataChannel> reliable;
@@ -121,6 +126,7 @@ namespace mpedit {
             std::string playerName;
             int colorIndex = 0;
             bool ready = false; // both channels open
+            std::vector<PendingMessage> pendingMessages;
         };
 
         rtc::Configuration makeRtcConfig();

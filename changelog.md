@@ -1,3 +1,9 @@
+# 0.4.1
+- Fixed desync issues with color channels and property edits. Property updates (like assigning a color channel in the edit object menu) should be processed and visualized instantly.
+- Fixed multi object rotation being bugged.
+- Added a buffer queue to hopefully reduce dropped messages.
+- Fixed rare scaling issue caused by rounding errors.
+
 # 0.4.0
 - Completely overhauled netoworking by switching from a central WebSocket relay server to P2P connections using WebRTC data channels (You may need to reset the URL in the mod settings back to default if you came from an older version).
 - Players now connect directly to each other, so there should be no connection bottlenecks in theory.

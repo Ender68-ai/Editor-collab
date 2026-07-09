@@ -61,6 +61,17 @@ namespace mpedit {
             bool flipY = false;
         };
 
+        struct ReconcileData {
+            std::string uuid;
+            float x = 0.f;
+            float y = 0.f;
+            float rotation = 0.f;
+            float scaleX = 1.f;
+            float scaleY = 1.f;
+            bool flipX = false;
+            bool flipY = false;
+        };
+
         struct LockData {
             std::string uuid;
             int playerId = 0;
@@ -70,6 +81,9 @@ namespace mpedit {
         // === GameObject helpers ===
 
         ObjectData extractObjectData(GameObject* obj, std::string const& uuid);
+        
+        // Returns true if there are changes between two save strings, excluding transform properties
+        bool hasDeepPropertyChanges(std::string const& oldSave, std::string const& newSave);
 
     } // namespace ActionSerializer
 

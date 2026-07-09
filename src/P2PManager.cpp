@@ -166,9 +166,13 @@ namespace mpedit {
     void P2PManager::sendTo(int playerId, std::vector<uint8_t> const& data, ChannelType channel) {
         std::lock_guard lock(m_peersMutex);
         auto it = m_peers.find(playerId);
-        if (it == m_peers.end() || !it->second.ready) return;
+        if (it == m_peers.end()) return;
 
         auto& peer = it->second;
+        if (!peer.ready) {
+            peer.pendingMessages.push_back({data, channel});
+            return;
+        }
         auto& dc = (channel == ChannelType::Reliable) ? peer.reliable : peer.unreliable;
 
         if (dc && dc->isOpen()) {
@@ -728,6 +732,18 @@ namespace mpedit {
             int colorIdx = peer.colorIndex;
 
             log::info("P2PManager: Player {} ({}) fully connected", pid, name);
+
+            for (auto& msg : peer.pendingMessages) {
+                auto& dc = (msg.channel == ChannelType::Reliable) ? peer.reliable : peer.unreliable;
+                if (dc && dc->isOpen()) {
+                    try {
+                        dc->send(reinterpret_cast<const std::byte*>(msg.data.data()), msg.data.size());
+                    } catch (std::exception const& e) {
+                        log::error("P2PManager: Send buffered msg to player {} failed: {}", pid, e.what());
+                    }
+                }
+            }
+            peer.pendingMessages.clear();
 
             // If client connecting to host, we're now Connected
             if (m_role == Role::Client && pid == 0) {
