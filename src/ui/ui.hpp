@@ -1,5 +1,4 @@
 #pragma once
-#include "cocos2d.h"
 
 using namespace cocos2d;
 
@@ -9,5 +8,5 @@ public:
     bool init() override;
 
     void onBack(CCObject*);
-    void onMyButton(CCObject*);
+    void onSettings(CCObject*);
 };

@@ -24,8 +24,10 @@
         "sprites": [
             "resources/backbtn.png",
             "resources/button.png",
+            "resources/button2.png",
             "resources/crosshair.png",
-            "resources/cursor.png"
+            "resources/cursor.png",
+            "resources/settingsbtn.png"
         ]
     }
 }
