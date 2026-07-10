@@ -1,12 +1,10 @@
+rem this is only for people who do not have visual studio code on windows, if you do have it, just configure and press f7
+
 @echo off
 setlocal EnableExtensions
 
-rem Clean build + CMake cache (IMPORTANT fix)
 if exist build rd /s /q build
 
-rem =========================
-rem MAX RUNTIME FLAGS (Clang)
-rem =========================
 set "CFLAGS=-O3 -ffast-math -DNDEBUG -march=native -mtune=native -flto"
 set "CXXFLAGS=-O3 -ffast-math -DNDEBUG -march=native -mtune=native -flto"
 
