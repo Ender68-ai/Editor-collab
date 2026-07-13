@@ -1,5 +1,6 @@
 #include <Geode/modify/LevelBrowserLayer.hpp>
 #include <Geode/binding/LevelBrowserLayer.hpp>
+#include <Geode/cocos/layers_scenes_transitions_nodes/CCTransition.h>
 #include "../ui.hpp"
 
 class $modify(MyLevelBrowserLayer, LevelBrowserLayer) {
@@ -41,6 +42,8 @@ class $modify(MyLevelBrowserLayer, LevelBrowserLayer) {
     auto collabLayer = CollabLayer::create();
     auto scene = CCScene::create();
     scene->addChild(collabLayer);
+    auto transition = Transition::create(0.5f, scene, {0, 0, 0});
+    CCDirector::sharedDirector()->pushScene(transition);
     CCDirector::sharedDirector()->pushScene(scene);
 }
 };

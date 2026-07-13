@@ -1,36 +1,9 @@
 #include <Geode/Geode.hpp>
+#include "settings/settings.hpp"
+#include "CollabLayer.hpp"
 #include "../ui.hpp"
 
 using namespace geode::prelude;
-
-// Complex popup example: subclass of geode::Popup
-class settingsPopup : public geode::Popup {
-protected:
-    bool init(std::string const& value) {
-        if (!Popup::init(240.f, 160.f))
-            return false;
-
-        this->setTitle("Settings");
-
-        auto label = CCLabelBMFont::create(value.c_str(), "bigFont.fnt");
-        if (label && m_mainLayer) {
-            m_mainLayer->addChildAtPosition(label, Anchor::Center);
-        }
-
-        return true;
-    }
-
-public:
-    static settingsPopup* create(std::string const& text) {
-        auto ret = new settingsPopup();
-        if (ret && ret->init(text)) {
-            ret->autorelease();
-            return ret;
-        }
-        delete ret;
-        return nullptr;
-    }
-};
 
 CollabLayer* CollabLayer::create() {
     auto ret = new CollabLayer();
@@ -51,10 +24,11 @@ bool CollabLayer::init() {
         return false;
 
     auto winSize = CCDirector::sharedDirector()->getWinSize();
-
-    cocos2d::ccColor4B backgroundColor = { 255, 255, 255, 255 };
-    auto background = CCLayerColor::create(backgroundColor, winSize.width, winSize.height);
-    background->setPosition({0, 0});
+    auto background = CCSprite::create("GJ_gradientBG.png");    
+    background->setScaleX(winSize.width / background->getContentSize().width);
+    background->setScaleY(winSize.height / background->getContentSize().height);
+    background->setPosition({winSize.width / 2, winSize.height / 2});
+    background->setColor({ 120, 161, 255 });
     this->addChild(background, -10);
 
     // Create the sprite for the back button
@@ -67,7 +41,7 @@ bool CollabLayer::init() {
     backSprite->setOpacity(255);
     backSprite->setCascadeColorEnabled(true);
     backSprite->setCascadeOpacityEnabled(true);
-    backSprite->setPosition({winSize.width * 0.05f, winSize.height * 0.9f});
+    backSprite->setPosition({winSize.width * 0.02f, winSize.height * 0.95f});
 
     auto backButton = CCMenuItemSpriteExtra::create(
         backSprite,
@@ -90,13 +64,13 @@ bool CollabLayer::init() {
     );
 
     backButton->setPosition({
-        winSize.width * 0.05f,
-        winSize.height * 0.9f
+        winSize.width * 0.02f,
+        winSize.height * 0.92f
     });
 
     settingsButton->setPosition({
-        winSize.width * 0.05f,
-        winSize.height * 0.75f
+        winSize.width * 0.02f,
+        winSize.height * 0.80f
     });
 
     auto menu = CCMenu::create();
