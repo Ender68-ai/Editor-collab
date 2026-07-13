@@ -15,8 +15,13 @@ CollabLayer* CollabLayer::create() {
     return nullptr;
 }
 
-void CollabLayer::onBack(CCObject*) {
-    CCDirector::sharedDirector()->popScene();
+void CollabLayer::onBack(CCObject* sender) {
+    auto scene = CCScene::create();
+    auto searchObject = GJSearchObject::create(SearchType::MyLevels);
+    auto browserLayer = LevelBrowserLayer::create(searchObject);
+    scene->addChild(browserLayer);
+    auto transition = CCTransitionFade::create(0.5f, scene);
+    CCDirector::sharedDirector()->replaceScene(transition);
 }
 
 bool CollabLayer::init() {
