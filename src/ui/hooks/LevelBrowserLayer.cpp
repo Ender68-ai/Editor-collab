@@ -44,6 +44,5 @@ class $modify(MyLevelBrowserLayer, LevelBrowserLayer) {
     scene->addChild(collabLayer);
     auto transition = Transition::create(0.5f, scene, {0, 0, 0});
     CCDirector::sharedDirector()->pushScene(transition);
-    CCDirector::sharedDirector()->pushScene(scene);
 }
 };

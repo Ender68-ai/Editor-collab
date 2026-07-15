@@ -16,12 +16,10 @@ CollabLayer* CollabLayer::create() {
 }
 
 void CollabLayer::onBack(CCObject* sender) {
-    auto scene = CCScene::create();
-    auto searchObject = GJSearchObject::create(SearchType::MyLevels);
-    auto browserLayer = LevelBrowserLayer::create(searchObject);
-    scene->addChild(browserLayer);
-    auto transition = CCTransitionFade::create(0.5f, scene);
-    CCDirector::sharedDirector()->replaceScene(transition);
+    CCDirector::sharedDirector()->popSceneWithTransition(
+        0.5f, 
+        cocos2d::PopTransition()
+    );
 }
 
 bool CollabLayer::init() {
