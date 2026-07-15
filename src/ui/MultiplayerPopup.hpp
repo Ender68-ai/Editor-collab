@@ -10,6 +10,12 @@ namespace mpedit {
      * Allows players to host or join a session.
      */
     class MultiplayerPopup : public geode::Popup {
+    public:
+        enum class Mode {
+            Join,
+            Host,
+        };
+
     protected:
         geode::TextInput* m_roomCodeInput = nullptr;
         cocos2d::CCLabelBMFont* m_statusLabel = nullptr;
@@ -17,6 +23,7 @@ namespace mpedit {
         cocos2d::CCMenu* m_connectMenu = nullptr;
         cocos2d::CCMenu* m_sessionMenu = nullptr;
         cocos2d::CCNode* m_contentNode = nullptr;
+        Mode m_mode = Mode::Join;
 
         ~MultiplayerPopup();
 
@@ -39,7 +46,7 @@ namespace mpedit {
 
     public:
         static inline MultiplayerPopup* s_instance = nullptr;
-        static MultiplayerPopup* create();
+        static MultiplayerPopup* create(Mode mode = Mode::Join);
         void forceClose() {
             this->onClose(nullptr);
         }

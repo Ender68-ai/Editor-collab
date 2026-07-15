@@ -281,15 +281,20 @@ namespace mpedit {
         signalingCreateRoom(playerName);
     }
 
-    void P2PManager::signalingCreateRoom(std::string const& playerName) {
-        auto url = getSignalingUrl() + "/rooms";
-        log::info("P2PManager: Creating room on signaling server: {}", url);
-
-        auto req = web::WebRequest();
-        req.header("Content-Type", "application/json");
-        auto body = matjson::Value();
-        body["playerName"] = playerName;
-        req.bodyJSON(body);
+    void P2PManager::signalingCreateRoom(std::string const& playerName) {  
+    auto url = getSignalingUrl() + "/rooms";  
+    log::info("P2PManager: Creating room on signaling server: {}", url);  
+  
+    auto req = web::WebRequest();  
+    req.header("Content-Type", "application/json");  
+    auto body = matjson::Value();  
+    body["playerName"] = playerName;  
+      
+    // Add max players from settings  
+    int maxPlayers = Mod::get()->getSettingValue<int>("max-players");  
+    body["maxPlayers"] = maxPlayers;  
+      
+    req.bodyJSON(body);  
 
         m_signalingListener.spawn(
             req.post(url),

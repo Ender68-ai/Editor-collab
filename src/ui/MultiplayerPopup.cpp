@@ -9,8 +9,9 @@ using namespace geode::prelude;
 
 namespace mpedit {
 
-    MultiplayerPopup* MultiplayerPopup::create() {
+    MultiplayerPopup* MultiplayerPopup::create(Mode mode) {
         auto* ret = new MultiplayerPopup();
+        ret->m_mode = mode;
         if (ret->init(340.f, 260.f) && ret->setup()) {
             ret->autorelease();
             return ret;
@@ -32,7 +33,12 @@ namespace mpedit {
 
     bool MultiplayerPopup::setup() {
         s_instance = this;
-        this->setTitle("Multiplayer Edit", "goldFont.fnt", 0.8f, 20.f);
+        this->setTitle(
+            m_mode == Mode::Host ? "Host Session" : "Join Room",
+            "goldFont.fnt",
+            0.8f,
+            20.f
+        );
 
         m_contentNode = cocos2d::CCNode::create();
         m_mainLayer->addChild(m_contentNode);
@@ -57,7 +63,6 @@ namespace mpedit {
 
     void MultiplayerPopup::createConnectView() {
         auto center = m_mainLayer->getContentSize() / 2.f;
-        bool inEditor = LevelEditorLayer::get() != nullptr;
 
         // Player name is fetched automatically from account
         std::string accountName = GJAccountManager::sharedState()->m_username;
@@ -70,7 +75,7 @@ namespace mpedit {
         m_connectMenu->setPosition({0, 0});
         m_connectMenu->setID("connect-menu"_spr);
 
-        if (!inEditor) {
+        if (m_mode == Mode::Join) {
             // Room code input
             auto* codeLabel = CCLabelBMFont::create("Room Code:", "bigFont.fnt");
             codeLabel->setScale(0.4f);

@@ -34,5 +34,52 @@
     },
     "issues": {
         "info": "Message me in discord, ender.68 is my username."
+    },
+    "settings": {
+        "connection-section": {
+            "type": "title",
+            "name": "Connection Settings"
+        },
+        "signaling-url": {
+            "type": "string",
+            "name": "Signaling Server URL",
+            "description": "URL of the signaling server used for connection setup. Only change this if you're self-hosting your own signaling server.",
+            "default": "https://dewy-flea-9364.d050.deno.net",
+            "max-length": 150,
+            "filter": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:/.?&=-_"
+        },
+        "player-name": {
+            "type": "string",
+            "name": "Player Name",
+            "description": "Your display name in multiplayer sessions.",
+            "default": "Player"
+        },
+        "display-section": {
+            "type": "title",
+            "name": "Display"
+        },
+        "show-cursors": {
+            "type": "bool",
+            "name": "Show Player Cursors",
+            "description": "Display other players' cursor positions in the editor.",
+            "default": true
+        },
+        "show-notifications": {
+            "type": "bool",
+            "name": "Show Notifications",
+            "description": "Show notifications when players join/leave.",
+            "default": true
+        },
+        "max-players": {
+            "type": "int",
+            "default": 8,
+            "min": 2,
+            "max": 16,
+            "name": "Max Players",
+            "description": "Maximum players allowed when hosting a room",
+            "control": {
+                "slider": true
+            }
+        }
     }
 }

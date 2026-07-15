@@ -1,9 +1,11 @@
 #include <Geode/Geode.hpp>
 #include "settings/settings.hpp"
 #include "CollabLayer.hpp"
-#include "../ui.hpp"
+#include "../MultiplayerPopup.hpp"
+#include "SessionManager.hpp"
 
 using namespace geode::prelude;
+using namespace mpedit;
 
 CollabLayer* CollabLayer::create() {
     auto ret = new CollabLayer();
@@ -60,6 +62,9 @@ bool CollabLayer::init() {
     settingsSprite->setCascadeColorEnabled(true);
     settingsSprite->setCascadeOpacityEnabled(true); 
 
+    auto &session = SessionManager::get();
+    auto playerCount = session.getPlayers().size();
+
     auto settingsButton = CCMenuItemSpriteExtra::create(
         settingsSprite,
         this,
@@ -76,12 +81,74 @@ bool CollabLayer::init() {
         winSize.height * 0.80f
     });
 
-    auto menu = CCMenu::create();
-    menu->setID("BackMenu"_spr);
-    menu->setPosition(CCPoint(winSize.width * 0.04f, (float)(0)));
-    menu->addChild(backButton);
-    menu->addChild(settingsButton);
-    addChild(menu);
+    auto* joinSprite = ButtonSprite::create(
+        "Join", 40, true, "bigFont.fnt", "GJ_button_01.png", 30.f, 0.45f
+    );
+    auto* hostSprite = ButtonSprite::create(
+        "Host", 40, true, "bigFont.fnt", "GJ_button_02.png", 30.f, 0.45f
+    );
+    auto* joinBtn = CCMenuItemSpriteExtra::create(
+        joinSprite,
+        this,
+        menu_selector(CollabLayer::onJoin)
+    );
+    auto* hostBtn = CCMenuItemSpriteExtra::create(
+        hostSprite,
+        this,
+        menu_selector(CollabLayer::onHost)
+    );
+    joinBtn->setID("multiplayer-button"_spr);
+    hostBtn->setID("host-button"_spr);
+
+    joinBtn->setPosition({
+        winSize.width * 0.65f,
+        winSize.height * 0.55f
+    });
+
+    hostBtn->setPosition({
+        winSize.width * 0.8f,
+        winSize.height * 0.55f
+    });
+    bool isInSession = session.isInSession();
+    std::string statusindicator = isInSession ? "In Session" : "Not in Session";
+
+    auto statusLabel = CCLabelBMFont::create(statusindicator.c_str(), "bigFont.fnt");
+    statusLabel->setScale(0.5f);
+    statusLabel->setPosition({
+        winSize.width * 0.65f,
+        winSize.height * 0.45f
+    });
+    auto playerCountLabel = CCLabelBMFont::create(
+        fmt::format("Players: {}", playerCount).c_str(),
+        "bigFont.fnt"
+    );
+    playerCountLabel->setScale(0.5f);
+    playerCountLabel->setPosition({
+        winSize.width * 0.65f,
+        winSize.height * 0.40f
+    });
+
+    auto menu1 = CCMenu::create();
+    menu1->setID("BackMenu"_spr);
+    menu1->setPosition(CCPoint(winSize.width * 0.04f, (float)(0)));
+    menu1->addChild(backButton);
+    menu1->addChild(settingsButton);
+    addChild(menu1);
+
+        
+    auto menu2 = CCMenu::create();
+    menu2->setID("JoinMenu"_spr);
+    menu2->setPosition(CCPoint(winSize.width * 0.1f, (float)(winSize.height * 0.35f)));
+    menu2->addChild(joinBtn);
+    menu2->addChild(hostBtn);
+    addChild(menu2);
+
+    auto menu3 = CCMenu::create();
+    menu3->setID("SessionMenu"_spr);
+    menu3->addChild(statusLabel);
+    menu3->addChild(playerCountLabel);
+    menu3->setPosition(CCPoint(winSize.width * 0.1f, (float)(winSize.height * 0.35f)));
+    addChild(menu3);
 
 
 
@@ -91,6 +158,27 @@ bool CollabLayer::init() {
 
 void CollabLayer::onSettings(CCObject*) {
     auto popup = settingsPopup::create("Hello");
+    if (popup) {
+        this->addChild(popup);
+    }
+};
+
+void CollabLayer::onMultiplayer(CCObject*) {
+    auto popup = MultiplayerPopup::create();
+    if (popup) {
+        this->addChild(popup);
+    }
+};
+
+void CollabLayer::onHost(CCObject*) {
+    auto popup = MultiplayerPopup::create(MultiplayerPopup::Mode::Host);
+    if (popup) {
+        this->addChild(popup);
+    }
+}
+
+void CollabLayer::onJoin(CCObject*) {
+    auto popup = MultiplayerPopup::create(MultiplayerPopup::Mode::Join);
     if (popup) {
         this->addChild(popup);
     }

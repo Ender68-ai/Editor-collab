@@ -29,53 +29,12 @@ namespace {
 }
 
 // ============================================================
-// EditorPauseLayer — Add "Multiplayer" button to pause menu
+// EditorPauseLayer — Session lifecycle hooks
 // ============================================================
 
 class $modify(MPEditorPauseLayer, EditorPauseLayer) {
     bool init(LevelEditorLayer* editor) {
         if (!EditorPauseLayer::init(editor)) return false;
-
-        // Create the multiplayer button
-        auto* btnSprite = ButtonSprite::create(
-            "Multiplayer Edit", 90, true, "bigFont.fnt", "GJ_button_01.png", 30.f, 0.45f
-        );
-        auto* btn = CCMenuItemSpriteExtra::create(
-            btnSprite,
-            this,
-            menu_selector(MPEditorPauseLayer::onMultiplayer)
-        );
-        btn->setID("multiplayer-button"_spr);
-
-        // Find the center button menu
-        CCMenu* targetMenu = typeinfo_cast<CCMenu*>(this->getChildByID("center-button-menu"));
-        
-        if (!targetMenu) {
-            // Fallback: look through all menus to find one with the most buttons (likely the center one)
-            for (CCNode* child : this->getChildrenExt()) {
-                if (auto* menu = typeinfo_cast<CCMenu*>(child)) {
-                    if (menu->getChildrenCount() >= 4) {
-                        targetMenu = menu;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (targetMenu) {
-            targetMenu->addChild(btn);
-            targetMenu->updateLayout();
-        } else {
-            // Fallback: create our own menu
-            auto* fallbackMenu = CCMenu::create();
-            fallbackMenu->setID("multiplayer-menu"_spr);
-            fallbackMenu->setPosition({0, 0});
-            
-            auto winSize = CCDirector::sharedDirector()->getWinSize();
-            btn->setPosition({winSize.width / 2.f, 40.f}); // Bottom center
-            fallbackMenu->addChild(btn);
-            this->addChild(fallbackMenu, 10);
-        }
 
         auto& session = SessionManager::get();
         if (session.isInSession()) {
@@ -155,10 +114,6 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
         return true;
     }
 
-    void onMultiplayer(CCObject*) {
-        MultiplayerPopup::create()->show();
-    }
-
     void onSave(CCObject* sender) {
         if (SessionManager::get().isInSession() && SessionManager::get().getRole() == SessionManager::Role::Client) {
             Notification::create("Guests cannot save levels", NotificationIcon::Warning)->show();
@@ -193,46 +148,6 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
             session.leaveSession();
         }
         EditorPauseLayer::onExitEditor(sender);
-    }
-};
-
-// ============================================================
-// LevelBrowserLayer — Add "Multiplayer" button to My Levels page
-// ============================================================
-
-class $modify(MPLevelBrowserLayer, LevelBrowserLayer) {
-    bool init(GJSearchObject* object) {
-        if (!LevelBrowserLayer::init(object)) return false;
-
-        if (object->m_searchType != SearchType::MyLevels) return true;
-
-        auto* btnSprite = ButtonSprite::create(
-            "Multiplayer Edit", 90, true, "bigFont.fnt", "GJ_button_01.png", 30.f, 0.45f
-        );
-        auto* btn = CCMenuItemSpriteExtra::create(
-            btnSprite,
-            this,
-            menu_selector(MPLevelBrowserLayer::onMultiplayer)
-        );
-        btn->setID("multiplayer-button"_spr);
-
-        // Create a menu at the bottom center, underneath the level list
-        auto* centerMenu = CCMenu::create();
-        centerMenu->setID("multiplayer-menu"_spr);
-        
-        auto winSize = CCDirector::sharedDirector()->getWinSize();
-        // Place it horizontally centered and near the bottom edge
-        centerMenu->setPosition({winSize.width / 2.f, 35.f});
-        
-        btn->setPosition({0, 0});
-        centerMenu->addChild(btn);
-        this->addChild(centerMenu, 10);
-
-        return true;
-    }
-
-    void onMultiplayer(CCObject*) {
-        MultiplayerPopup::create()->show();
     }
 };
 
