@@ -10,7 +10,7 @@ if(DEFINED CMAKE_POLICY_VERSION_MINIMUM)
     endif()
 endif()
 
-cmake_minimum_required(VERSION 3.31)
+cmake_minimum_required(VERSION 3.20)
 project(EditorCollab VERSION 0.1.0)
 
 set(CMAKE_CXX_STANDARD 23)
@@ -89,11 +89,10 @@ if(TARGET mbedtls AND NOT TARGET MbedTLS::MbedTLS)
 endif()
 
 
-# ── libdatachannel ──────────────────────────────────────────
 FetchContent_Declare(
     libdatachannel
     GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
-    GIT_TAG v0.22.4
+    GIT_TAG master
 )
 
 set(NO_MEDIA ON CACHE BOOL "" FORCE)
