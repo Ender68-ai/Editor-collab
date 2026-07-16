@@ -3,6 +3,7 @@
 #include "CollabLayer.hpp"
 #include "../MultiplayerPopup.hpp"
 #include "SessionManager.hpp"
+#include "../ui.hpp"
 
 using namespace geode::prelude;
 using namespace mpedit;
@@ -157,10 +158,15 @@ bool CollabLayer::init() {
 };
 
 void CollabLayer::onSettings(CCObject*) {
-    auto popup = settingsPopup::create("Hello");
+    /* auto popup = settingsPopup::create("Hello");
     if (popup) {
         this->addChild(popup);
-    }
+    } */
+    auto SettingsLayer = SettingsLayer::create();
+    auto scene = CCScene::create();
+    scene->addChild(SettingsLayer);
+    auto transition = Transition::create(0.5f, scene, {0, 0, 0});
+    CCDirector::sharedDirector()->pushScene(transition);
 };
 
 void CollabLayer::onMultiplayer(CCObject*) {

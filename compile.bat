@@ -1,4 +1,4 @@
-rem this is only for people who do not have visual studio code on windows, if you do have it, just configure and press f7
+echo this is only for people who do not have visual studio code on windows, if you do have it, just configure and press f7
 
 @echo off
 setlocal EnableExtensions

@@ -1,22 +1,10 @@
 #include "settings.hpp"
 
-bool settingsPopup::init(std::string const& value) {
-    if (!Popup::init(240.f, 160.f))
-        return false;
+#include "cocos2d.h"
 
-    this->setTitle("Settings");
-
-    auto label = CCLabelBMFont::create(value.c_str(), "bigFont.fnt");
-    if (label && m_mainLayer) {
-        m_mainLayer->addChildAtPosition(label, Anchor::Center);
-    }
-
-    return true;
-}
-
-settingsPopup* settingsPopup::create(std::string const& text) {
-    auto ret = new settingsPopup();
-    if (ret && ret->init(text)) {
+SettingsLayer* SettingsLayer::create() {
+    auto ret = new SettingsLayer();
+    if (ret && ret->init()) {
         ret->autorelease();
         return ret;
     }
@@ -24,6 +12,56 @@ settingsPopup* settingsPopup::create(std::string const& text) {
     return nullptr;
 }
 
+
+void SettingsLayer::onBack(CCObject* sender) {
+    CCDirector::sharedDirector()->popSceneWithTransition(
+        0.5f, 
+        cocos2d::PopTransition()
+    );
+}
+
+bool SettingsLayer::init() {
+    if (!CCLayer::init())
+        return false;
+
+    auto winSize = CCDirector::sharedDirector()->getWinSize();
+    auto background = CCSprite::create("GJ_gradientBG.png");    
+    background->setScaleX(winSize.width / background->getContentSize().width);
+    background->setScaleY(winSize.height / background->getContentSize().height);
+    background->setPosition({winSize.width / 2, winSize.height / 2});
+    background->setColor({ 120, 161, 255 });
+    this->addChild(background, -10);
+
+
+    auto backSprite = CCSprite::create("backbtn.png"_spr);
+    backSprite->setAnchorPoint({0.5f, 0.5f});
+    backSprite->setScale(0.2f);
+    backSprite->setRotation(270.0f);
+    backSprite->setColor({ 255, 255, 255 });
+    backSprite->setOpacity(255);
+    backSprite->setCascadeColorEnabled(true);
+    backSprite->setCascadeOpacityEnabled(true);
+    backSprite->setPosition({winSize.width * 0.02f, winSize.height * 0.95f});
+
+    auto backButton = CCMenuItemSpriteExtra::create(
+        backSprite,
+        this,
+        menu_selector(SettingsLayer::onBack)
+    );
+    backButton->setScale(0.8f);
+    
+    backButton->setPosition({
+        winSize.width * 0.02f,
+        winSize.height * 0.92f
+    });
+
+auto menu1 = CCMenu::create();
+    menu1->setID("BackMenu"_spr);
+    menu1->setPosition(CCPoint(winSize.width * 0.04f, (float)(0)));
+    menu1->addChild(backButton);
+    addChild(menu1);
+    return true;
+}
 
 /* 1. Host Name Input (Maps to m_hostName)
 UI Control: CCTextInputNode (a text input box with a cursor).
