@@ -29,7 +29,9 @@
             "resources/button2.png",
             "resources/crosshair.png",
             "resources/cursor.png",
-            "resources/settingsbtn.png"
+            "resources/settingsbtn.png",
+            "resources/online.png",
+            "resources/offline.png"
         ]
     },
     "issues": {
