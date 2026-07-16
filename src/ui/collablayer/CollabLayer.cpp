@@ -111,9 +111,21 @@ bool CollabLayer::init() {
         winSize.height * 0.55f
     });
     bool isInSession = session.isInSession();
-    std::string statusindicator = isInSession ? "In Session" : "Not in Session";
+    bool statusindicator = isInSession ? true : false;
+    
+    auto onlinespr = CCSprite::create("online.png"_spr);
+    onlinespr->setScale(0.5f);
 
-    auto statusLabel = CCLabelBMFont::create(statusindicator.c_str(), "bigFont.fnt");
+    auto offlinespr = CCSprite::create("offline.png"_spr);
+    offlinespr->setScale(0.5f);
+
+
+    auto statusLabel = statusindicator ? onlinespr : offlinespr;
+    if (statusindicator) {
+        statusLabel = onlinespr;
+    } else {
+        statusLabel = offlinespr;
+    }
     statusLabel->setScale(0.5f);
     statusLabel->setPosition({
         winSize.width * 0.65f,
