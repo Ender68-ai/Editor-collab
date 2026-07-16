@@ -19,4 +19,4 @@
 
 - [Imes]: For proportioning help with the versioning, history and commit part of the mod.
 
-- [Xxoanon]: for proportioning sll te backend and some of the frontend
+- [Xxoanon]: for proportioning all the backend and some of the frontend
