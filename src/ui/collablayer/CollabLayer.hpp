@@ -13,6 +13,7 @@ protected:
     void onMultiplayer(CCObject*);
     void onHost(CCObject*);
     void onJoin(CCObject*);
+    void updateStatus(float dt);
 
 public:
     static CollabLayer* create();
@@ -26,4 +27,7 @@ public:
         }
         return nullptr;
     };
+    CCSprite* m_onlineSprite = nullptr;
+    CCSprite* m_offlineSprite = nullptr;
+    CCLabelBMFont* m_playerCountLabel = nullptr;
 };

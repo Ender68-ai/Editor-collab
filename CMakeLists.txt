@@ -92,7 +92,7 @@ endif()
 FetchContent_Declare(
     libdatachannel
     GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
-    GIT_TAG 0.24.5
+    GIT_TAG v0.24.5
 )
 
 set(NO_MEDIA ON CACHE BOOL "" FORCE)

@@ -25,6 +25,20 @@ void CollabLayer::onBack(CCObject* sender) {
     );
 }
 
+void CollabLayer::updateStatus(float) {
+        auto &session = SessionManager::get();
+
+        bool online = SessionManager::get().isInSession();
+        size_t playerCount = session.getPlayers().size();
+
+
+        m_onlineSprite->setVisible(online);
+        m_offlineSprite->setVisible(!online);
+        m_playerCountLabel->setString(
+            fmt::format("{}", playerCount).c_str()
+        );
+    }
+
 bool CollabLayer::init() {
     if (!CCLayer::init())
         return false;
@@ -111,34 +125,39 @@ bool CollabLayer::init() {
         winSize.height * 0.55f
     });
     bool isInSession = session.isInSession();
-    bool statusindicator = isInSession ? true : false;
+
+    m_onlineSprite = CCSprite::create("online.png"_spr);
+    m_onlineSprite->setScale(0.5f);
+
+    m_offlineSprite = CCSprite::create("offline.png"_spr);
+    m_offlineSprite->setScale(0.5f);
+
     
-    auto onlinespr = CCSprite::create("online.png"_spr);
-    onlinespr->setScale(0.5f);
+    bool online = SessionManager::get().isInSession();
 
-    auto offlinespr = CCSprite::create("offline.png"_spr);
-    offlinespr->setScale(0.5f);
+    m_onlineSprite->setVisible(online);
+    m_offlineSprite->setVisible(!online);
 
+    
 
-    auto statusLabel = statusindicator ? onlinespr : offlinespr;
-    if (statusindicator) {
-        statusLabel = onlinespr;
-    } else {
-        statusLabel = offlinespr;
-    }
-    statusLabel->setScale(0.5f);
-    statusLabel->setPosition({
-        winSize.width * 0.65f,
+    m_offlineSprite->setPosition({
+        winSize.width * 0.8f,
         winSize.height * 0.45f
     });
-    auto playerCountLabel = CCLabelBMFont::create(
-        fmt::format("Players: {}", playerCount).c_str(),
-        "bigFont.fnt"
+    m_onlineSprite->setPosition({
+        winSize.width * 0.8f,
+        winSize.height * 0.45f
+    });
+    m_onlineSprite->setScale(0.2f);
+    m_offlineSprite->setScale(0.22f);
+    m_playerCountLabel = CCLabelBMFont::create(
+    fmt::format("{}", playerCount).c_str(),
+    "bigFont.fnt"
     );
-    playerCountLabel->setScale(0.5f);
-    playerCountLabel->setPosition({
-        winSize.width * 0.65f,
-        winSize.height * 0.40f
+    m_playerCountLabel->setScale(0.5f);
+    m_playerCountLabel->setPosition({
+    winSize.width * 0.85f,
+    winSize.height * 0.45f
     });
 
     auto menu1 = CCMenu::create();
@@ -158,13 +177,14 @@ bool CollabLayer::init() {
 
     auto menu3 = CCMenu::create();
     menu3->setID("SessionMenu"_spr);
-    menu3->addChild(statusLabel);
-    menu3->addChild(playerCountLabel);
+    menu3->addChild(m_onlineSprite);
+    menu3->addChild(m_offlineSprite);
+    menu3->addChild(m_playerCountLabel);
     menu3->setPosition(CCPoint(winSize.width * 0.1f, (float)(winSize.height * 0.35f)));
     addChild(menu3);
 
 
-
+    this->schedule(schedule_selector(CollabLayer::updateStatus), 1.0f);
 
     return true;
 };
