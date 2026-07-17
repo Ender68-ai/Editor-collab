@@ -21,4 +21,4 @@
 
 - [Xxoanon]: for proportioning all the backend and some of the frontend
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/geode-sdk/geode)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Ender68-ai/Editor-collab)
