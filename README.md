@@ -20,3 +20,5 @@
 - [Imes]: For proportioning help with the versioning, history and commit part of the mod.
 
 - [Xxoanon]: for proportioning all the backend and some of the frontend
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/geode-sdk/geode)
