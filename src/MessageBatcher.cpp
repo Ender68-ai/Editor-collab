@@ -19,7 +19,7 @@ namespace mpedit {
     void MessageBatcher::queueTransform(std::string const& uuid,
         ActionSerializer::TransformData const& transform)
     {
-        // Latest transform per-uuid wins (overwrites previous)
+
         m_pendingTransforms[uuid] = transform;
     }
 
@@ -28,11 +28,11 @@ namespace mpedit {
         m_transformTimer += dt;
 
         if (m_moveTimer >= m_flushInterval && !m_pendingMoves.empty()) {
-            // Build batched move message
+
             std::vector<ActionSerializer::MoveData> moves;
             moves.reserve(m_pendingMoves.size());
             for (auto& [uuid, accum] : m_pendingMoves) {
-                // Skip zero-delta moves
+
                 if (accum.dx == 0.f && accum.dy == 0.f) continue;
                 moves.push_back({uuid, accum.dx, accum.dy});
             }
@@ -41,7 +41,7 @@ namespace mpedit {
 
             if (!moves.empty()) {
                 auto data = proto::serializeMoveBatch(moves);
-                // Send on reliable channel — since moves are deltas, a dropped packet means permanent desync
+
                 P2PManager::get().send(std::move(data), ChannelType::Reliable);
             }
         }
@@ -63,7 +63,7 @@ namespace mpedit {
     }
 
     void MessageBatcher::flush() {
-        // Force send everything now, resetting timers
+
         if (!m_pendingMoves.empty()) {
             std::vector<ActionSerializer::MoveData> moves;
             moves.reserve(m_pendingMoves.size());
@@ -75,7 +75,7 @@ namespace mpedit {
             m_moveTimer = 0.f;
 
             if (!moves.empty()) {
-                // Final flush goes on reliable channel to ensure delivery
+
                 auto data = proto::serializeMoveBatch(moves);
                 P2PManager::get().send(std::move(data), ChannelType::Reliable);
             }

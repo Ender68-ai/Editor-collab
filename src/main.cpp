@@ -11,7 +11,7 @@ $on_mod(Loaded) {
 }
 
 $on_mod(DataSaved) {
-    // Clean up on mod data save
+
     auto& session = mpedit::SessionManager::get();
     if (session.isInSession()) {
         session.leaveSession();

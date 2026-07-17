@@ -23,14 +23,14 @@ class $modify(MyLevelBrowserLayer, LevelBrowserLayer) {
         );
         
 
-        // Position the button above the menu
+
         auto menuPos = myLevelsMenu->getPosition();
         button->setPosition({
             menuPos.x - 5.f,
             menuPos.y + 50.f
         });
 
-        // Add it to the same parent as the menu
+
         auto menu = dynamic_cast<CCMenu*>(myLevelsMenu);
         if (menu) {
             menu->addChild(button);

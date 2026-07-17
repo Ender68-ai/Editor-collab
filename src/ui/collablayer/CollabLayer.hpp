@@ -1,11 +1,12 @@
 #pragma once
 
 #include <Geode/Geode.hpp>
+
 #include "settings/settings.hpp"
 
 using namespace geode::prelude;
 
-class CollabLayer : public CCLayer {
+class CollabLayer : public CCLayer, public TableViewCellDelegate {
 protected:
     bool init() override;
     void onBack(CCObject*);
@@ -30,4 +31,19 @@ public:
     CCSprite* m_onlineSprite = nullptr;
     CCSprite* m_offlineSprite = nullptr;
     CCLabelBMFont* m_playerCountLabel = nullptr;
+
+    bool cellPerformedAction(
+    TableViewCell* cell,
+    int listType,
+    CellAction action,
+    cocos2d::CCNode* parent
+    ) override;
+
+    int getSelectedCellIdx() override;
+
+    bool shouldSnapToSelected() override;
+
+    int getCellDelegateType() override;
 };
+
+

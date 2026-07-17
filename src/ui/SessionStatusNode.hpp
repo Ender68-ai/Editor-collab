@@ -12,7 +12,7 @@ namespace mpedit {
     class SessionStatusNode : public cocos2d::CCNode {
     protected:
         cocos2d::CCLabelBMFont* m_statusLabel = nullptr;
-        // Cache for optimization
+
         P2PManager::State m_cachedState = P2PManager::State::Disconnected;
         size_t m_cachedPlayerCount = 0;
         std::string m_cachedRoomCode;

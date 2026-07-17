@@ -1,5 +1,5 @@
-// Signaling server for WebRTC P2P connections (Deno Deploy)
-// Uses Deno.Kv to share state across global edge isolates.
+
+
 
 const kv = await Deno.openKv();
 const ROOM_TTL = 2 * 60 * 60 * 1000; // 2 hours
@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const parts = url.pathname.split("/").filter(Boolean); // ["rooms", code?, action?]
 
-  // GET /health
+
   if (parts[0] === "health" && req.method === "GET") {
     return json({ status: "ok" });
   }
@@ -63,12 +63,12 @@ Deno.serve(async (req) => {
   
   if (!room) return json({ error: "room not found" }, 404);
 
-  // GET /rooms/:code — room info
+
   if (parts.length === 2 && req.method === "GET") {
     return json({ roomCode: code, hostName: room.hostName, playerCount: room.players.length, roomId: room.roomId });
   }
 
-  // DELETE /rooms/:code — close room
+
   if (parts.length === 2 && req.method === "DELETE") {
     await kv.delete(["rooms", code]);
     return json({ ok: true });
@@ -76,12 +76,12 @@ Deno.serve(async (req) => {
 
   const action = parts[2];
 
-  // POST /rooms/:code/join
+
   if (action === "join" && req.method === "POST") {  
     if (room.players.length >= (room.maxPlayers || DEFAULT_MAX_PLAYERS)) return json({ error: "room full" }, 400);  
     const { playerName } = await req.json();
     
-    // Atomic update for joining
+
     let success = false;
     let playerId = -1;
     let retries = 5;
@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
     return json({ playerId, hostName: room.hostName });
   }
 
-  // SDP offer exchange
+
   if (action === "offer") {
     if (req.method === "POST") {
       const { sdp, targetPlayerId } = await req.json();
@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  // SDP answer exchange
+
   if (action === "answer") {
     if (req.method === "POST") {
       const { sdp, playerId } = await req.json();
@@ -140,13 +140,13 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ICE candidate exchange
+
   if (action === "ice") {
     if (req.method === "POST") {
       const { playerId, candidates, isHost } = await req.json();
       const target = isHost ? "host" : "client";
       
-      // Store each candidate uniquely so we don't have to array-append
+
       for (const cand of candidates) {
         await kv.set(["ice", code, target, playerId, crypto.randomUUID()], cand, { expireIn: 60000 });
       }
@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
         keysToDelete.push(entry.key);
       }
       
-      // Delete retrieved candidates
+
       for (const key of keysToDelete) {
         await kv.delete(key);
       }

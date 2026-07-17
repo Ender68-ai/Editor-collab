@@ -2,7 +2,7 @@
 
 namespace mpedit::proto {
 
-    // ── Data helpers ─────────────────────────────────────────
+
 
     void writeObjectData(Writer& w, ActionSerializer::ObjectData const& obj) {
         w.writeString(obj.uuid);
@@ -148,7 +148,7 @@ namespace mpedit::proto {
         return s;
     }
 
-    // ── Complete message serializers ─────────────────────────
+
 
     std::vector<uint8_t> serializePlaceObjects(
         std::vector<ActionSerializer::ObjectData> const& objects)
@@ -332,7 +332,7 @@ namespace mpedit::proto {
         return std::move(w.takeData());
     }
 
-    // ── Deserialization ──────────────────────────────────────
+
 
     PlaceObjectsMsg deserializePlaceObjects(Reader& r) {
         PlaceObjectsMsg msg;

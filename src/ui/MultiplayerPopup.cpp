@@ -64,7 +64,7 @@ namespace mpedit {
     void MultiplayerPopup::createConnectView() {
         auto center = m_mainLayer->getContentSize() / 2.f;
 
-        // Player name is fetched automatically from account
+
         std::string accountName = GJAccountManager::sharedState()->m_username;
         if (accountName.empty()) {
             accountName = "Player";
@@ -76,7 +76,7 @@ namespace mpedit {
         m_connectMenu->setID("connect-menu"_spr);
 
         if (m_mode == Mode::Join) {
-            // Room code input
+
             auto* codeLabel = CCLabelBMFont::create("Room Code:", "bigFont.fnt");
             codeLabel->setScale(0.4f);
             codeLabel->setPosition({center.width, center.height + 10.f});
@@ -95,7 +95,7 @@ namespace mpedit {
             m_roomCodeInput->setCommonFilter(CommonFilter::Alphanumeric);
             m_contentNode->addChild(m_roomCodeInput);
 
-            // Join button
+
             auto* joinSprite = ButtonSprite::create(
                 "Join", 100, true, "bigFont.fnt", "GJ_button_01.png", 30.f, 0.7f
             );
@@ -106,7 +106,7 @@ namespace mpedit {
             joinBtn->setID("join-button"_spr);
             m_connectMenu->addChild(joinBtn);
         } else {
-            // Host button
+
             auto* hostSprite = ButtonSprite::create(
                 "Host", 100, true, "bigFont.fnt", "GJ_button_02.png", 30.f, 0.7f
             );
@@ -120,7 +120,7 @@ namespace mpedit {
 
         m_contentNode->addChild(m_connectMenu);
 
-        // Status label
+
         m_statusLabel = CCLabelBMFont::create("", "chatFont.fnt");
         m_statusLabel->setScale(0.6f);
         m_statusLabel->setPosition({center.width, center.height - 95.f});
@@ -140,7 +140,7 @@ namespace mpedit {
         bg->setOpacity(100);
         m_contentNode->addChild(bg);
 
-        // Room code display
+
         auto* codeTitle = CCLabelBMFont::create("Room Code:", "bigFont.fnt");
         codeTitle->setScale(0.45f);
         codeTitle->setPosition({center.width, center.height + 60.f});
@@ -154,7 +154,7 @@ namespace mpedit {
         m_roomCodeLabel->setID("room-code-display"_spr);
         m_contentNode->addChild(m_roomCodeLabel);
 
-        // Role display
+
         auto roleStr = session.getRole() == SessionManager::Role::Host ? "You are the Host" : "You are a Guest";
         auto* roleLabel = CCLabelBMFont::create(roleStr, "bigFont.fnt");
         roleLabel->setScale(0.35f);
@@ -163,7 +163,7 @@ namespace mpedit {
         roleLabel->setID("role-label"_spr);
         m_contentNode->addChild(roleLabel);
 
-        // Player count
+
         auto playerCountStr = fmt::format("Players: {}", session.getPlayers().size());
         auto* playerCountLabel = CCLabelBMFont::create(playerCountStr.c_str(), "bigFont.fnt");
         playerCountLabel->setScale(0.35f);
@@ -171,7 +171,7 @@ namespace mpedit {
         playerCountLabel->setID("player-count-label"_spr);
         m_contentNode->addChild(playerCountLabel);
 
-        // Player list
+
         static const std::array<ccColor3B, 6> colors = {
             ccColor3B{100, 200, 255},
             ccColor3B{255, 120, 100},
@@ -191,12 +191,12 @@ namespace mpedit {
             yOffset -= 18.f;
         }
 
-        // Session menu
+
         m_sessionMenu = CCMenu::create();
         m_sessionMenu->setPosition({0, 0});
         m_sessionMenu->setID("session-menu"_spr);
 
-        // Copy code button
+
         auto* copySprite = ButtonSprite::create(
             "Copy Code", 100, true, "bigFont.fnt", "GJ_button_04.png", 30.f, 0.6f
         );
@@ -207,7 +207,7 @@ namespace mpedit {
         copyBtn->setID("copy-button"_spr);
         m_sessionMenu->addChild(copyBtn);
 
-        // Leave button
+
         auto* leaveSprite = ButtonSprite::create(
             "Leave", 100, true, "bigFont.fnt", "GJ_button_06.png", 30.f, 0.6f
         );
@@ -235,7 +235,7 @@ namespace mpedit {
 
         auto center = m_mainLayer->getContentSize() / 2.f;
 
-        // Translucent dark background card
+
         auto* bg = cocos2d::extension::CCScale9Sprite::create("square02b_001.png");
         bg->setContentSize({300.f, 150.f});
         bg->setPosition({center.width, center.height - 10.f});
@@ -243,14 +243,14 @@ namespace mpedit {
         bg->setOpacity(180);
         m_contentNode->addChild(bg);
 
-        // Title: Synchronizing Level
+
         auto* titleLabel = CCLabelBMFont::create("Synchronizing Level", "goldFont.fnt");
         titleLabel->setScale(0.7f);
         titleLabel->setPosition({center.width, center.height + 40.f});
         titleLabel->setID("sync-title-label"_spr);
         m_contentNode->addChild(titleLabel);
 
-        // Beautiful rotating native spinner
+
         auto* spinner = cocos2d::CCSprite::create("loadingCircle.png");
         if (spinner) {
             spinner->setScale(0.8f);
@@ -260,7 +260,7 @@ namespace mpedit {
             m_contentNode->addChild(spinner);
         }
 
-        // Status description
+
         m_statusLabel = CCLabelBMFont::create(statusText.c_str(), "chatFont.fnt");
         m_statusLabel->setScale(0.55f);
         m_statusLabel->setPosition({center.width, center.height - 45.f});
@@ -268,7 +268,7 @@ namespace mpedit {
         m_statusLabel->setID("status-label"_spr);
         m_contentNode->addChild(m_statusLabel);
 
-        // Cancel Menu and Button
+
         auto* cancelMenu = CCMenu::create();
         cancelMenu->setPosition({0, 0});
         cancelMenu->setID("cancel-menu"_spr);
@@ -391,7 +391,7 @@ namespace mpedit {
 
         Notification::create("Left session", NotificationIcon::Info)->show();
 
-        // If client/guest left the lobby while inside the editor, close the level and exit
+
         if (role == SessionManager::Role::Client) {
             auto* director = cocos2d::CCDirector::sharedDirector();
             if (auto* runningScene = director->getRunningScene()) {

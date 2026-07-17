@@ -7,9 +7,9 @@ using namespace geode::prelude;
 
 namespace mpedit::ActionSerializer {
 
-    // ============================================================
-    // GameObject Helpers
-    // ============================================================
+
+
+
 
     ObjectData extractObjectData(GameObject* obj, std::string const& uuid) {
         ObjectData data;
@@ -33,7 +33,7 @@ namespace mpedit::ActionSerializer {
             data.saveString = obj->getSaveString(editor);
         }
 
-        // Extract groups safely up to a maximum of 10 to avoid out-of-bounds/std::out_of_range crashes
+
         if (obj->m_groups && obj->m_groupCount > 0) {
             int count = std::min(static_cast<int>(obj->m_groupCount), 10);
             for (int i = 0; i < count; i++) {
@@ -62,8 +62,8 @@ namespace mpedit::ActionSerializer {
         auto oldMap = parseSaveString(oldSave);
         auto newMap = parseSaveString(newSave);
 
-        // Keys to ignore for purely positional/transform reconciles:
-        // 2: X, 3: Y, 4: FlipX, 5: FlipY, 11: Rot, 32: Scale, 128: ScaleX, 129: ScaleY
+
+
         for (int k : {2, 3, 4, 5, 11, 32, 128, 129}) {
             oldMap.erase(k);
             newMap.erase(k);

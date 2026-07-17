@@ -22,11 +22,11 @@ namespace mpedit {
 
         auto winSize = CCDirector::sharedDirector()->getWinSize();
 
-        // Position in top-right corner
+
         this->setPosition({winSize.width - 10.f, winSize.height - 10.f});
         this->setAnchorPoint({1.f, 1.f});
 
-        // Status text
+
         m_statusLabel = CCLabelBMFont::create("", "chatFont.fnt");
         m_statusLabel->setAnchorPoint({1.f, 0.5f});
         m_statusLabel->setScale(0.45f);
@@ -49,7 +49,7 @@ namespace mpedit {
         std::string roomCode = session.getRoomCode();
         std::string errStr = net.getError();
 
-        // Check if anything has changed
+
         if (inSession == m_cachedInSession &&
             state == m_cachedState &&
             playerCount == m_cachedPlayerCount &&
@@ -58,7 +58,7 @@ namespace mpedit {
             return;
         }
 
-        // Update cache
+
         m_cachedInSession = inSession;
         m_cachedState = state;
         m_cachedPlayerCount = playerCount;

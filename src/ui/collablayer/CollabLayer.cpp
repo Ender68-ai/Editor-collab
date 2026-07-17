@@ -1,4 +1,10 @@
 #include <Geode/Geode.hpp>
+#include <Geode/binding/GJListLayer.hpp>
+#include <Geode/binding/LocalLevelManager.hpp>
+#include <Geode/binding/LevelBrowserLayer.hpp>
+#include <Geode/binding/TableViewCellDelegate.hpp>
+#include <Geode/binding/CustomListView.hpp>
+
 #include "settings/settings.hpp"
 #include "CollabLayer.hpp"
 #include "../MultiplayerPopup.hpp"
@@ -39,6 +45,27 @@ void CollabLayer::updateStatus(float) {
         );
     }
 
+bool CollabLayer::cellPerformedAction(
+    TableViewCell* cell,
+    int listType,
+    CellAction action,
+    cocos2d::CCNode* parent
+) {
+    return false;
+}
+
+int CollabLayer::getSelectedCellIdx() {
+    return -1;
+}
+
+bool CollabLayer::shouldSnapToSelected() {
+    return false;
+}
+
+int CollabLayer::getCellDelegateType() {
+    return 0;
+}
+
 bool CollabLayer::init() {
     if (!CCLayer::init())
         return false;
@@ -51,8 +78,7 @@ bool CollabLayer::init() {
     background->setColor({ 120, 161, 255 });
     this->addChild(background, -10);
 
-    // Create the sprite for the back button
-    
+
     auto backSprite = CCSprite::create("backbtn.png"_spr);
     backSprite->setAnchorPoint({0.5f, 0.5f});
     backSprite->setScale(0.2f);
@@ -159,6 +185,35 @@ bool CollabLayer::init() {
     winSize.width * 0.85f,
     winSize.height * 0.45f
     });
+    
+
+    auto search = GJSearchObject::create(SearchType::MyLevels);
+    auto manager = GameLevelManager::sharedState();
+    auto levels = LocalLevelManager::sharedState()->m_localLevels;
+    log::info("Levels = {}", levels->count());
+    log::info("search key = {}", search->getKey());
+
+    auto list = CustomListView::create(
+    levels,
+    this,
+    200.f,
+    200.f,
+    0,
+    BoomListType::Level,
+    0.f
+    );
+
+    log::info("list pointer: {}", (void*)list);
+
+
+
+    list->retain();
+    list->removeFromParentAndCleanup(false);
+
+    list->setPosition({0.f, 0.f});
+
+    list->release();
+
 
     auto menu1 = CCMenu::create();
     menu1->setID("BackMenu"_spr);
@@ -183,17 +238,38 @@ bool CollabLayer::init() {
     menu3->setPosition(CCPoint(winSize.width * 0.1f, (float)(winSize.height * 0.35f)));
     addChild(menu3);
 
+    auto listLayer = GJListLayer::create(
+        list,
+        "Local",
+        {255, 255, 255, 255},
+        200.f,
+        200.f,
+        0
+    );
 
-    this->schedule(schedule_selector(CollabLayer::updateStatus), 1.0f);
+    listLayer->setPosition({
+        winSize.width * 0.15f,
+        winSize.height * 0.15f
+    });
+    auto top = listLayer->getChildByID("top-border");
+    auto bottom = listLayer->getChildByID("bottom-border");
+
+    if (top) {
+        top->setScaleX(0.6f);
+    }
+
+    if (bottom) { 
+        bottom->setScaleX(0.6f);
+    }
+
+    addChild(listLayer);
+
+    this->schedule(schedule_selector(CollabLayer::updateStatus), 0.5f);
 
     return true;
 };
 
 void CollabLayer::onSettings(CCObject*) {
-    /* auto popup = settingsPopup::create("Hello");
-    if (popup) {
-        this->addChild(popup);
-    } */
     auto SettingsLayer = SettingsLayer::create();
     auto scene = CCScene::create();
     scene->addChild(SettingsLayer);

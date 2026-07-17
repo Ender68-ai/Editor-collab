@@ -29,13 +29,13 @@ namespace mpedit {
 
         bool setup();
 
-        // Connect view
+
         void createConnectView();
-        // Session view (shown when connected)
+
         void createSessionView();
-        // Loading view (shown during synchronization)
+
         void createLoadingView(std::string const& statusText);
-        // Clear children of m_contentNode and null out references
+
         void clearContentNode();
 
         void onHost(cocos2d::CCObject*);

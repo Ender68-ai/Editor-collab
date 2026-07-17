@@ -9,10 +9,10 @@
 
 namespace mpedit::proto {
 
-    // ── Opcodes (1 byte) ──────────────────────────────────────
-    // Reliable channel opcodes
+
+
     enum class Opcode : uint8_t {
-        // Object editing (reliable channel)
+
         PlaceObjects      = 0x01,
         DeleteObjects     = 0x02,
         MoveObjects       = 0x03,
@@ -21,33 +21,33 @@ namespace mpedit::proto {
         LockObjects       = 0x06,
         ReconcileObjects  = 0x07,
 
-        // Level sync (reliable channel, chunked)
+
         SyncLevelStart    = 0x10,
         SyncLevelChunk    = 0x11,
         SyncLevelEnd      = 0x12,
 
-        // Settings (reliable channel)
+
         UpdateSettings    = 0x20,
 
-        // Session management (reliable channel)
+
         PlayerJoined      = 0x30,
         PlayerLeft        = 0x31,
         RoomInfo          = 0x32,
         HostMigration     = 0x33,
         Reconnect         = 0x34,
 
-        // Cursor (unreliable channel)
+
         CursorUpdate      = 0x40,
 
-        // Batched moves during drag (unreliable channel)
+
         MoveBatch         = 0x41,
 
-        // Error
+
         Error             = 0xFF,
     };
 
-    // ── Writer ────────────────────────────────────────────────
-    // Builds a binary message buffer. Little-endian byte order.
+
+
 
     class Writer {
     public:
@@ -80,7 +80,7 @@ namespace mpedit::proto {
             writeU32(bits);
         }
 
-        // Variable-length integer encoding (1-5 bytes for uint32_t)
+
         void writeVarInt(uint32_t v) {
             while (v >= 0x80) {
                 m_buf.push_back(static_cast<uint8_t>(v | 0x80));
@@ -102,7 +102,7 @@ namespace mpedit::proto {
             m_buf.insert(m_buf.end(), data, data + len);
         }
 
-        // Write opcode as the first byte of a new message
+
         void writeOpcode(Opcode op) {
             writeU8(static_cast<uint8_t>(op));
         }
@@ -115,8 +115,8 @@ namespace mpedit::proto {
         std::vector<uint8_t> m_buf;
     };
 
-    // ── Reader ────────────────────────────────────────────────
-    // Reads from a binary message buffer. Little-endian byte order.
+
+
 
     class Reader {
     public:
@@ -191,7 +191,7 @@ namespace mpedit::proto {
         size_t remaining() const { return m_len - m_pos; }
         size_t position() const { return m_pos; }
 
-        // Access raw remaining bytes (useful for chunked data)
+
         const uint8_t* currentPtr() const { return m_data + m_pos; }
         void skip(size_t bytes) {
             checkRemaining(bytes);
@@ -209,89 +209,89 @@ namespace mpedit::proto {
         size_t m_pos;
     };
 
-    // ── Serialization helpers ─────────────────────────────────
-    // Each returns a complete binary message with opcode prefix.
 
-    // ObjectData write/read (shared by PlaceObjects, UpdateObjects, SyncLevelEnd)
+
+
+
     void writeObjectData(Writer& w, ActionSerializer::ObjectData const& obj);
     ActionSerializer::ObjectData readObjectData(Reader& r);
 
-    // MoveData write/read
+
     void writeMoveData(Writer& w, ActionSerializer::MoveData const& move);
     ActionSerializer::MoveData readMoveData(Reader& r);
 
-    // TransformData write/read
+
     void writeTransformData(Writer& w, ActionSerializer::TransformData const& t);
     ActionSerializer::TransformData readTransformData(Reader& r);
 
-    // LockData write/read
+
     void writeLockData(Writer& w, ActionSerializer::LockData const& lock);
     ActionSerializer::LockData readLockData(Reader& r);
 
-    // LevelSettingsData write/read
+
     void writeSettingsData(Writer& w, ActionSerializer::LevelSettingsData const& s);
     ActionSerializer::LevelSettingsData readSettingsData(Reader& r);
 
-    // ── Complete message serializers ──────────────────────────
 
-    // Objects placed: [opcode][count:varint][ObjectData...]
+
+
     std::vector<uint8_t> serializePlaceObjects(
         std::vector<ActionSerializer::ObjectData> const& objects);
 
-    // Objects deleted: [opcode][count:varint][uuid:string...]
+
     std::vector<uint8_t> serializeDeleteObjects(
         std::vector<std::string> const& uuids);
 
-    // Objects moved: [opcode][count:varint][MoveData...]
+
     std::vector<uint8_t> serializeMoveObjects(
         std::vector<ActionSerializer::MoveData> const& moves);
 
-    // Objects transformed: [opcode][count:varint][TransformData...]
+
     std::vector<uint8_t> serializeTransformObjects(
         std::vector<ActionSerializer::TransformData> const& transforms);
 
-    // Objects reconciled: [opcode][count:varint][ReconcileData...]
+
     std::vector<uint8_t> serializeReconcileObjects(
         std::vector<ActionSerializer::ReconcileData> const& reconciles);
 
-    // Objects updated: [opcode][count:varint][ObjectData...]
+
     std::vector<uint8_t> serializeUpdateObjects(
         std::vector<ActionSerializer::ObjectData> const& objects);
 
-    // Lock/unlock objects: [opcode][locked:bool][count:varint][uuid:string...]
+
     std::vector<uint8_t> serializeLockObjects(
         std::vector<std::string> const& uuids, bool locked);
 
-    // Cursor update (unreliable): [opcode][x:f32][y:f32][status:string]
+
     std::vector<uint8_t> serializeCursorUpdate(
         float x, float y, std::string const& status);
 
-    // Batched moves (unreliable): [opcode][count:varint][MoveData...]
+
     std::vector<uint8_t> serializeMoveBatch(
         std::vector<ActionSerializer::MoveData> const& moves);
 
-    // Update settings: [opcode][SettingsData]
+
     std::vector<uint8_t> serializeUpdateSettings(
         ActionSerializer::LevelSettingsData const& settings);
 
-    // Sync level (chunked) - start message:
-    // [opcode][totalChunks:varint][totalObjects:varint][SettingsData]
+
+
     std::vector<uint8_t> serializeSyncLevelStart(
         uint32_t totalChunks, uint32_t totalObjects,
         ActionSerializer::LevelSettingsData const& settings);
 
-    // Sync level - chunk:
-    // [opcode][chunkIndex:varint][dataLen:varint][compressedData:bytes]
+
+
     std::vector<uint8_t> serializeSyncLevelChunk(
         uint32_t chunkIndex, const uint8_t* data, size_t dataLen,
         std::vector<std::string> const& uuids);
 
-    // Sync level - end:
-    // [opcode][lockCount:varint][LockData...]
+
+
     std::vector<uint8_t> serializeSyncLevelEnd(
         std::vector<ActionSerializer::LockData> const& locks);
 
-    // Session messages
+
     std::vector<uint8_t> serializePlayerJoined(
         int playerId, std::string const& name, int colorIndex);
     std::vector<uint8_t> serializePlayerLeft(int playerId);
@@ -309,8 +309,8 @@ namespace mpedit::proto {
     std::vector<uint8_t> serializeRoomInfo(std::vector<RoomInfoPlayer> const& players);
     RoomInfoMsg deserializeRoomInfo(Reader& r);
 
-    // ── Deserialization ───────────────────────────────────────
-    // These read from a Reader positioned AFTER the opcode byte.
+
+
 
     struct PlaceObjectsMsg {
         std::vector<ActionSerializer::ObjectData> objects;

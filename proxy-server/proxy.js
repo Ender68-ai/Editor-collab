@@ -1,5 +1,5 @@
-// WebSocket Proxy Server
-// Accepts plain ws:// connections and forwards to wss:// backend
+
+
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -11,7 +11,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Health check endpoint
+
 app.get('/', (req, res) => {
     res.json({
         name: 'MultiplayerEdit WebSocket Proxy',
@@ -24,7 +24,7 @@ app.get('/', (req, res) => {
 wss.on('connection', (clientWs, req) => {
     console.log(`[${new Date().toISOString()}] Client connected from ${req.socket.remoteAddress}`);
     
-    // Connect to target WSS server
+
     const targetWs = new WebSocket(TARGET);
     let isConnected = false;
     
@@ -69,7 +69,7 @@ wss.on('connection', (clientWs, req) => {
         if (targetWs.readyState === WebSocket.OPEN) {
             targetWs.send(data);
         } else if (!isConnected) {
-            // Queue message until connected
+
             targetWs.once('open', () => {
                 if (targetWs.readyState === WebSocket.OPEN) {
                     targetWs.send(data);

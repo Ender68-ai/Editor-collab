@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-// Forward declarations for GD types
+
 class GameObject;
 
 namespace mpedit {
@@ -32,9 +32,9 @@ namespace mpedit {
             int zOrder = 0;
             int editorLayer = 0;
             int editorLayer2 = 0;
-            // Groups
+
             std::vector<int> groups;
-            // Color channels
+
             int mainColorChannel = -1;
             int secondColorChannel = -1;
         };
@@ -78,11 +78,11 @@ namespace mpedit {
             float timeLeft = 3.0f;
         };
 
-        // === GameObject helpers ===
+
 
         ObjectData extractObjectData(GameObject* obj, std::string const& uuid);
         
-        // Returns true if there are changes between two save strings, excluding transform properties
+
         bool hasDeepPropertyChanges(std::string const& oldSave, std::string const& newSave);
 
     } // namespace ActionSerializer

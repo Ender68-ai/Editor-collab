@@ -26,11 +26,11 @@ namespace mpedit {
     public:
         static RemoteActionHandler& get();
 
-        // Register network handlers for remote actions
+
         void setupHandlers();
         void clearHandlers();
 
-        // Apply remote actions to the local editor
+
         void handleRemotePlaceObjects(int playerId, std::vector<ActionSerializer::ObjectData> const& objects);
         void handleRemoteDeleteObjects(int playerId, std::vector<std::string> const& uuids);
         void handleRemoteMoveObjects(int playerId, std::vector<ActionSerializer::MoveData> const& moves);
@@ -43,35 +43,35 @@ namespace mpedit {
 
         std::unordered_map<std::string, LockInfo> const& getObjectLocks() const { return m_objectLocks; }
         
-        // Call this every frame to decay lock timers
+
         void updateLocks(float dt);
 
-        // History pruning helper
+
         void pruneObjectFromHistory(LevelEditorLayer* editor, GameObject* obj);
 
-        // UUID management
+
         void registerObject(std::string const& uuid, GameObject* obj);
         void unregisterObject(std::string const& uuid);
         GameObject* getObjectByUUID(std::string const& uuid) const;
         std::string getUUIDForObject(GameObject* obj) const;
         std::string getOrCreateUUID(GameObject* obj);
 
-        // Generate a new UUID
+
         static std::string generateUUID();
 
-        // Clear all mappings (called when leaving editor)
+
         void clearMappings();
 
-        // --- Batched placement sync ---
-        // Copy/paste/duplicate can spawn dozens of objects in a single frame.
-        // Instead of sending one place_objects message per object (one WS send
-        // + one getSaveString each), queue them here and flush as a single
-        // message via flushPendingPlacements() on the next network tick.
+
+
+
+
+
         void queueObjectForPlacement(std::string const& uuid, GameObject* obj);
         void flushPendingPlacements();
         bool isObjectPendingPlacement(GameObject* obj) const;
 
-        // Flag to suppress outgoing messages when processing remote actions
+
         bool isProcessingRemote() const { return m_processingRemote; }
 
         bool isInitialSyncCompleted() const;
@@ -80,12 +80,12 @@ namespace mpedit {
         void applyPendingSync();
         bool hasPendingSync() const { return m_pendingSync.has_value(); }
 
-        // Init-bridge: lets applyPendingSync() resolve the editor while it runs
-        // from inside LevelEditorLayer::init() — at that point the editor is not
-        // yet in the scene graph, so getEditorLayer() (which walks the running
-        // scene) cannot find it. Setting this temporarily makes getEditorLayer()
-        // return the editor passed in, so handleRemoteSyncLevel() mutates the
-        // right one instead of re-entering the "no editor" branch (recursion).
+
+
+
+
+
+
         void setEditorForInit(LevelEditorLayer* editor) { m_editorForInit = editor; }
         LevelEditorLayer* getEditorForInit() const { return m_editorForInit; }
 
@@ -99,7 +99,7 @@ namespace mpedit {
         void loadSongInfoFinished(SongInfoObject* object) override {}
         void loadSongInfoFailed(int id, GJSongError errorType) override {}
 
-        // Selected objects baseline saveStrings (for tracking property changes during selection)
+
         std::unordered_map<GameObject*, std::string>& getTrackedSelections() { return m_preSelectSaveStrings; }
 
     private:
@@ -111,27 +111,27 @@ namespace mpedit {
 
         LevelEditorLayer* getEditorLayer() const;
 
-        // Applies a LevelSettingsData packet (settings saveString + song) onto
-        // the editor. Used by both sync_level and update_settings so the color
-        // / portal / song application logic lives in exactly one place.
+
+
+
         void applyLevelSettings(LevelEditorLayer* editor, ActionSerializer::LevelSettingsData const& settings);
 
-        // UUID ↔ GameObject bidirectional mapping
+
         std::unordered_map<std::string, GameObject*> m_uuidToObject;
         std::unordered_map<GameObject*, std::string> m_objectToUuid;
 
-        // UUID ↔ Lock info
+
         std::unordered_map<std::string, LockInfo> m_objectLocks;
-        // Pending final state for an object being edited by a remote player.
-        // We update its transform in-place every tick while it's locked, and
+
+
         std::unordered_map<GameObject*, std::string> m_preSelectSaveStrings;
 
         bool m_processingRemote = false;
         bool m_initialSyncCompleted = false;
 
-        // When non-null, getEditorLayer() returns this instead of searching the
-        // scene graph. Used to bridge applyPendingSync() → handleRemoteSyncLevel()
-        // during LevelEditorLayer::init() (see setEditorForInit comment above).
+
+
+
         LevelEditorLayer* m_editorForInit = nullptr;
 
         struct PendingSync {
@@ -155,16 +155,16 @@ namespace mpedit {
         };
         ChunkedSyncState m_chunkedSync;
 
-        // Objects queued for a batched place_objects flush. Stored as UUID +
-        // Ref<GameObject> (Ref keeps the object alive across the frame boundary
-        // even if GD's arrays drop it).
+
+
+
         struct PendingPlacement {
             std::string uuid;
             geode::Ref<GameObject> obj;
         };
         std::vector<PendingPlacement> m_pendingPlacements;
 
-        // Counter for UUID generation
+
         static inline int s_uuidCounter = 0;
     };
 

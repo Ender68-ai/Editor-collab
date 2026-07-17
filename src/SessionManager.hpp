@@ -25,24 +25,24 @@ namespace mpedit {
 
         static SessionManager& get();
 
-        // Session lifecycle
+
         void hostSession(std::string const& playerName);
         void joinSession(std::string const& roomCode, std::string const& playerName);
         void leaveSession();
 
-        // State queries
+
         bool isInSession() const;
         Role getRole() const;
         std::string getRoomCode() const;
         int getLocalPlayerId() const;
         std::string getLocalPlayerName() const;
 
-        // Player management
+
         std::vector<PlayerInfo> const& getPlayers() const;
         PlayerInfo const* getPlayer(int id) const;
         void updatePlayerCursor(int playerId, float x, float y, std::string const& status);
 
-        // Register callbacks for session events
+
         using SessionCallback = std::function<void()>;
         using PlayerCallback = std::function<void(PlayerInfo const&)>;
         using ErrorCallback = std::function<void(std::string const&)>;
@@ -71,7 +71,7 @@ namespace mpedit {
         std::string m_localPlayerName;
         std::vector<PlayerInfo> m_players;
 
-        // Event callbacks
+
         std::vector<SessionCallback> m_onSessionStarted;
         std::vector<SessionCallback> m_onSessionEnded;
         std::vector<PlayerCallback> m_onPlayerJoined;
