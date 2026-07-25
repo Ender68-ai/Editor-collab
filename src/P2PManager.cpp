@@ -2,6 +2,7 @@
 #include "BinaryProtocol.hpp"
 
 #include <rtc/rtc.hpp>
+#include <rtc/websocket.hpp>
 #include <Geode/Geode.hpp>
 #include <Geode/utils/web.hpp>
 #include <thread>
@@ -325,9 +326,8 @@ namespace mpedit {
                         cb(roomCode, 0);
                     }
 
-                    // Start polling for new clients
-                    m_pollingSignaling = true;
-                    signalingPollForClients();
+                    // Connect signaling WebSocket to receive client_joined events
+                    connectSignalingWs(roomCode, "host");
                 } else {
                     std::vector<ErrorCb> callbacks;
                     std::string err;
@@ -344,80 +344,107 @@ namespace mpedit {
         );
     }
 
-    void P2PManager::signalingPollForClients() {
-        if (!m_pollingSignaling || m_role != Role::Host ||
-            m_state.load() != State::Connected) return;
+    // ── Signaling WebSocket ────────────────────────────────────
 
-        auto code = getRoomCode();
-        auto url = getSignalingUrl() + "/rooms/" + code;
+    void P2PManager::connectSignalingWs(std::string const& code, std::string const& role, int playerId) {
+        auto baseUrl = getSignalingUrl();
+        // Convert https:// → wss:// and http:// → ws://
+        std::string wsUrl;
+        if (baseUrl.substr(0, 8) == "https://") {
+            wsUrl = "wss://" + baseUrl.substr(8);
+        } else if (baseUrl.substr(0, 7) == "http://") {
+            wsUrl = "ws://" + baseUrl.substr(7);
+        } else {
+            wsUrl = "wss://" + baseUrl;
+        }
+        wsUrl += "/ws/" + code + "?role=" + role + "&playerId=" + std::to_string(playerId);
 
-        auto req = web::WebRequest();
-        m_pollingListener.spawn(
-            req.get(url),
-            [this](web::WebResponse res) {
-                if (res.ok()) {
-                    auto json = res.json().unwrapOr(matjson::Value());
-                    int playerCount = json.get<int>("playerCount").unwrapOr(0);
+        log::info("P2PManager: Connecting signaling WebSocket to {}", wsUrl);
 
-                    while (m_nextPlayerId < playerCount) {
-                        int clientId = m_nextPlayerId++;
-                        std::string clientName = "Player " + std::to_string(clientId);
-                        log::info("P2PManager: Client {} connecting", clientId);
-                        createHostPeer(clientId, clientName);
-                        pollClientAnswer(clientId);
-                    }
-                }
-                if (m_pollingSignaling) {
-                    std::thread([this]() {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-                        queueInMainThread([this]() { signalingPollForClients(); });
-                    }).detach();
-                }
+        m_signalingWs = std::make_shared<rtc::WebSocket>();
+
+        m_signalingWs->onOpen([this]() {
+            log::info("P2PManager: Signaling WebSocket connected");
+        });
+
+        m_signalingWs->onMessage([this](auto msg) {
+            if (auto* str = std::get_if<std::string>(&msg)) {
+                queueInMainThread([this, s = *str]() {
+                    onSignalingMessage(s);
+                });
             }
-        );
+        });
+
+        m_signalingWs->onClosed([this]() {
+            log::info("P2PManager: Signaling WebSocket closed");
+        });
+
+        m_signalingWs->onError([this](std::string err) {
+            log::error("P2PManager: Signaling WebSocket error: {}", err);
+        });
+
+        m_signalingWs->open(wsUrl);
     }
 
-    void P2PManager::pollClientAnswer(int clientId) {
-        if (!m_pollingSignaling || m_role != Role::Host) return;
+    void P2PManager::onSignalingMessage(std::string const& msg) {
+        auto json = matjson::parse(msg).unwrapOr(matjson::Value());
+        auto type = json.get<std::string>("type").unwrapOr("");
 
-        auto code = getRoomCode();
-        auto url = getSignalingUrl() + "/rooms/" + code + "/answer?playerId=" + std::to_string(clientId);
+        if (type == "client_joined") {
+            // Host receives notification that a new client joined
+            int clientId = json.get<int>("playerId").unwrapOr(-1);
+            auto clientName = json.get<std::string>("playerName").unwrapOr("Player " + std::to_string(clientId));
+            if (clientId >= 0) {
+                log::info("P2PManager: Client {} ({}) connecting via WS notification", clientId, clientName);
+                m_nextPlayerId = std::max(m_nextPlayerId, clientId + 1);
+                createHostPeer(clientId, clientName);
+            }
+        } else if (type == "answer") {
+            // Host receives SDP answer from a client
+            auto sdp = json.get<std::string>("sdp").unwrapOr("");
+            int clientId = json.get<int>("playerId").unwrapOr(-1);
+            if (!sdp.empty() && clientId >= 0) {
+                log::info("P2PManager: Received SDP answer from client {} via WS", clientId);
 
-        auto req = web::WebRequest();
-        m_answerListeners[clientId].spawn(
-            req.get(url),
-            [this, clientId](web::WebResponse res) {
-                if (res.ok()) {
-                    auto json = res.json().unwrapOr(matjson::Value());
-                    auto sdp = json.get<std::string>("sdp").unwrapOr("");
-                    if (!sdp.empty()) {
-                        log::info("P2PManager: Received SDP answer from client {}", clientId);
-                        
-                        // Force answer role to active to fix libdatachannel crash
-                        size_t setupPos = sdp.find("a=setup:actpass");
-                        while (setupPos != std::string::npos) {
-                            sdp.replace(setupPos, 15, "a=setup:active");
-                            setupPos = sdp.find("a=setup:actpass", setupPos);
-                        }
-                        
-                        log::info("Answer SDP:\n{}", sdp);
-                        std::lock_guard lock(m_peersMutex);
-                        auto it = m_peers.find(clientId);
-                        if (it != m_peers.end() && it->second.pc) {
-                            it->second.pc->setRemoteDescription(
-                                rtc::Description(sdp, rtc::Description::Type::Answer, rtc::Description::Role::Active));
-                        }
-                        return;
-                    }
+                // Force answer role to active to fix libdatachannel crash
+                size_t setupPos = sdp.find("a=setup:actpass");
+                while (setupPos != std::string::npos) {
+                    sdp.replace(setupPos, 15, "a=setup:active");
+                    setupPos = sdp.find("a=setup:actpass", setupPos);
                 }
-                if (m_pollingSignaling) {
-                    std::thread([this, clientId]() {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                        queueInMainThread([this, clientId]() { pollClientAnswer(clientId); });
-                    }).detach();
+
+                log::info("Answer SDP:\n{}", sdp);
+                std::lock_guard lock(m_peersMutex);
+                auto it = m_peers.find(clientId);
+                if (it != m_peers.end() && it->second.pc) {
+                    it->second.pc->setRemoteDescription(
+                        rtc::Description(sdp, rtc::Description::Type::Answer, rtc::Description::Role::Active));
                 }
             }
-        );
+        } else if (type == "offer") {
+            // Client receives SDP offer from host
+            auto sdp = json.get<std::string>("sdp").unwrapOr("");
+            if (!sdp.empty()) {
+                log::info("P2PManager: Received host's SDP offer via WS");
+                log::info("Offer SDP:\n{}", sdp);
+                std::lock_guard lock(m_peersMutex);
+                auto it = m_peers.find(0);
+                if (it != m_peers.end() && it->second.pc) {
+                    it->second.pc->setRemoteDescription(
+                        rtc::Description(sdp, rtc::Description::Type::Offer, rtc::Description::Role::ActPass));
+                    it->second.pc->setLocalDescription();
+                }
+            }
+        }
+    }
+
+    void P2PManager::closeSignalingWs() {
+        if (m_signalingWs) {
+            try {
+                m_signalingWs->close();
+            } catch (...) {}
+            m_signalingWs.reset();
+        }
     }
 
     // ── Join Session ──────────────────────────────────────────
@@ -508,8 +535,8 @@ namespace mpedit {
                         dc->onClosed([this]() { log::info("P2PManager: Channel to host closed"); });
                     });
 
-                    // Handle ICE gathering completion — post SDP to signaling
-                    pc->onGatheringStateChange([this, pc, myId, roomCode](
+                    // Handle ICE gathering completion — send SDP answer via signaling WS
+                    pc->onGatheringStateChange([this, pc, myId](
                         rtc::PeerConnection::GatheringState state)
                     {
                         if (state == rtc::PeerConnection::GatheringState::Complete) {
@@ -524,18 +551,16 @@ namespace mpedit {
                                     setupPos = sdp.find("a=setup:actpass", setupPos);
                                 }
                                 
-                                log::info("P2PManager: ICE gathering complete, posting SDP answer");
+                                log::info("P2PManager: ICE gathering complete, sending SDP answer via WS");
 
-                                queueInMainThread([this, sdp, myId, roomCode]() {
-                                    auto url = getSignalingUrl() + "/rooms/" + roomCode + "/answer";
-                                    auto req = web::WebRequest();
-                                    req.header("Content-Type", "application/json");
-                                    auto body = matjson::Value();
-                                    body["sdp"] = sdp;
-                                    body["playerId"] = myId;
-                                    req.bodyJSON(body);
-                                    // Fire-and-forget
-                                    async::spawn(req.post(url));
+                                queueInMainThread([this, sdp, myId]() {
+                                    if (m_signalingWs) {
+                                        auto body = matjson::Value();
+                                        body["type"] = "answer";
+                                        body["sdp"] = sdp;
+                                        body["playerId"] = myId;
+                                        m_signalingWs->send(body.dump());
+                                    }
                                 });
                             }
                         }
@@ -557,8 +582,8 @@ namespace mpedit {
                         m_peers[0] = std::move(hostPeer);
                     }
 
-                    // Now poll for the host's SDP offer
-                    signalingPollForAnswer();
+                    // Connect signaling WebSocket to receive SDP offer from host
+                    connectSignalingWs(roomCode, "client", m_localPlayerId);
 
                 } else if (res.code() == 404) {
                     std::vector<ErrorCb> callbacks;
@@ -582,44 +607,6 @@ namespace mpedit {
                         err = m_error;
                     }
                     for (auto& cb : callbacks) cb(err);
-                }
-            }
-        );
-    }
-
-    void P2PManager::signalingPollForAnswer() {
-        auto code = getRoomCode();
-        auto url = getSignalingUrl() + "/rooms/" + code + "/offer?playerId=" + std::to_string(m_localPlayerId);
-
-        auto req = web::WebRequest();
-        m_pollingListener.spawn(
-            req.get(url),
-            [this](web::WebResponse res) {
-                if (res.ok()) {
-                    auto json = res.json().unwrapOr(matjson::Value());
-                    auto sdp = json.get<std::string>("sdp").unwrapOr("");
-
-                    if (!sdp.empty()) {
-                        log::info("P2PManager: Received host's SDP offer");
-                        log::info("Offer SDP:\n{}", sdp);
-                        std::lock_guard lock(m_peersMutex);
-                        auto it = m_peers.find(0);
-                        if (it != m_peers.end() && it->second.pc) {
-                            it->second.pc->setRemoteDescription(
-                                rtc::Description(sdp, rtc::Description::Type::Offer, rtc::Description::Role::ActPass));
-                            it->second.pc->setLocalDescription();
-                        }
-                        return;
-                    }
-                }
-                // Not ready yet, retry in 1 second
-                if (m_state.load() == State::Connecting) {
-                    std::thread([this]() {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                        queueInMainThread([this]() {
-                            signalingPollForAnswer();
-                        });
-                    }).detach();
                 }
             }
         );
@@ -669,7 +656,7 @@ namespace mpedit {
         setupChannelCallbacks(reliable, true);
         setupChannelCallbacks(unreliable, false);
 
-        // Post SDP offer to signaling server when ICE gathering completes
+        // Send SDP offer via signaling WebSocket when ICE gathering completes
         pc->onGatheringStateChange([this, pc, clientPlayerId](
             rtc::PeerConnection::GatheringState state)
         {
@@ -677,19 +664,16 @@ namespace mpedit {
                 auto desc = pc->localDescription();
                 if (desc.has_value()) {
                     std::string sdp = std::string(desc.value());
-                    auto code = getRoomCode();
-                    log::info("P2PManager: Posting SDP offer for player {}", clientPlayerId);
+                    log::info("P2PManager: Sending SDP offer for player {} via WS", clientPlayerId);
 
-                    queueInMainThread([this, sdp, clientPlayerId, code]() {
-                        auto url = getSignalingUrl() + "/rooms/" + code + "/offer";
-                        auto req = web::WebRequest();
-                        req.header("Content-Type", "application/json");
-                        auto body = matjson::Value();
-                        body["sdp"] = sdp;
-                        body["targetPlayerId"] = clientPlayerId;
-                        req.bodyJSON(body);
-                        // Use a separate listener for this fire-and-forget
-                        async::spawn(req.post(url));
+                    queueInMainThread([this, sdp, clientPlayerId]() {
+                        if (m_signalingWs) {
+                            auto body = matjson::Value();
+                            body["type"] = "offer";
+                            body["sdp"] = sdp;
+                            body["targetPlayerId"] = clientPlayerId;
+                            m_signalingWs->send(body.dump());
+                        }
                     });
                 }
             }
@@ -748,6 +732,8 @@ namespace mpedit {
             // If client connecting to host, we're now Connected
             if (m_role == Role::Client && pid == 0) {
                 m_state.store(State::Connected);
+                // P2P established — close signaling WebSocket (no longer needed)
+                closeSignalingWs();
             }
 
             queueInMainThread([this, pid, name, colorIdx]() {
@@ -774,7 +760,8 @@ namespace mpedit {
     // ── Leave Session ─────────────────────────────────────────
 
     void P2PManager::leaveSession() {
-        m_pollingSignaling = false;
+        // Close signaling WebSocket
+        closeSignalingWs();
 
         // Close all peer connections
         {

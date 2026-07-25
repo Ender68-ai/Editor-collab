@@ -4,6 +4,9 @@
 - Added a buffer queue to hopefully reduce dropped messages.
 - Fixed severe desync and level corruption issues when receiving remote edits while actively playtesting. Edits are now cleanly queued during playtest.
 - Fixed a race condition window when building fast that caused objects to duplicate or drift.
+- Replaced HTTP polling-based signaling with a proper WebSocket relay.
+- Fixed the signaling server consuming excessive Deno KV reads by removing infinite polling loops. The host no longer polls for new clients, they are pushed instantly via WebSocket.
+- Signaling WebSocket is automatically closed once the P2P connection is established, minimizing server resource usage.
 
 # 0.4.0
 - Completely overhauled netoworking by switching from a central WebSocket relay server to P2P connections using WebRTC data channels (You may need to reset the URL in the mod settings back to default if you came from an older version).

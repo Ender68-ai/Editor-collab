@@ -16,6 +16,7 @@
 namespace rtc {
     class PeerConnection;
     class DataChannel;
+    class WebSocket;
     struct Configuration;
 }
 
@@ -132,12 +133,12 @@ namespace mpedit {
         rtc::Configuration makeRtcConfig();
         void createHostPeer(int clientPlayerId, std::string const& clientName);
 
-        // Signaling HTTP helpers (use Geode web::WebRequest)
+        // Signaling helpers
         void signalingCreateRoom(std::string const& playerName);
-        void signalingPollForClients();
         void signalingJoinRoom(std::string const& roomCode, std::string const& playerName);
-        void signalingPollForAnswer();
-        void pollClientAnswer(int clientId);
+        void connectSignalingWs(std::string const& code, std::string const& role, int playerId = 0);
+        void onSignalingMessage(std::string const& msg);
+        void closeSignalingWs();
 
         // Called on data channel threads — enqueues for main-thread dispatch
         void onPeerMessage(int fromPlayerId, const uint8_t* data, size_t len);
@@ -179,13 +180,11 @@ namespace mpedit {
         std::vector<PeerDisconnectedCb> m_onPeerDisconnected;
         std::vector<ErrorCb> m_onError;
 
-        // ── Signaling polling ─────────────────────────────────
-        bool m_pollingSignaling = false;
+        // ── Signaling WebSocket ───────────────────────────────
+        std::shared_ptr<rtc::WebSocket> m_signalingWs;
         std::string m_pendingLocalSdp;   // our SDP offer/answer
-        std::string m_signalingRoomId;   // server-side room ID for polling
+        std::string m_signalingRoomId;   // server-side room ID
         geode::async::TaskHolder<geode::utils::web::WebResponse> m_signalingListener;
-        geode::async::TaskHolder<geode::utils::web::WebResponse> m_pollingListener;
-        std::unordered_map<int, geode::async::TaskHolder<geode::utils::web::WebResponse>> m_answerListeners;
 
         // ── Host migration ────────────────────────────────────
         // (Phase 4 — placeholder for now)
