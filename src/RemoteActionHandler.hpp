@@ -71,6 +71,9 @@ namespace mpedit {
         void flushPendingPlacements();
         bool isObjectPendingPlacement(GameObject* obj) const;
 
+        // --- Playtest Queueing ---
+        void flushPlaytestQueue();
+
         // Flag to suppress outgoing messages when processing remote actions
         bool isProcessingRemote() const { return m_processingRemote; }
 
@@ -163,6 +166,21 @@ namespace mpedit {
             geode::Ref<GameObject> obj;
         };
         std::vector<PendingPlacement> m_pendingPlacements;
+
+        // Playtest Queue
+        struct QueuedAction {
+            enum class Type { Place, Delete, Move, Transform, Reconcile, Update };
+            Type type;
+            int playerId;
+            
+            std::vector<ActionSerializer::ObjectData> placeObjects;
+            std::vector<std::string> deleteUuids;
+            std::vector<ActionSerializer::MoveData> moveData;
+            std::vector<ActionSerializer::TransformData> transformData;
+            std::vector<ActionSerializer::ReconcileData> reconcileData;
+            std::vector<ActionSerializer::ObjectData> updateObjects;
+        };
+        std::vector<QueuedAction> m_playtestQueue;
 
         // Counter for UUID generation
         static inline int s_uuidCounter = 0;

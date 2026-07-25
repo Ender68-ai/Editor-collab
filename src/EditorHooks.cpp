@@ -355,6 +355,7 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         bool m_sessionActive = false;
         bool m_inUndoRedo = false;
         cocos2d::CCPoint m_lastSentLevelPos = {0.f, 0.f};
+        bool m_wasPlaytesting = false;
 
         ~Fields() {
             auto& session = SessionManager::get();
@@ -791,10 +792,23 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         auto& session = SessionManager::get();
         if (!session.isInSession()) return;
 
+        auto& handler = RemoteActionHandler::get();
+        bool isPlaytesting = this->m_playbackMode != PlaybackMode::Not;
+        
+        if (isPlaytesting && !m_fields->m_wasPlaytesting) {
+            MessageBatcher::get().flush();
+            handler.flushPendingPlacements();
+            if (auto* ui = this->m_editorUI) {
+                ui->deselectAll();
+            }
+        } else if (!isPlaytesting && m_fields->m_wasPlaytesting) {
+            handler.flushPlaytestQueue();
+        }
+        m_fields->m_wasPlaytesting = isPlaytesting;
+
         // Dispatch queued network messages
         P2PManager::get().dispatchMessages();
 
-        auto& handler = RemoteActionHandler::get();
         handler.updateLocks(dt);
         MessageBatcher::get().update(dt);
 
@@ -936,12 +950,9 @@ namespace {
         if (session.isInSession() && !handler.isProcessingRemote() && objects) {
             for (auto* obj : CCArrayExt<GameObject*>(objects)) {
                 if (!obj) continue;
-                // Skip objects still awaiting their initial PlaceObjects flush.
-                // The remote doesn't know this UUID yet, so any transform/move
-                // message would be silently dropped. The pending PlaceObjects
-                // flush will capture the final state (including any transforms
-                // applied between creation and flush).
-                if (handler.isObjectPendingPlacement(obj)) continue;
+                if (handler.isObjectPendingPlacement(obj)) {
+                    handler.flushPendingPlacements();
+                }
                 auto uuid = handler.getUUIDForObject(obj);
                 if (!uuid.empty()) {
                     selected.push_back({uuid, obj, obj->getPosition()});
@@ -980,13 +991,13 @@ namespace {
             }
         }
 
-        if (!transforms.empty()) {
-            auto data = proto::serializeTransformObjects(transforms);
-            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        // Queue updates via MessageBatcher instead of sending directly to prevent
+        // network flooding during continuous dragging of rotation/scale handles.
+        for (auto const& t : transforms) {
+            MessageBatcher::get().queueTransform(t.uuid, t);
         }
-        if (!moves.empty()) {
-            auto data = proto::serializeMoveObjects(moves);
-            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        for (auto const& m : moves) {
+            MessageBatcher::get().queueMove(m.uuid, m.dx, m.dy);
         }
 
         // Update tracked saveString baselines so syncDeselections does NOT
@@ -1082,8 +1093,12 @@ class $modify(MPEditorUI, EditorUI) {
                     // select. This acts as a reconciliation point — if the
                     // object drifted due to fast actions or dropped deltas,
                     // selecting it snaps all remotes back to the truth.
-                    // Skip objects still pending their initial PlaceObjects.
-                    if (!handler.isObjectPendingPlacement(obj) && obj->m_objectID != 31) {
+                    // Flush objects still pending their initial PlaceObjects.
+                    // If we flushed, skip the UpdateObjects — the PlaceObjects
+                    // message already contains the complete object state.
+                    if (handler.isObjectPendingPlacement(obj)) {
+                        handler.flushPendingPlacements();
+                    } else if (obj->m_objectID != 31) {
                         if (auto* editor = LevelEditorLayer::get()) {
                             auto objData = ActionSerializer::extractObjectData(obj, uuid);
                             auto syncData = proto::serializeUpdateObjects({objData});
@@ -1282,7 +1297,7 @@ class $modify(MPEditorUI, EditorUI) {
 
     void syncDeselections(float dt) {
         auto* editor = LevelEditorLayer::get();
-        if (!editor || !editor->m_objects) return;
+        if (!editor || !editor->m_objects || editor->m_playbackMode != PlaybackMode::Not) return;
 
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
@@ -1391,6 +1406,9 @@ class $modify(MPEditorUI, EditorUI) {
             bool isSelected = (std::find(currentSelection.begin(), currentSelection.end(), obj) != currentSelection.end()) &&
                               (std::find(toDeselect.begin(), toDeselect.end(), obj) == toDeselect.end());
 
+            if (handler.isObjectPendingPlacement(obj)) {
+                handler.flushPendingPlacements();
+            }
             auto uuid = handler.getUUIDForObject(obj);
             if (uuid.empty()) {
                 it = tracked.erase(it);
@@ -1420,6 +1438,8 @@ class $modify(MPEditorUI, EditorUI) {
                         updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                     }
                 }
+                
+                MessageBatcher::get().removePending(uuid); // Clear stale relative deltas
 
                 it = tracked.erase(it);
             } else {
@@ -1439,6 +1459,19 @@ class $modify(MPEditorUI, EditorUI) {
                 } else if (it->second != currentSave) {
                     // Update the cached save string anyway so we don't keep diffing position
                     it->second = currentSave;
+                    
+                    MessageBatcher::get().removePending(uuid); // Clear stale relative deltas
+                    
+                    ActionSerializer::ReconcileData rec;
+                    rec.uuid = uuid;
+                    rec.x = obj->getPositionX();
+                    rec.y = obj->getPositionY();
+                    rec.rotation = obj->getRotation();
+                    rec.scaleX = obj->getScaleX();
+                    rec.scaleY = obj->getScaleY();
+                    rec.flipX = obj->isFlipX();
+                    rec.flipY = obj->isFlipY();
+                    reconciles.push_back(rec);
                 }
                 ++it;
             }
@@ -1481,7 +1514,13 @@ class $modify(MPEditorUI, EditorUI) {
 
         if (session.isInSession() && !handler.isProcessingRemote()) {
             auto uuid = handler.getUUIDForObject(obj);
-            if (!uuid.empty() && !handler.isObjectPendingPlacement(obj)) {
+            if (handler.isObjectPendingPlacement(obj)) {
+                // Don't send a move delta — the pending placement flush will
+                // capture the object's current (post-move) position already.
+                // Sending both would cause a double-move on the remote.
+                return;
+            }
+            if (!uuid.empty()) {
                 CCPoint newPos = obj->getPosition();
                 ActionSerializer::MoveData move;
                 move.uuid = uuid;

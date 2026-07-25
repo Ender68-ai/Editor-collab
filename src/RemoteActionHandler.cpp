@@ -62,30 +62,17 @@ namespace mpedit {
         // AND as the SIGN of scaleX/scaleY (e.g. flipX=true  <=>  scaleX<0). GD's
         // GameObject::setFlipX(bool) only negates the scale when the flip state
         // *changes*, and our naive sequence
-        //     obj->setScaleX(signedScaleX); obj->setFlipX(flipX);
-        // was double-applying the flip on some calls and skipping it on others,
-        // so the remote oscillated and landed at the OPPOSITE flip from the host.
-        //
-        // Fix: the flip BOOL is the source of truth (it's what getSaveString
-        // emits as key 4/5, and it survives round-trips cleanly). We set it
-        // first, then REBUILD the scale from its magnitude and the authoritative
-        // flip flag, so the sign is always consistent with the flag regardless
-        // of the object's incoming sign state. This is idempotent: applying it
-        // twice to the same object yields the same result as once.
+        // Fix: Geometry Dash treats flipX/Y and scaleX/Y signs as orthogonal properties
+        // depending on the object type. Solid blocks mirror using negative scaleX without
+        // changing flipX, while decorations use flipX without changing scaleX.
+        // We must apply both exactly as received to prevent breaking the mirror state.
         void applyTransformSafe(GameObject* obj, float rotation, float scaleX, float scaleY, bool flipX, bool flipY) {
             if (!obj) return;
             obj->setRotation(rotation);
-
-            // The sender's scaleX/Y already carry the flip sign (it read it via
-            // getScaleX()). Take the magnitude as the intended size and re-sign
-            // it from the authoritative flip flag.
-            float magX = std::fabs(scaleX);
-            float magY = std::fabs(scaleY);
-
             obj->setFlipX(flipX);
             obj->setFlipY(flipY);
-            obj->setScaleX(flipX ? -magX : magX);
-            obj->setScaleY(flipY ? -magY : magY);
+            obj->setScaleX(scaleX);
+            obj->setScaleY(scaleY);
         }
     }
 
@@ -360,6 +347,15 @@ namespace mpedit {
             return;
         }
 
+        if (editor->m_playbackMode != PlaybackMode::Not) {
+            QueuedAction qa;
+            qa.type = QueuedAction::Type::Place;
+            qa.playerId = playerId;
+            qa.placeObjects = objects;
+            m_playtestQueue.push_back(std::move(qa));
+            return;
+        }
+
         m_processingRemote = true;
 
         for (auto& objData : objects) {
@@ -405,6 +401,15 @@ namespace mpedit {
         auto* editor = getEditorLayer();
         if (!editor) return;
 
+        if (editor->m_playbackMode != PlaybackMode::Not) {
+            QueuedAction qa;
+            qa.type = QueuedAction::Type::Delete;
+            qa.playerId = playerId;
+            qa.deleteUuids = uuids;
+            m_playtestQueue.push_back(std::move(qa));
+            return;
+        }
+
         m_processingRemote = true;
 
         for (auto& uuid : uuids) {
@@ -443,6 +448,15 @@ namespace mpedit {
         auto* editor = getEditorLayer();
         if (!editor) return;
 
+        if (editor->m_playbackMode != PlaybackMode::Not) {
+            QueuedAction qa;
+            qa.type = QueuedAction::Type::Move;
+            qa.playerId = playerId;
+            qa.moveData = moves;
+            m_playtestQueue.push_back(std::move(qa));
+            return;
+        }
+
         m_processingRemote = true;
 
         for (auto& move : moves) {
@@ -470,6 +484,15 @@ namespace mpedit {
     ) {
         auto* editor = getEditorLayer();
         if (!editor) return;
+
+        if (editor->m_playbackMode != PlaybackMode::Not) {
+            QueuedAction qa;
+            qa.type = QueuedAction::Type::Transform;
+            qa.playerId = playerId;
+            qa.transformData = transforms;
+            m_playtestQueue.push_back(std::move(qa));
+            return;
+        }
 
         log::debug("RemoteActionHandler: applying remote transform (playerId={}, n={})", playerId, transforms.size());
         m_processingRemote = true;
@@ -499,6 +522,15 @@ namespace mpedit {
         auto* editor = getEditorLayer();
         if (!editor) return;
 
+        if (editor->m_playbackMode != PlaybackMode::Not) {
+            QueuedAction qa;
+            qa.type = QueuedAction::Type::Reconcile;
+            qa.playerId = playerId;
+            qa.reconcileData = reconciles;
+            m_playtestQueue.push_back(std::move(qa));
+            return;
+        }
+
         log::debug("RemoteActionHandler: applying remote reconcile (playerId={}, n={})", playerId, reconciles.size());
         m_processingRemote = true;
 
@@ -514,6 +546,7 @@ namespace mpedit {
             
             // Set absolute transform
             applyTransformSafe(obj, r.rotation, r.scaleX, r.scaleY, r.flipX, r.flipY);
+            editor->updateObjectSection(obj);
 
             // Reconcile makes any pending transforms/moves in locked state stale
             // (Removed lockedSaveStrings handling)
@@ -531,6 +564,15 @@ namespace mpedit {
     ) {
         auto* editor = getEditorLayer();
         if (!editor) return;
+
+        if (editor->m_playbackMode != PlaybackMode::Not) {
+            QueuedAction qa;
+            qa.type = QueuedAction::Type::Update;
+            qa.playerId = playerId;
+            qa.updateObjects = objects;
+            m_playtestQueue.push_back(std::move(qa));
+            return;
+        }
 
         m_processingRemote = true;
 
@@ -916,6 +958,7 @@ namespace mpedit {
         m_objectLocks.clear();
         m_preSelectSaveStrings.clear();
         m_pendingPlacements.clear();
+        m_playtestQueue.clear();
         m_initialSyncCompleted = false;
         // NOTE: s_uuidCounter is intentionally NOT reset here. Resetting it on
         // every editor open made UUIDs collide across reconnects/sessions
@@ -934,6 +977,27 @@ namespace mpedit {
             if (p.obj == obj) return true;
         }
         return false;
+    }
+
+    void RemoteActionHandler::flushPlaytestQueue() {
+        if (m_playtestQueue.empty()) return;
+        
+        log::info("RemoteActionHandler: Flushing {} queued playtest actions", m_playtestQueue.size());
+        
+        // Take ownership of the queue so we can re-enter handlers safely
+        auto queueCopy = std::move(m_playtestQueue);
+        m_playtestQueue.clear();
+        
+        for (auto& qa : queueCopy) {
+            switch (qa.type) {
+                case QueuedAction::Type::Place:     handleRemotePlaceObjects(qa.playerId, qa.placeObjects); break;
+                case QueuedAction::Type::Delete:    handleRemoteDeleteObjects(qa.playerId, qa.deleteUuids); break;
+                case QueuedAction::Type::Move:      handleRemoteMoveObjects(qa.playerId, qa.moveData); break;
+                case QueuedAction::Type::Transform: handleRemoteTransformObjects(qa.playerId, qa.transformData); break;
+                case QueuedAction::Type::Reconcile: handleRemoteReconcileObjects(qa.playerId, qa.reconcileData); break;
+                case QueuedAction::Type::Update:    handleRemoteUpdateObjects(qa.playerId, qa.updateObjects); break;
+            }
+        }
     }
 
     void RemoteActionHandler::flushPendingPlacements() {
