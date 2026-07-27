@@ -1,8 +1,8 @@
 # 0.4.1
-- Fixed desync issues with color channels and property edits. Property updates should be processed and visualized instantly.
+- Fixed desync issues with color channels and property edits.
 - Fixed multi object rotation being bugged.
 - Added a buffer queue to hopefully reduce dropped messages.
-- Fixed severe desync and level corruption issues when receiving remote edits while actively playtesting. Edits are now cleanly queued during playtest.
+- Fixed severe desync and level corruption issues when receiving remote edits while actively playtesting. Edits are now cleanly queued during playtest instead of appearing in realtime. This should hopefully fix certain desync issues.
 - Fixed a race condition window when building fast that caused objects to duplicate or drift.
 - Replaced HTTP polling-based signaling with a proper WebSocket relay.
 - Fixed the signaling server consuming excessive Deno KV reads by removing infinite polling loops. The host no longer polls for new clients, they are pushed instantly via WebSocket.
