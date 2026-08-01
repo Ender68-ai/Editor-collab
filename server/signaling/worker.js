@@ -71,6 +71,28 @@ function relayToLocal(code, msg) {
             room.hostQueue = [];
             room.hostResolver = null;
         }
+    } else if (msg.type === "candidate") {
+        if (msg.targetPlayerId !== undefined) {
+            if (!room.clientQueues.has(msg.targetPlayerId)) {
+                room.clientQueues.set(msg.targetPlayerId, []);
+            }
+            room.clientQueues.get(msg.targetPlayerId).push({ type: "candidate", candidate: msg.candidate, mid: msg.mid });
+            const resolver = room.clientResolvers.get(msg.targetPlayerId);
+            if (resolver) {
+                clearTimeout(resolver.timer);
+                resolver.resolve(room.clientQueues.get(msg.targetPlayerId));
+                room.clientQueues.set(msg.targetPlayerId, []);
+                room.clientResolvers.delete(msg.targetPlayerId);
+            }
+        } else if (msg.playerId !== undefined) {
+            room.hostQueue.push({ type: "candidate", candidate: msg.candidate, mid: msg.mid, playerId: msg.playerId });
+            if (room.hostResolver) {
+                clearTimeout(room.hostResolver.timer);
+                room.hostResolver.resolve(room.hostQueue);
+                room.hostQueue = [];
+                room.hostResolver = null;
+            }
+        }
     } else if (msg.type === "client_joined") {
         room.hostQueue.push({
             type: "client_joined",

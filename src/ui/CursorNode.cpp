@@ -113,8 +113,9 @@ namespace mpedit {
             
             // Smooth interpolation (lerp) towards target
             auto currentPos = pc.drawNode->getPosition();
-            float newX = currentPos.x + (pc.targetX - currentPos.x) * 15.f * dt;
-            float newY = currentPos.y + (pc.targetY - currentPos.y) * 15.f * dt;
+            float t = std::min(15.f * dt, 1.0f);
+            float newX = currentPos.x + (pc.targetX - currentPos.x) * t;
+            float newY = currentPos.y + (pc.targetY - currentPos.y) * t;
             
             pc.drawNode->setPosition({newX, newY});
             pc.label->setString(player.name.c_str());

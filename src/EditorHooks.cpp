@@ -1676,30 +1676,7 @@ class $modify(MPGJColorSetupLayer, GJColorSetupLayer) {
     }
 };
 
-#include <Geode/modify/CustomizeObjectLayer.hpp>
-class $modify(MPCustomizeObjectLayer, CustomizeObjectLayer) {
-    void colorSelectClosed(cocos2d::CCNode* popup) {
-        CustomizeObjectLayer::colorSelectClosed(popup);
-        
-        auto& handler = RemoteActionHandler::get();
-        if (handler.isProcessingRemote() || !handler.isInitialSyncCompleted()) return;
 
-        auto& session = SessionManager::get();
-        if (!session.isInSession()) return;
-        
-        auto editor = LevelEditorLayer::get();
-        if (editor && editor->m_levelSettings) {
-            ActionSerializer::LevelSettingsData settings;
-            settings.saveString = editor->m_levelSettings->getSaveString();
-            settings.audioTrack = editor->m_level->m_audioTrack;
-            settings.songID = editor->m_level->m_songID;
-            settings.levelLength = editor->m_level->m_levelLength;
-            
-            auto packet = proto::serializeUpdateSettings(settings);
-            P2PManager::get().send(std::move(packet), ChannelType::Reliable);
-        }
-    }
-};
 
 #include <Geode/modify/LevelSettingsLayer.hpp>
 class $modify(MPLevelSettingsLayer, LevelSettingsLayer) {
