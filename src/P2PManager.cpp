@@ -672,6 +672,8 @@ namespace mpedit {
         setupChannelCallbacks(reliable, true);
         setupChannelCallbacks(unreliable, false);
 
+        auto roomCode = getRoomCode();
+
         // Handle ICE candidates (Trickle ICE)
         pc->onLocalCandidate([this, clientPlayerId, roomCode](rtc::Candidate candidate) {
             auto body = matjson::Value();
