@@ -49,9 +49,10 @@ namespace mpedit::ActionSerializer {
         std::stringstream ss(str);
         std::string key, val;
         while (std::getline(ss, key, ',') && std::getline(ss, val, ',')) {
-            try {
-                out[std::stoi(key)] = val;
-            } catch (...) {}
+            auto parsed = geode::utils::numFromString<int>(key);
+            if (parsed.isOk()) {
+                out[parsed.unwrap()] = val;
+            }
         }
         return out;
     }

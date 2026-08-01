@@ -124,12 +124,12 @@ namespace mpedit::proto {
             : m_data(data), m_len(len), m_pos(0) {}
 
         uint8_t readU8() {
-            checkRemaining(1);
+            if (m_error || !checkRemaining(1)) return 0;
             return m_data[m_pos++];
         }
 
         uint16_t readU16() {
-            checkRemaining(2);
+            if (m_error || !checkRemaining(2)) return 0;
             uint16_t v = static_cast<uint16_t>(m_data[m_pos])
                        | (static_cast<uint16_t>(m_data[m_pos + 1]) << 8);
             m_pos += 2;
@@ -137,7 +137,7 @@ namespace mpedit::proto {
         }
 
         uint32_t readU32() {
-            checkRemaining(4);
+            if (m_error || !checkRemaining(4)) return 0;
             uint32_t v = static_cast<uint32_t>(m_data[m_pos])
                        | (static_cast<uint32_t>(m_data[m_pos + 1]) << 8)
                        | (static_cast<uint32_t>(m_data[m_pos + 2]) << 16)
@@ -151,6 +151,7 @@ namespace mpedit::proto {
         }
 
         float readF32() {
+            if (m_error) return 0.0f;
             uint32_t bits = readU32();
             float v;
             std::memcpy(&v, &bits, sizeof(v));
@@ -158,22 +159,27 @@ namespace mpedit::proto {
         }
 
         uint32_t readVarInt() {
+            if (m_error) return 0;
             uint32_t v = 0;
             int shift = 0;
             while (true) {
-                checkRemaining(1);
+                if (!checkRemaining(1)) return 0;
                 uint8_t b = m_data[m_pos++];
                 v |= static_cast<uint32_t>(b & 0x7F) << shift;
                 if ((b & 0x80) == 0) break;
                 shift += 7;
-                if (shift >= 35) throw std::runtime_error("VarInt too large");
+                if (shift >= 35) {
+                    m_error = true;
+                    return 0;
+                }
             }
             return v;
         }
 
         std::string readString() {
+            if (m_error) return "";
             uint32_t len = readVarInt();
-            checkRemaining(len);
+            if (m_error || !checkRemaining(len)) return "";
             std::string s(reinterpret_cast<const char*>(m_data + m_pos), len);
             m_pos += len;
             return s;
@@ -187,26 +193,33 @@ namespace mpedit::proto {
             return static_cast<Opcode>(readU8());
         }
 
-        bool hasRemaining() const { return m_pos < m_len; }
-        size_t remaining() const { return m_len - m_pos; }
+        bool hasRemaining() const { return !m_error && m_pos < m_len; }
+        size_t remaining() const { return m_error ? 0 : m_len - m_pos; }
         size_t position() const { return m_pos; }
+
+        // Error state — replaces exceptions per Geode platform guidelines
+        bool hasError() const { return m_error; }
 
         // Access raw remaining bytes (useful for chunked data)
         const uint8_t* currentPtr() const { return m_data + m_pos; }
         void skip(size_t bytes) {
-            checkRemaining(bytes);
+            if (m_error || !checkRemaining(bytes)) return;
             m_pos += bytes;
         }
 
     private:
-        void checkRemaining(size_t need) const {
-            if (m_pos + need > m_len)
-                throw std::runtime_error("BinaryProtocol::Reader: unexpected end of data");
+        bool checkRemaining(size_t need) {
+            if (m_pos + need > m_len) {
+                m_error = true;
+                return false;
+            }
+            return true;
         }
 
         const uint8_t* m_data;
         size_t m_len;
         size_t m_pos;
+        bool m_error = false;
     };
 
     // ── Serialization helpers ─────────────────────────────────

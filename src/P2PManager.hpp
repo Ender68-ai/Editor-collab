@@ -16,7 +16,6 @@
 namespace rtc {
     class PeerConnection;
     class DataChannel;
-    class WebSocket;
     struct Configuration;
 }
 
@@ -133,12 +132,14 @@ namespace mpedit {
         rtc::Configuration makeRtcConfig();
         void createHostPeer(int clientPlayerId, std::string const& clientName);
 
-        // Signaling helpers
+        // Signaling helpers (HTTP long polling — no exceptions, no rtc::WebSocket)
         void signalingCreateRoom(std::string const& playerName);
         void signalingJoinRoom(std::string const& roomCode, std::string const& playerName);
-        void connectSignalingWs(std::string const& code, std::string const& role, int playerId = 0);
-        void onSignalingMessage(std::string const& msg);
-        void closeSignalingWs();
+        void startSignalPolling(std::string const& code, std::string const& role, int playerId);
+        void pollSignalOnce(std::string const& code, std::string const& role, int playerId);
+        void stopSignalPolling();
+        void sendSignalingMessage(std::string const& roomCode, matjson::Value const& msg);
+        void handleSignalingMessages(matjson::Value const& messages);
 
         // Called on data channel threads — enqueues for main-thread dispatch
         void onPeerMessage(int fromPlayerId, const uint8_t* data, size_t len);
@@ -180,11 +181,11 @@ namespace mpedit {
         std::vector<PeerDisconnectedCb> m_onPeerDisconnected;
         std::vector<ErrorCb> m_onError;
 
-        // ── Signaling WebSocket ───────────────────────────────
-        std::shared_ptr<rtc::WebSocket> m_signalingWs;
-        std::string m_pendingLocalSdp;   // our SDP offer/answer
+        // ── Signaling (HTTP long polling) ─────────────────────
+        geode::async::TaskHolder<geode::utils::web::WebResponse> m_signalingListener;  // room create/join
+        geode::async::TaskHolder<geode::utils::web::WebResponse> m_signalPollListener; // long-poll loop
+        std::atomic<bool> m_signalingActive{false};
         std::string m_signalingRoomId;   // server-side room ID
-        geode::async::TaskHolder<geode::utils::web::WebResponse> m_signalingListener;
 
         // ── Host migration ────────────────────────────────────
         // (Phase 4 — placeholder for now)

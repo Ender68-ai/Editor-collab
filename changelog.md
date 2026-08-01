@@ -1,3 +1,10 @@
+# 0.4.2
+- Fixed crash when joining a host.
+- Replaced WebSocket signaling with HTTP long polling.
+- Removed "exception based" error handling with error flags, matching Geode guidelines.
+- Fixed a bug regarding data channel sends.
+- Disabled libdatachannel's WebSocket module to reduce binary size.
+
 # 0.4.1
 - Fixed desync issues with color channels and property edits.
 - Fixed multi object rotation being bugged.

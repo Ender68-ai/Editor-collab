@@ -69,7 +69,7 @@ FetchContent_Declare(
 
 # Configure libdatachannel settings
 set(NO_MEDIA ON CACHE BOOL "" FORCE)
-set(NO_WEBSOCKET OFF CACHE BOOL "" FORCE)
+set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
 set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
 set(NO_TESTS ON CACHE BOOL "" FORCE)
 

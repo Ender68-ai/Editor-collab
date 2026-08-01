@@ -88,155 +88,155 @@ namespace mpedit {
 
         net.on(proto::Opcode::PlaceObjects, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
-            try {
-                auto msg = proto::deserializePlaceObjects(reader);
-                handleRemotePlaceObjects(playerId, msg.objects);
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing PlaceObjects: {}", e.what());
+            auto msg = proto::deserializePlaceObjects(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing PlaceObjects");
+                return;
             }
+            handleRemotePlaceObjects(playerId, msg.objects);
         });
 
         net.on(proto::Opcode::DeleteObjects, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
-            try {
-                auto msg = proto::deserializeDeleteObjects(reader);
-                handleRemoteDeleteObjects(playerId, msg.uuids);
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing DeleteObjects: {}", e.what());
+            auto msg = proto::deserializeDeleteObjects(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing DeleteObjects");
+                return;
             }
+            handleRemoteDeleteObjects(playerId, msg.uuids);
         });
 
         net.on(proto::Opcode::MoveObjects, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
-            try {
-                auto msg = proto::deserializeMoveObjects(reader);
-                handleRemoteMoveObjects(playerId, msg.moves);
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing MoveObjects: {}", e.what());
+            auto msg = proto::deserializeMoveObjects(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing MoveObjects");
+                return;
             }
+            handleRemoteMoveObjects(playerId, msg.moves);
         });
 
         net.on(proto::Opcode::MoveBatch, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
-            try {
-                auto msg = proto::deserializeMoveBatch(reader);
-                handleRemoteMoveObjects(playerId, msg.moves);
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing MoveBatch: {}", e.what());
+            auto msg = proto::deserializeMoveBatch(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing MoveBatch");
+                return;
             }
+            handleRemoteMoveObjects(playerId, msg.moves);
         });
 
         net.on(proto::Opcode::TransformObjects, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
-            try {
-                auto msg = proto::deserializeTransformObjects(reader);
-                handleRemoteTransformObjects(playerId, msg.transforms);
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing TransformObjects: {}", e.what());
+            auto msg = proto::deserializeTransformObjects(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing TransformObjects");
+                return;
             }
+            handleRemoteTransformObjects(playerId, msg.transforms);
         });
 
         net.on(proto::Opcode::ReconcileObjects, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
-            try {
-                auto msg = proto::deserializeReconcileObjects(reader);
-                handleRemoteReconcileObjects(playerId, msg.reconciles);
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing ReconcileObjects: {}", e.what());
+            auto msg = proto::deserializeReconcileObjects(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing ReconcileObjects");
+                return;
             }
+            handleRemoteReconcileObjects(playerId, msg.reconciles);
         });
 
         net.on(proto::Opcode::UpdateObjects, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
-            try {
-                auto msg = proto::deserializeUpdateObjects(reader);
-                handleRemoteUpdateObjects(playerId, msg.objects);
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing UpdateObjects: {}", e.what());
+            auto msg = proto::deserializeUpdateObjects(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing UpdateObjects");
+                return;
             }
+            handleRemoteUpdateObjects(playerId, msg.objects);
         });
 
         net.on(proto::Opcode::LockObjects, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
-            try {
-                auto msg = proto::deserializeLockObjects(reader);
-                handleRemoteLockObjects(playerId, msg.uuids, msg.locked);
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing LockObjects: {}", e.what());
+            auto msg = proto::deserializeLockObjects(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing LockObjects");
+                return;
             }
+            handleRemoteLockObjects(playerId, msg.uuids, msg.locked);
         });
 
         net.on(proto::Opcode::UpdateSettings, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
-            try {
-                auto msg = proto::deserializeUpdateSettings(reader);
-                handleRemoteUpdateSettings(playerId, msg.settings);
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing UpdateSettings: {}", e.what());
+            auto msg = proto::deserializeUpdateSettings(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing UpdateSettings");
+                return;
             }
+            handleRemoteUpdateSettings(playerId, msg.settings);
         });
 
         net.on(proto::Opcode::SyncLevelStart, [this](int playerId, proto::Reader& reader) {
-            try {
-                auto msg = proto::deserializeSyncLevelStart(reader);
-                m_chunkedSync.hostPlayerId = playerId;
-                m_chunkedSync.totalChunks = msg.totalChunks;
-                m_chunkedSync.totalObjects = msg.totalObjects;
-                m_chunkedSync.settings = msg.settings;
-                m_chunkedSync.chunks.clear();
-                m_chunkedSync.chunks.resize(msg.totalChunks);
-                m_chunkedSync.uuidChunks.clear();
-                m_chunkedSync.uuidChunks.resize(msg.totalChunks);
-                m_chunkedSync.active = true;
-                log::info("RemoteActionHandler: SyncLevelStart received ({} chunks, {} objects)",
-                    msg.totalChunks, msg.totalObjects);
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing SyncLevelStart: {}", e.what());
+            auto msg = proto::deserializeSyncLevelStart(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing SyncLevelStart");
+                return;
             }
+            m_chunkedSync.hostPlayerId = playerId;
+            m_chunkedSync.totalChunks = msg.totalChunks;
+            m_chunkedSync.totalObjects = msg.totalObjects;
+            m_chunkedSync.settings = msg.settings;
+            m_chunkedSync.chunks.clear();
+            m_chunkedSync.chunks.resize(msg.totalChunks);
+            m_chunkedSync.uuidChunks.clear();
+            m_chunkedSync.uuidChunks.resize(msg.totalChunks);
+            m_chunkedSync.active = true;
+            log::info("RemoteActionHandler: SyncLevelStart received ({} chunks, {} objects)",
+                msg.totalChunks, msg.totalObjects);
         });
 
         net.on(proto::Opcode::SyncLevelChunk, [this](int playerId, proto::Reader& reader) {
-            try {
-                auto msg = proto::deserializeSyncLevelChunk(reader);
-                if (!m_chunkedSync.active || playerId != m_chunkedSync.hostPlayerId) return;
-                if (msg.chunkIndex < m_chunkedSync.totalChunks) {
-                    m_chunkedSync.chunks[msg.chunkIndex] = std::string(msg.data.begin(), msg.data.end());
-                    m_chunkedSync.uuidChunks[msg.chunkIndex] = msg.uuids;
-                    log::info("RemoteActionHandler: SyncLevelChunk received: {}/{}",
-                        msg.chunkIndex + 1, m_chunkedSync.totalChunks);
-                }
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing SyncLevelChunk: {}", e.what());
+            auto msg = proto::deserializeSyncLevelChunk(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing SyncLevelChunk");
+                return;
+            }
+            if (!m_chunkedSync.active || playerId != m_chunkedSync.hostPlayerId) return;
+            if (msg.chunkIndex < m_chunkedSync.totalChunks) {
+                m_chunkedSync.chunks[msg.chunkIndex] = std::string(msg.data.begin(), msg.data.end());
+                m_chunkedSync.uuidChunks[msg.chunkIndex] = msg.uuids;
+                log::info("RemoteActionHandler: SyncLevelChunk received: {}/{}",
+                    msg.chunkIndex + 1, m_chunkedSync.totalChunks);
             }
         });
 
         net.on(proto::Opcode::SyncLevelEnd, [this](int playerId, proto::Reader& reader) {
-            try {
-                auto msg = proto::deserializeSyncLevelEnd(reader);
-                if (!m_chunkedSync.active || playerId != m_chunkedSync.hostPlayerId) return;
-
-                // Reconstruct objectsString
-                std::string objectsString = "";
-                for (auto const& chunk : m_chunkedSync.chunks) {
-                    objectsString += chunk;
-                }
-                
-                // Reconstruct uuids
-                std::vector<std::string> uuids;
-                uuids.reserve(m_chunkedSync.totalObjects);
-                for (auto const& uuidChunk : m_chunkedSync.uuidChunks) {
-                    uuids.insert(uuids.end(), uuidChunk.begin(), uuidChunk.end());
-                }
-
-                log::info("RemoteActionHandler: SyncLevelEnd received, processing full sync");
-                handleRemoteSyncLevel(playerId, objectsString, uuids, m_chunkedSync.settings, msg.locks);
-
-                m_chunkedSync.active = false;
-                m_chunkedSync.chunks.clear();
-                m_chunkedSync.uuidChunks.clear();
-            } catch (std::exception const& e) {
-                log::error("RemoteActionHandler: Error deserializing SyncLevelEnd: {}", e.what());
+            auto msg = proto::deserializeSyncLevelEnd(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing SyncLevelEnd");
+                return;
             }
+            if (!m_chunkedSync.active || playerId != m_chunkedSync.hostPlayerId) return;
+
+            // Reconstruct objectsString
+            std::string objectsString = "";
+            for (auto const& chunk : m_chunkedSync.chunks) {
+                objectsString += chunk;
+            }
+            
+            // Reconstruct uuids
+            std::vector<std::string> uuids;
+            uuids.reserve(m_chunkedSync.totalObjects);
+            for (auto const& uuidChunk : m_chunkedSync.uuidChunks) {
+                uuids.insert(uuids.end(), uuidChunk.begin(), uuidChunk.end());
+            }
+
+            log::info("RemoteActionHandler: SyncLevelEnd received, processing full sync");
+            handleRemoteSyncLevel(playerId, objectsString, uuids, m_chunkedSync.settings, msg.locks);
+
+            m_chunkedSync.active = false;
+            m_chunkedSync.chunks.clear();
+            m_chunkedSync.uuidChunks.clear();
         });
     }
 
