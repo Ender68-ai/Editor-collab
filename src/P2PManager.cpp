@@ -422,22 +422,31 @@ namespace mpedit {
                     std::lock_guard lock(m_peersMutex);
                     auto it = m_peers.find(clientId);
                     if (it != m_peers.end() && it->second.pc) {
-                        it->second.pc->setRemoteDescription(
-                            rtc::Description(sdp, rtc::Description::Type::Answer, rtc::Description::Role::Active));
+                        auto state = it->second.pc->signalingState();
+                        if (state == rtc::PeerConnection::SignalingState::HaveLocalOffer) {
+                            it->second.pc->setRemoteDescription(
+                                rtc::Description(sdp, rtc::Description::Type::Answer, rtc::Description::Role::Active));
+                        } else {
+                            log::warn("P2PManager: Ignoring duplicate answer from client {} (state={})", clientId, (int)state);
+                        }
                     }
                 }
             } else if (type == "offer") {
                 // Client receives SDP offer from host
                 auto sdp = msg.get<std::string>("sdp").unwrapOr("");
                 if (!sdp.empty()) {
-                    log::info("P2PManager: Received host's SDP offer via poll");
-                    log::info("Offer SDP:\n{}", sdp);
                     std::lock_guard lock(m_peersMutex);
                     auto it = m_peers.find(0);
                     if (it != m_peers.end() && it->second.pc) {
-                        it->second.pc->setRemoteDescription(
-                            rtc::Description(sdp, rtc::Description::Type::Offer, rtc::Description::Role::ActPass));
-                        it->second.pc->setLocalDescription();
+                        auto state = it->second.pc->signalingState();
+                        if (state == rtc::PeerConnection::SignalingState::Stable) {
+                            log::info("P2PManager: Received host's SDP offer via poll");
+                            it->second.pc->setRemoteDescription(
+                                rtc::Description(sdp, rtc::Description::Type::Offer, rtc::Description::Role::ActPass));
+                            it->second.pc->setLocalDescription();
+                        } else {
+                            log::warn("P2PManager: Ignoring duplicate offer (state={})", (int)state);
+                        }
                     }
                 }
             } else if (type == "candidate") {
@@ -548,6 +557,9 @@ namespace mpedit {
                         dc->onClosed([this]() { log::info("P2PManager: Channel to host closed"); });
                     });
 
+                    // Shared flag to prevent sending SDP answer twice
+                    auto answerSent = std::make_shared<bool>(false);
+
                     // Handle ICE candidates (Trickle ICE)
                     pc->onLocalCandidate([this, myId, roomCode](rtc::Candidate candidate) {
                         auto body = matjson::Value();
@@ -560,8 +572,8 @@ namespace mpedit {
                         });
                     });
 
-                    // Send SDP answer immediately when local description is set
-                    pc->onLocalDescription([this, pc, myId, roomCode](rtc::Description desc) {
+                    // Send SDP answer immediately when local description is set (Trickle ICE)
+                    pc->onLocalDescription([this, pc, myId, roomCode, answerSent](rtc::Description desc) {
                         std::string sdp = std::string(desc);
                         
                         // Force answer role to active to fix libdatachannel crash
@@ -571,15 +583,46 @@ namespace mpedit {
                             setupPos = sdp.find("a=setup:actpass", setupPos);
                         }
                         
-                        log::info("P2PManager: Local description set, sending SDP answer via HTTP");
+                        log::info("P2PManager: Local description set, sending SDP answer via HTTP (early/trickle)");
 
-                        queueInMainThread([this, sdp, myId, roomCode]() {
+                        queueInMainThread([this, sdp, myId, roomCode, answerSent]() {
+                            if (*answerSent) return;
+                            *answerSent = true;
                             auto body = matjson::Value();
                             body["type"] = "answer";
                             body["sdp"] = sdp;
                             body["playerId"] = myId;
                             sendSignalingMessage(roomCode, body);
                         });
+                    });
+
+                    // Fallback: also send SDP answer when ICE gathering completes (full candidates)
+                    pc->onGatheringStateChange([this, pc, myId, roomCode, answerSent](
+                        rtc::PeerConnection::GatheringState state)
+                    {
+                        if (state == rtc::PeerConnection::GatheringState::Complete) {
+                            auto desc = pc->localDescription();
+                            if (desc.has_value()) {
+                                std::string sdp = std::string(desc.value());
+
+                                size_t setupPos = sdp.find("a=setup:actpass");
+                                while (setupPos != std::string::npos) {
+                                    sdp.replace(setupPos, 15, "a=setup:active");
+                                    setupPos = sdp.find("a=setup:actpass", setupPos);
+                                }
+
+                                queueInMainThread([this, sdp, myId, roomCode, answerSent]() {
+                                    if (*answerSent) return;
+                                    *answerSent = true;
+                                    log::info("P2PManager: ICE gathering complete, sending SDP answer via HTTP (fallback)");
+                                    auto body = matjson::Value();
+                                    body["type"] = "answer";
+                                    body["sdp"] = sdp;
+                                    body["playerId"] = myId;
+                                    sendSignalingMessage(roomCode, body);
+                                });
+                            }
+                        }
                     });
 
                     // Handle connection state changes
@@ -674,6 +717,9 @@ namespace mpedit {
 
         auto roomCode = getRoomCode();
 
+        // Shared flag to prevent sending SDP offer twice
+        auto offerSent = std::make_shared<bool>(false);
+
         // Handle ICE candidates (Trickle ICE)
         pc->onLocalCandidate([this, clientPlayerId, roomCode](rtc::Candidate candidate) {
             auto body = matjson::Value();
@@ -686,18 +732,43 @@ namespace mpedit {
             });
         });
 
-        // Send SDP offer via HTTP POST immediately on local description
-        pc->onLocalDescription([this, clientPlayerId, roomCode](rtc::Description desc) {
+        // Send SDP offer immediately when local description is set (Trickle ICE)
+        pc->onLocalDescription([this, clientPlayerId, roomCode, offerSent](rtc::Description desc) {
             std::string sdp = std::string(desc);
-            log::info("P2PManager: Local description set, sending SDP offer for player {} via HTTP", clientPlayerId);
+            log::info("P2PManager: Local description set, sending SDP offer for player {} via HTTP (early/trickle)", clientPlayerId);
 
-            queueInMainThread([this, sdp, clientPlayerId, roomCode]() {
+            queueInMainThread([this, sdp, clientPlayerId, roomCode, offerSent]() {
+                if (*offerSent) return;
+                *offerSent = true;
                 auto body = matjson::Value();
                 body["type"] = "offer";
                 body["sdp"] = sdp;
                 body["targetPlayerId"] = clientPlayerId;
                 sendSignalingMessage(roomCode, body);
             });
+        });
+
+        // Fallback: also send SDP offer when ICE gathering completes (full candidates)
+        pc->onGatheringStateChange([this, pc, clientPlayerId, roomCode, offerSent](
+            rtc::PeerConnection::GatheringState state)
+        {
+            if (state == rtc::PeerConnection::GatheringState::Complete) {
+                auto desc = pc->localDescription();
+                if (desc.has_value()) {
+                    std::string sdp = std::string(desc.value());
+
+                    queueInMainThread([this, sdp, clientPlayerId, roomCode, offerSent]() {
+                        if (*offerSent) return;
+                        *offerSent = true;
+                        log::info("P2PManager: ICE gathering complete, sending SDP offer for player {} via HTTP (fallback)", clientPlayerId);
+                        auto body = matjson::Value();
+                        body["type"] = "offer";
+                        body["sdp"] = sdp;
+                        body["targetPlayerId"] = clientPlayerId;
+                        sendSignalingMessage(roomCode, body);
+                    });
+                }
+            }
         });
 
         pc->onStateChange([this, clientPlayerId](rtc::PeerConnection::State state) {
