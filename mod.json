@@ -51,6 +51,15 @@
             "name": "Show Notifications",
             "description": "Show notifications when players join/leave.",
             "default": true
+        },
+        "selection-overlay-opacity": {
+            "type": "int",
+            "name": "Selection Overlay Opacity",
+            "description": "Opacity percentage (0-100) for the overlay shown on objects selected by other players.",
+            "default": 10,
+            "min": 0,
+            "max": 100,
+            "control": "slider"
         }
     }
 }

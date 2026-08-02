@@ -106,6 +106,11 @@ namespace mpedit {
 
     void MessageBatcher::removePending(std::string const& uuid) {
         m_pendingMoves.erase(uuid);
+        // Now that deselectObject/deselectAll unconditionally send a ReconcileData
+        // with the authoritative final state, we MUST also clear any pending
+        // transform for this uuid. Otherwise the batcher's next tick will send
+        // a stale TransformData that races the Reconcile and can overwrite the
+        // correct rotation/scale/flip on the remote side.
         m_pendingTransforms.erase(uuid);
     }
 

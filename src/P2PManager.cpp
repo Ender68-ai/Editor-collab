@@ -426,6 +426,12 @@ namespace mpedit {
                         if (state == rtc::PeerConnection::SignalingState::HaveLocalOffer) {
                             it->second.pc->setRemoteDescription(
                                 rtc::Description(sdp, rtc::Description::Type::Answer, rtc::Description::Role::Active));
+                            
+                            // Process any pending candidates
+                            for (auto const& pCand : it->second.pendingCandidates) {
+                                it->second.pc->addRemoteCandidate(rtc::Candidate(pCand.candidate, pCand.mid));
+                            }
+                            it->second.pendingCandidates.clear();
                         } else {
                             log::warn("P2PManager: Ignoring duplicate answer from client {} (state={})", clientId, (int)state);
                         }
@@ -443,6 +449,13 @@ namespace mpedit {
                             log::info("P2PManager: Received host's SDP offer via poll");
                             it->second.pc->setRemoteDescription(
                                 rtc::Description(sdp, rtc::Description::Type::Offer, rtc::Description::Role::ActPass));
+                            
+                            // Process any pending candidates
+                            for (auto const& pCand : it->second.pendingCandidates) {
+                                it->second.pc->addRemoteCandidate(rtc::Candidate(pCand.candidate, pCand.mid));
+                            }
+                            it->second.pendingCandidates.clear();
+
                             it->second.pc->setLocalDescription();
                         } else {
                             log::warn("P2PManager: Ignoring duplicate offer (state={})", (int)state);
@@ -458,11 +471,16 @@ namespace mpedit {
                 int fromId = (m_role == Role::Host) ? clientId : 0;
                 
                 if (!cand.empty() && !mid.empty() && fromId >= 0) {
-                    rtc::Candidate rtcCand(cand, mid);
                     std::lock_guard lock(m_peersMutex);
                     auto it = m_peers.find(fromId);
                     if (it != m_peers.end() && it->second.pc) {
-                        it->second.pc->addRemoteCandidate(rtcCand);
+                        if (it->second.pc->remoteDescription().has_value()) {
+                            rtc::Candidate rtcCand(cand, mid);
+                            it->second.pc->addRemoteCandidate(rtcCand);
+                        } else {
+                            log::info("P2PManager: Remote description not set, buffering candidate from {}", fromId);
+                            it->second.pendingCandidates.push_back({cand, mid});
+                        }
                     }
                 }
             }

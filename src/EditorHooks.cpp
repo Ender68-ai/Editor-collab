@@ -1118,6 +1118,10 @@ class $modify(MPEditorUI, EditorUI) {
         if (session.isInSession() && obj) {
             auto& tracked = handler.getTrackedSelections();
             if (!handler.isProcessingRemote()) {
+                if (handler.isObjectPendingPlacement(obj)) {
+                    handler.flushPendingPlacements();
+                }
+
                 auto uuid = handler.getUUIDForObject(obj);
                 if (!uuid.empty()) {
                     // Send a final UpdateObjects if the object changed since
@@ -1136,6 +1140,24 @@ class $modify(MPEditorUI, EditorUI) {
                         }
                     }
 
+                    // ALWAYS send a ReconcileData to guarantee absolute state sync on deselect
+                    // This fixes the issue where free-rotating (no hooks) and extremely
+                    // quickly deselecting (<100ms) drops the transform completely.
+                    ActionSerializer::ReconcileData rec;
+                    rec.uuid = uuid;
+                    rec.x = obj->getPositionX();
+                    rec.y = obj->getPositionY();
+                    rec.rotation = obj->getRotation();
+                    rec.scaleX = obj->getScaleX();
+                    rec.scaleY = obj->getScaleY();
+                    rec.flipX = obj->isFlipX();
+                    rec.flipY = obj->isFlipY();
+                    
+                    auto recData = proto::serializeReconcileObjects({rec});
+                    P2PManager::get().send(std::move(recData), ChannelType::Reliable);
+                    
+                    MessageBatcher::get().removePending(uuid);
+
                     auto data = proto::serializeLockObjects({uuid}, false);
                     P2PManager::get().send(std::move(data), ChannelType::Reliable);
                 }
@@ -1151,14 +1173,57 @@ class $modify(MPEditorUI, EditorUI) {
             if (!handler.isProcessingRemote()) {
                 auto* editor = LevelEditorLayer::get();
                 std::vector<std::string> uuids;
+                std::vector<ActionSerializer::ReconcileData> reconciles;
+                std::vector<ActionSerializer::ObjectData> updates;
+                
                 auto& tracked = handler.getTrackedSelections();
-                for (auto const& [obj, _] : tracked) {
-                    if (editor && editor->m_objects && editor->m_objects->containsObject(obj)) {
-                        auto uuid = handler.getUUIDForObject(obj);
-                        if (!uuid.empty()) {
-                            uuids.push_back(uuid);
+                
+                // Iterate over tracked selections — this is OUR authoritative
+                // record of what we selected. The GD selection arrays
+                // (m_selectedObjects / m_selectedObject) may already be stale
+                // if the engine cleared them before calling deselectAll.
+                for (auto& [obj, savedString] : tracked) {
+                    if (!editor || !editor->m_objects || !editor->m_objects->containsObject(obj)) {
+                        continue;
+                    }
+
+                    if (handler.isObjectPendingPlacement(obj)) {
+                        handler.flushPendingPlacements();
+                    }
+
+                    auto uuid = handler.getUUIDForObject(obj);
+                    if (uuid.empty()) continue;
+                    
+                    uuids.push_back(uuid);
+                    
+                    if (obj->m_objectID != 31) {
+                        std::string currentSave = obj->getSaveString(editor);
+                        if (savedString != currentSave) {
+                            updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                         }
                     }
+
+                    ActionSerializer::ReconcileData rec;
+                    rec.uuid = uuid;
+                    rec.x = obj->getPositionX();
+                    rec.y = obj->getPositionY();
+                    rec.rotation = obj->getRotation();
+                    rec.scaleX = obj->getScaleX();
+                    rec.scaleY = obj->getScaleY();
+                    rec.flipX = obj->isFlipX();
+                    rec.flipY = obj->isFlipY();
+                    reconciles.push_back(rec);
+                    
+                    MessageBatcher::get().removePending(uuid);
+                }
+                
+                if (!updates.empty()) {
+                    auto data = proto::serializeUpdateObjects(updates);
+                    P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                }
+                if (!reconciles.empty()) {
+                    auto data = proto::serializeReconcileObjects(reconciles);
+                    P2PManager::get().send(std::move(data), ChannelType::Reliable);
                 }
                 if (!uuids.empty()) {
                     auto data = proto::serializeLockObjects(uuids, false);

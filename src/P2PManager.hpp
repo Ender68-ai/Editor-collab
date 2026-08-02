@@ -118,6 +118,11 @@ namespace mpedit {
             ChannelType channel;
         };
 
+        struct PendingCandidate {
+            std::string candidate;
+            std::string mid;
+        };
+
         struct PeerInfo {
             std::shared_ptr<rtc::PeerConnection> pc;
             std::shared_ptr<rtc::DataChannel> reliable;
@@ -127,6 +132,7 @@ namespace mpedit {
             int colorIndex = 0;
             bool ready = false; // both channels open
             std::vector<PendingMessage> pendingMessages;
+            std::vector<PendingCandidate> pendingCandidates;
         };
 
         rtc::Configuration makeRtcConfig();

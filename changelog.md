@@ -1,9 +1,13 @@
 # 0.4.2
+- Added a "Selection Overlay Opacity" setting for selection boxes of other players. (10% Default)
 - Fixed crash when joining a host.
 - Replaced WebSocket signaling with HTTP long polling.
 - Removed "exception based" error handling with error flags, matching Geode guidelines.
 - Fixed a bug regarding data channel sends.
 - Disabled libdatachannel's WebSocket module to reduce binary size.
+- Fixed object desync when rotating/scaling/flipping and quickly deselecting. Objects now unconditionally sync their final absolute state (position, rotation, scale, flip) to all players the moment they are deselected.
+- Fixed a race condition where the MessageBatcher would send a stale transform after a deselect reconcile, overwriting the correct state on the remote side.
+- Fixed `deselectAll` not syncing objects that were tracked but already removed from GD's internal selection array.
 
 # 0.4.1
 - Fixed desync issues with color channels and property edits.
