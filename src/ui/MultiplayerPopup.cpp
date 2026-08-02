@@ -113,6 +113,24 @@ namespace mpedit {
             m_connectMenu->addChild(hostBtn);
         }
 
+        // Patreon Support Section
+        auto* supportLabel = CCLabelBMFont::create("Support future development:", "chatFont.fnt");
+        supportLabel->setScale(0.5f);
+        supportLabel->setPosition({center.width, center.height + 85.f});
+        supportLabel->setColor({200, 200, 200});
+        supportLabel->setID("support-label"_spr);
+        m_contentNode->addChild(supportLabel);
+
+        auto* patreonSprite = ButtonSprite::create(
+            "Patreon", 80, true, "bigFont.fnt", "GJ_button_01.png", 25.f, 0.6f
+        );
+        auto* patreonBtn = CCMenuItemSpriteExtra::create(
+            patreonSprite, this, menu_selector(MultiplayerPopup::onPatreon)
+        );
+        patreonBtn->setPosition({center.width, center.height + 55.f});
+        patreonBtn->setID("patreon-button"_spr);
+        m_connectMenu->addChild(patreonBtn);
+
         m_contentNode->addChild(m_connectMenu);
 
         // Status label
@@ -418,6 +436,10 @@ namespace mpedit {
         auto code = SessionManager::get().getRoomCode();
         utils::clipboard::write(code);
         Notification::create("Room code copied!", NotificationIcon::Success)->show();
+    }
+
+    void MultiplayerPopup::onPatreon(CCObject*) {
+        geode::utils::web::openLinkInBrowser("https://www.patreon.com/cw/d050/membership");
     }
 
     void MultiplayerPopup::pollNetwork(float dt) {

@@ -35,6 +35,7 @@ namespace mpedit {
         void onJoin(cocos2d::CCObject*);
         void onLeave(cocos2d::CCObject*);
         void onCopyCode(cocos2d::CCObject*);
+        void onPatreon(cocos2d::CCObject*);
         void pollNetwork(float dt);
 
     public:

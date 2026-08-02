@@ -358,10 +358,16 @@ namespace mpedit {
                 color3 = getColorForIndex(player->colorIndex);
             }
             
+            // Ensure correct blending for transparency
+            ccBlendFunc blend = {GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA};
+            m_selectionDrawNode->setBlendFunc(blend);
+
             // Draw a bounding box
             auto rect = obj->boundingBox();
-            float alpha = 0.10f;
-            cocos2d::ccColor4F color4 = {color3.r / 255.f, color3.g / 255.f, color3.b / 255.f, alpha};
+            
+            // Fill and Border at 50%
+            cocos2d::ccColor4F fill = {color3.r / 255.f, color3.g / 255.f, color3.b / 255.f, 0.50f};
+            cocos2d::ccColor4F border = {color3.r / 255.f, color3.g / 255.f, color3.b / 255.f, 0.50f};
             
             cocos2d::CCPoint bl = {rect.getMinX(), rect.getMinY()};
             cocos2d::CCPoint tl = {rect.getMinX(), rect.getMaxY()};
@@ -369,7 +375,7 @@ namespace mpedit {
             cocos2d::CCPoint br = {rect.getMaxX(), rect.getMinY()};
             
             cocos2d::CCPoint verts[] = {bl, tl, tr, br};
-            m_selectionDrawNode->drawPolygon(verts, 4, color4, 1.f, color4);
+            m_selectionDrawNode->drawPolygon(verts, 4, fill, 1.f, border);
         }
 
         // Remove disconnected players
