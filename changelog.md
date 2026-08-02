@@ -1,5 +1,5 @@
 # 0.4.2
-- Added a "Selection Overlay Opacity" setting for selection boxes of other players. (10% Default)
+- Reduced the opacity for selection boxes of other players.
 - Fixed crash when joining a host.
 - Replaced WebSocket signaling with HTTP long polling.
 - Removed "exception based" error handling with error flags, matching Geode guidelines.

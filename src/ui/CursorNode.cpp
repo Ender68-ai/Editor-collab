@@ -360,8 +360,7 @@ namespace mpedit {
             
             // Draw a bounding box
             auto rect = obj->boundingBox();
-            int64_t opacityPct = geode::Mod::get()->getSettingValue<int64_t>("selection-overlay-opacity");
-            float alpha = std::clamp(static_cast<float>(opacityPct) / 100.f, 0.f, 1.f);
+            float alpha = 0.10f;
             cocos2d::ccColor4F color4 = {color3.r / 255.f, color3.g / 255.f, color3.b / 255.f, alpha};
             
             cocos2d::CCPoint bl = {rect.getMinX(), rect.getMinY()};
