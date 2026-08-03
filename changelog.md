@@ -1,3 +1,7 @@
+# 0.4.3
+- Fixed a bug where placing, moving, or deleting teleport portals would cause game crashes and duplicate portal desyncs.
+- Drastically reduced signaling server load by optimizing polling.
+
 # 0.4.2
 - Reduced overlay opacity on objects selected by other players.
 - Fixed object desync when quickly deselecting. Objects now sync their final state to all players the moment they are deselected.

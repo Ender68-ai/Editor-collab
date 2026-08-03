@@ -358,12 +358,34 @@ namespace mpedit {
 
         m_processingRemote = true;
 
-        for (auto& objData : objects) {
+        std::unordered_set<std::string> processedUUIDs;
+
+        for (size_t i = 0; i < objects.size(); i++) {
+            auto const& objData = objects[i];
+            if (processedUUIDs.count(objData.uuid)) continue;
+            processedUUIDs.insert(objData.uuid);
+            
             // Recreate object using saveString if available to load all properties (e.g. text contents, custom colors, groups)
             if (!objData.saveString.empty()) {
                 auto newObjs = createObjectsFromSaveStringRobust(editor, objData.saveString);
                 if (!newObjs.empty()) {
-                    auto* obj = newObjs.front();
+                    GameObject* obj = nullptr;
+                    for (auto* createdObj : newObjs) {
+                        if (createdObj->m_objectID == objData.objectID) {
+                            if (objData.objectID == 747) {
+                                if (auto* tp = typeinfo_cast<TeleportPortalObject*>(createdObj)) {
+                                    if (!tp->m_isYellowPortal) {
+                                        obj = createdObj;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                obj = createdObj;
+                                break;
+                            }
+                        }
+                    }
+                    if (!obj) obj = newObjs.front();
                     // Re-apply the authoritative transform read by the sender via
                     // the same getter APIs. Use applyTransformSafe so the flip
                     // flag and the scale sign stay consistent (see its comment) —
@@ -372,6 +394,23 @@ namespace mpedit {
                     applyTransformSafe(obj, objData.rotation, objData.scaleX, objData.scaleY, objData.flipX, objData.flipY);
                     registerObject(objData.uuid, obj);
                     log::debug("RemoteActionHandler: Placed object {} via saveString (uuid={})", objData.objectID, objData.uuid);
+                    
+                    if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(obj)) {
+                        if (!tpPortal->m_isYellowPortal && tpPortal->m_orangePortal) {
+                            for (size_t j = 0; j < objects.size(); j++) {
+                                auto const& orangeData = objects[j];
+                                if (orangeData.objectID == 749 && !processedUUIDs.count(orangeData.uuid)) {
+                                    auto* orange = tpPortal->m_orangePortal;
+                                    orange->setPositionOverride({orangeData.x, orangeData.y});
+                                    applyTransformSafe(orange, orangeData.rotation, orangeData.scaleX,
+                                                       orangeData.scaleY, orangeData.flipX, orangeData.flipY);
+                                    registerObject(orangeData.uuid, orange);
+                                    processedUUIDs.insert(orangeData.uuid);
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     continue;
                 }
             }
@@ -389,6 +428,23 @@ namespace mpedit {
 
             registerObject(objData.uuid, obj);
             log::debug("RemoteActionHandler: Placed object {} (uuid={})", objData.objectID, objData.uuid);
+            
+            if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(obj)) {
+                if (!tpPortal->m_isYellowPortal && tpPortal->m_orangePortal) {
+                    for (size_t j = 0; j < objects.size(); j++) {
+                        auto const& orangeData = objects[j];
+                        if (orangeData.objectID == 749 && !processedUUIDs.count(orangeData.uuid)) {
+                            auto* orange = tpPortal->m_orangePortal;
+                            orange->setPositionOverride({orangeData.x, orangeData.y});
+                            applyTransformSafe(orange, orangeData.rotation, orangeData.scaleX,
+                                               orangeData.scaleY, orangeData.flipX, orangeData.flipY);
+                            registerObject(orangeData.uuid, orange);
+                            processedUUIDs.insert(orangeData.uuid);
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         m_processingRemote = false;
@@ -432,7 +488,27 @@ namespace mpedit {
                 }
             }
 
+            if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(obj)) {
+                if (tpPortal->m_isYellowPortal) {
+                    // Do not explicitly delete orange portals. The engine will delete them
+                    // when the primary blue portal is deleted. Deleting it explicitly
+                    // leaves a dangling pointer in the blue portal!
+                    continue;
+                }
+            }
+
             pruneObjectFromHistory(editor, obj);
+            
+            if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(obj)) {
+                if (!tpPortal->m_isYellowPortal && tpPortal->m_orangePortal) {
+                    auto orangeUuid = getUUIDForObject(tpPortal->m_orangePortal);
+                    auto* orange = tpPortal->m_orangePortal;
+                    tpPortal->m_orangePortal = nullptr; // Prevent double-free in engine
+                    editor->removeObject(orange, true);
+                    if (!orangeUuid.empty()) unregisterObject(orangeUuid);
+                }
+            }
+
             editor->removeObject(obj, true);
             unregisterObject(uuid);
             log::debug("RemoteActionHandler: Deleted object (uuid={})", uuid);
@@ -469,6 +545,12 @@ namespace mpedit {
             auto pos = obj->getPosition();
             obj->setPosition({pos.x + move.dx, pos.y + move.dy});
             editor->updateObjectSection(obj);
+            
+            if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(obj)) {
+                if (!tpPortal->m_isYellowPortal && tpPortal->m_orangePortal) {
+                    editor->updateObjectSection(tpPortal->m_orangePortal);
+                }
+            }
 
             // Move makes any pending position in locked state stale
             // (Removed lockedSaveStrings handling)
@@ -575,12 +657,25 @@ namespace mpedit {
         }
 
         m_processingRemote = true;
+        std::unordered_set<std::string> processedUUIDs;
 
-        for (auto& objData : objects) {
+        for (size_t i = 0; i < objects.size(); i++) {
+            auto const& objData = objects[i];
             auto* oldObj = getObjectByUUID(objData.uuid);
             if (!oldObj) {
                 log::warn("RemoteActionHandler: Object to update not found (uuid={})", objData.uuid);
                 continue;
+            }
+
+            if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(oldObj)) {
+                if (tpPortal->m_isYellowPortal) {
+                    // Never delete and recreate an orange portal; its lifecycle is bound to the blue portal.
+                    // Doing so breaks the internal link and causes crashes when the engine accesses it.
+                    tpPortal->setPositionOverride({objData.x, objData.y});
+                    applyTransformSafe(oldObj, objData.rotation, objData.scaleX, objData.scaleY, objData.flipX, objData.flipY);
+                    log::debug("RemoteActionHandler: Updated orange portal directly without recreation");
+                    continue;
+                }
             }
 
             // Removed deferred update for locked objects; UpdateObjects now only happens on deep property changes, so recreating immediately is safe and fixes delayed sync.
@@ -600,6 +695,24 @@ namespace mpedit {
             }
 
             pruneObjectFromHistory(editor, oldObj);
+            
+            std::string orangeOldUuid;
+            ActionSerializer::ObjectData oldOrangeData;
+            bool hadOldOrange = false;
+            
+            if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(oldObj)) {
+                if (!tpPortal->m_isYellowPortal && tpPortal->m_orangePortal) {
+                    orangeOldUuid = getUUIDForObject(tpPortal->m_orangePortal);
+                    oldOrangeData = ActionSerializer::extractObjectData(tpPortal->m_orangePortal, orangeOldUuid);
+                    hadOldOrange = true;
+                    
+                    auto* orange = tpPortal->m_orangePortal;
+                    tpPortal->m_orangePortal = nullptr; // Prevent double-free in engine
+                    editor->removeObject(orange, true);
+                    if (!orangeOldUuid.empty()) unregisterObject(orangeOldUuid);
+                }
+            }
+
             // Remove old object
             editor->removeObject(oldObj, true);
             unregisterObject(objData.uuid);
@@ -607,7 +720,23 @@ namespace mpedit {
             // Recreate object using saveString to ensure ALL properties are loaded
             auto newObjs = createObjectsFromSaveStringRobust(editor, objData.saveString);
             if (!newObjs.empty()) {
-                auto* newObj = newObjs.front();
+                GameObject* newObj = nullptr;
+                for (auto* createdObj : newObjs) {
+                    if (createdObj->m_objectID == objData.objectID) {
+                        if (objData.objectID == 747) {
+                            if (auto* tp = typeinfo_cast<TeleportPortalObject*>(createdObj)) {
+                                if (!tp->m_isYellowPortal) {
+                                    newObj = createdObj;
+                                    break;
+                                }
+                            }
+                        } else {
+                            newObj = createdObj;
+                            break;
+                        }
+                    }
+                }
+                if (!newObj) newObj = newObjs.front();
                 // Re-apply the authoritative transform via applyTransformSafe so
                 // the flip flag and scale sign stay consistent (a naive
                 // setScaleX+setFlipX here double-applies the flip). See the
@@ -615,6 +744,35 @@ namespace mpedit {
                 applyTransformSafe(newObj, objData.rotation, objData.scaleX, objData.scaleY, objData.flipX, objData.flipY);
                 registerObject(objData.uuid, newObj);
                 log::debug("RemoteActionHandler: Updated object {} via saveString", objData.uuid);
+                
+                if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(newObj)) {
+                    if (!tpPortal->m_isYellowPortal && tpPortal->m_orangePortal) {
+                        bool foundInData = false;
+                        for (size_t j = 0; j < objects.size(); j++) {
+                            auto const& orangeData = objects[j];
+                            if (orangeData.objectID == 749 && !processedUUIDs.count(orangeData.uuid)) {
+                                auto* orange = tpPortal->m_orangePortal;
+                                orange->setPositionOverride({orangeData.x, orangeData.y});
+                                applyTransformSafe(orange, orangeData.rotation, orangeData.scaleX,
+                                                   orangeData.scaleY, orangeData.flipX, orangeData.flipY);
+                                registerObject(orangeData.uuid, orange);
+                                processedUUIDs.insert(orangeData.uuid);
+                                foundInData = true;
+                                break;
+                            }
+                        }
+                        if (!foundInData && hadOldOrange) {
+                            // Recover its old state if not in the update batch
+                            auto* orange = tpPortal->m_orangePortal;
+                            orange->setPositionOverride({oldOrangeData.x, oldOrangeData.y});
+                            applyTransformSafe(orange, oldOrangeData.rotation, oldOrangeData.scaleX,
+                                               oldOrangeData.scaleY, oldOrangeData.flipX, oldOrangeData.flipY);
+                            if (!orangeOldUuid.empty()) {
+                                registerObject(orangeOldUuid, orange);
+                            }
+                        }
+                    }
+                }
 
                 if (wasSelected && editorUI) {
                     editorUI->selectObject(newObj, true);
@@ -628,6 +786,34 @@ namespace mpedit {
                     fallbackObj->m_editorLayer2 = objData.editorLayer2;
                     registerObject(objData.uuid, fallbackObj);
                     log::warn("RemoteActionHandler: Updated object {} via fallback createObject", objData.uuid);
+                    
+                    if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(fallbackObj)) {
+                        if (!tpPortal->m_isYellowPortal && tpPortal->m_orangePortal) {
+                            bool foundInData = false;
+                            for (size_t j = 0; j < objects.size(); j++) {
+                                auto const& orangeData = objects[j];
+                                if (orangeData.objectID == 749 && !processedUUIDs.count(orangeData.uuid)) {
+                                    auto* orange = tpPortal->m_orangePortal;
+                                    orange->setPositionOverride({orangeData.x, orangeData.y});
+                                    applyTransformSafe(orange, orangeData.rotation, orangeData.scaleX,
+                                                       orangeData.scaleY, orangeData.flipX, orangeData.flipY);
+                                    registerObject(orangeData.uuid, orange);
+                                    processedUUIDs.insert(orangeData.uuid);
+                                    foundInData = true;
+                                    break;
+                                }
+                            }
+                            if (!foundInData && hadOldOrange) {
+                                auto* orange = tpPortal->m_orangePortal;
+                                orange->setPositionOverride({oldOrangeData.x, oldOrangeData.y});
+                                applyTransformSafe(orange, oldOrangeData.rotation, oldOrangeData.scaleX,
+                                                   oldOrangeData.scaleY, oldOrangeData.flipX, oldOrangeData.flipY);
+                                if (!orangeOldUuid.empty()) {
+                                    registerObject(orangeOldUuid, orange);
+                                }
+                            }
+                        }
+                    }
 
                     if (wasSelected && editorUI) {
                         editorUI->selectObject(fallbackObj, true);
@@ -1021,6 +1207,16 @@ namespace mpedit {
             // Since extractObjectData captures the absolute POST-offset position,
             // sending a MoveBatch delta later would cause a double-move.
             MessageBatcher::get().removePending(p.uuid);
+            
+            // If this is a blue teleport portal, also send its paired orange portal
+            if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(static_cast<GameObject*>(p.obj))) {
+                if (!tpPortal->m_isYellowPortal && tpPortal->m_orangePortal) {
+                    auto* orange = tpPortal->m_orangePortal;
+                    auto orangeUuid = getOrCreateUUID(orange);
+                    objects.push_back(ActionSerializer::extractObjectData(orange, orangeUuid));
+                    MessageBatcher::get().removePending(orangeUuid);
+                }
+            }
         }
         m_pendingPlacements.clear();
 

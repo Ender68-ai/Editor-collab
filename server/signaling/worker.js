@@ -55,36 +55,40 @@ function wakeLocalAndBroadcast(code, target) {
 // ── KV Queue Helpers ─────────────────────────────────────────
 
 async function enqueueKv(code, queueName, msg) {
-    let success = false;
-    let retries = 20;
-    while (!success && retries > 0) {
-        const res = await kv.get(["rooms", code, queueName]);
-        const queue = res.value || [];
-        queue.push(msg);
-        const commit = await kv.atomic()
-            .check(res)
-            .set(["rooms", code, queueName], queue, { expireIn: ROOM_TTL })
-            .commit();
-        success = commit.ok;
-        retries--;
-    }
+    // Give each message a unique, sortable key to prevent write conflicts
+    const msgId = Date.now() + "_" + crypto.randomUUID();
+    await kv.set(["rooms", code, queueName, msgId], msg, { expireIn: ROOM_TTL });
 }
 
 async function dequeueKv(code, queueName) {
-    let success = false;
-    let msgs = [];
-    let retries = 20;
-    while (!success && retries > 0) {
-        const res = await kv.get(["rooms", code, queueName]);
-        msgs = res.value || [];
-        if (msgs.length === 0) return [];
-        const commit = await kv.atomic()
-            .check(res)
-            .delete(["rooms", code, queueName])
-            .commit();
-        success = commit.ok;
-        retries--;
+    const prefix = ["rooms", code, queueName];
+    const msgs = [];
+    const entriesToDelete = [];
+    
+    // Fetch all messages in the queue
+    for await (const entry of kv.list({ prefix })) {
+        msgs.push(entry.value);
+        entriesToDelete.push(entry);
     }
+    
+    if (msgs.length === 0) return [];
+
+    // Delete them in atomic batches (Deno KV allows max 10 mutations per atomic block)
+    let atomic = kv.atomic();
+    let ops = 0;
+    for (const entry of entriesToDelete) {
+        atomic = atomic.check(entry).delete(entry.key);
+        ops++;
+        if (ops === 10) {
+            await atomic.commit();
+            atomic = kv.atomic();
+            ops = 0;
+        }
+    }
+    if (ops > 0) {
+        await atomic.commit();
+    }
+    
     return msgs;
 }
 
@@ -231,7 +235,6 @@ Deno.serve(async (req) => {
                 if (isResolved) return;
                 isResolved = true;
                 clearTimeout(timer);
-                clearInterval(interval);
                 
                 if (role === "host") room.hostResolver = null;
                 else room.clientResolvers.delete(playerId);
@@ -241,24 +244,15 @@ Deno.serve(async (req) => {
                 resolve(json(msgs));
             };
 
-            // Wake up on BroadcastChannel
+            // Wake up on BroadcastChannel (cross-isolate) or local wake
             if (role === "host") room.hostResolver = complete;
             else room.clientResolvers.set(playerId, complete);
 
-            // Fallback: poll KV every 1.5 seconds in case BroadcastChannel fails across regions
-            const interval = setInterval(async () => {
-                if (isResolved) return;
-                const msgs = await dequeueKv(code, queueName);
-                if (msgs.length > 0) {
-                    complete(msgs);
-                }
-            }, 1500);
-
-            // Timeout after 25 seconds
+            // Timeout after 25 seconds — client will re-poll, which
+            // gives us a natural KV check every 25s as a fallback
             const timer = setTimeout(() => {
                 if (isResolved) return;
                 isResolved = true;
-                clearInterval(interval);
                 
                 if (role === "host") room.hostResolver = null;
                 else room.clientResolvers.delete(playerId);

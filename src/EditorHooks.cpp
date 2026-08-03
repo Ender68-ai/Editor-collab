@@ -549,17 +549,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
 
-        {
-            // Clean up teleport portal pairs to prevent Use-After-Free crashes from dangling pointers
-            if (auto* portal = typeinfo_cast<TeleportPortalObject*>(obj)) {
-                if (portal->m_orangePortal) {
-                    if (portal->m_orangePortal->m_orangePortal == portal) {
-                        portal->m_orangePortal->m_orangePortal = nullptr;
-                    }
-                    portal->m_orangePortal = nullptr;
-                }
-            }
-
             // Clean up game state last activated portal references to prevent Use-After-Free crashes during playtesting/editing
             if (m_gameState.m_lastActivatedPortal1 == obj) {
                 m_gameState.m_lastActivatedPortal1 = nullptr;
@@ -609,7 +598,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                     this->m_editorUI->m_selectedObjects->removeObject(obj);
                 }
             }
-        }
 
         // During undo/redo, handleAction already handles sync — skip here to avoid double-sync
         bool inUndoRedo = m_fields->m_inUndoRedo;
@@ -627,13 +615,15 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                     obj->release();
                     return;
                 }
+                std::vector<std::string> uuids = {uuid};
+
                 // Broadcast the deletion and unregister in one place. Callers
                 // like onDeleteSelected unregister first, so this is a no-op for
                 // them; for other deletion paths this is the single broadcast.
-                auto data = proto::serializeDeleteObjects({uuid});
+                auto data = proto::serializeDeleteObjects(uuids);
                 P2PManager::get().send(std::move(data), ChannelType::Reliable);
                 handler.unregisterObject(uuid);
-                log::debug("EditorHooks: Deleted object (uuid={})", uuid);
+                log::debug("EditorHooks: Deleted object(s) (uuid={})", uuid);
             }
         }
 
@@ -1676,6 +1666,12 @@ class $modify(MPBaseGameLayer, GJBaseGameLayer) {
         // If the object already has a UUID, it's already registered (e.g., via createObject)
         if (!handler.getUUIDForObject(obj).empty()) {
             return;
+        }
+
+        if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(obj)) {
+            if (tpPortal->m_isYellowPortal) {
+                return;
+            }
         }
 
         // Assign a new UUID and queue it for a batched placement flush.

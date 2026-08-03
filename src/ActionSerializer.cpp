@@ -30,7 +30,12 @@ namespace mpedit::ActionSerializer {
         data.editorLayer2 = obj->m_editorLayer2;
         data.saveString = "";
         if (auto* editor = LevelEditorLayer::get()) {
-            data.saveString = obj->getSaveString(editor);
+            std::string s = obj->getSaveString(editor);
+            size_t pos = s.find(';');
+            if (pos != std::string::npos) {
+                s = s.substr(0, pos);
+            }
+            data.saveString = s;
         }
 
         // Extract groups safely up to a maximum of 10 to avoid out-of-bounds/std::out_of_range crashes
@@ -46,7 +51,14 @@ namespace mpedit::ActionSerializer {
 
     std::unordered_map<int, std::string> parseSaveString(std::string const& str) {
         std::unordered_map<int, std::string> out;
-        std::stringstream ss(str);
+        
+        std::string s = str;
+        size_t pos = s.find(';');
+        if (pos != std::string::npos) {
+            s = s.substr(0, pos);
+        }
+
+        std::stringstream ss(s);
         std::string key, val;
         while (std::getline(ss, key, ',') && std::getline(ss, val, ',')) {
             auto parsed = geode::utils::numFromString<int>(key);
