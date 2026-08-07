@@ -69,7 +69,33 @@ namespace mpedit::ActionSerializer {
         return out;
     }
 
-    bool hasDeepPropertyChanges(std::string const& oldSave, std::string const& newSave) {
+    std::string buildSaveString(std::unordered_map<int, std::string> const& map) {
+        std::string result = "";
+        for (auto const& [k, v] : map) {
+            result += std::to_string(k) + "," + v + ",";
+        }
+        return result;
+    }
+
+    void injectLocalStartPosState(ObjectData& remoteData, GameObject* localObj) {
+        if (!localObj || remoteData.objectID != 31 || remoteData.saveString.empty()) return;
+        
+        if (auto* editor = LevelEditorLayer::get()) {
+            auto localMap = parseSaveString(localObj->getSaveString(editor));
+            auto remoteMap = parseSaveString(remoteData.saveString);
+            
+            // Key 93 is the "Disable Start Pos" state
+            if (localMap.count(93)) {
+                remoteMap[93] = localMap[93];
+            } else {
+                remoteMap.erase(93);
+            }
+            
+            remoteData.saveString = buildSaveString(remoteMap);
+        }
+    }
+
+    bool hasDeepPropertyChanges(GameObject* obj, std::string const& oldSave, std::string const& newSave) {
         if (oldSave == newSave) return false;
         
         auto oldMap = parseSaveString(oldSave);
@@ -80,6 +106,12 @@ namespace mpedit::ActionSerializer {
         for (int k : {2, 3, 4, 5, 11, 32, 128, 129}) {
             oldMap.erase(k);
             newMap.erase(k);
+        }
+
+        // Ignore "Disable Start Pos" (key 93) changes for StartPosObject (31) so they remain local
+        if (obj && obj->m_objectID == 31) {
+            oldMap.erase(93);
+            newMap.erase(93);
         }
 
         if (oldMap.size() != newMap.size()) return true;

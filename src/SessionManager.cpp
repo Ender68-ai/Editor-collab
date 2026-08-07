@@ -163,6 +163,15 @@ namespace mpedit {
         });
 
         net.onPeerConnected([this](int playerId, std::string const& name, int colorIndex) {
+            // Check if player already exists
+            for (auto& p : m_players) {
+                if (p.id == playerId) {
+                    p.name = name;
+                    p.colorIndex = colorIndex;
+                    return;
+                }
+            }
+
             PlayerInfo info;
             info.id = playerId;
             info.name = name;
@@ -247,11 +256,23 @@ namespace mpedit {
             m_players.push_back(self);
 
             for (auto const& p : msg.players) {
-                PlayerInfo info;
-                info.id = p.id;
-                info.name = p.name;
-                info.colorIndex = p.colorIndex;
-                m_players.push_back(info);
+                if (p.id == m_localPlayerId) continue;
+                
+                bool exists = false;
+                for (auto& existing : m_players) {
+                    if (existing.id == p.id) {
+                        exists = true;
+                        break;
+                    }
+                }
+                
+                if (!exists) {
+                    PlayerInfo info;
+                    info.id = p.id;
+                    info.name = p.name;
+                    info.colorIndex = p.colorIndex;
+                    m_players.push_back(info);
+                }
             }
         });
     }

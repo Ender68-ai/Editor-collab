@@ -82,8 +82,12 @@ namespace mpedit {
 
         ObjectData extractObjectData(GameObject* obj, std::string const& uuid);
         
+        std::unordered_map<int, std::string> parseSaveString(std::string const& str);
+        std::string buildSaveString(std::unordered_map<int, std::string> const& map);
+        void injectLocalStartPosState(ObjectData& remoteData, GameObject* localObj);
+
         // Returns true if there are changes between two save strings, excluding transform properties
-        bool hasDeepPropertyChanges(std::string const& oldSave, std::string const& newSave);
+        bool hasDeepPropertyChanges(GameObject* obj, std::string const& oldSave, std::string const& newSave);
 
     } // namespace ActionSerializer
 

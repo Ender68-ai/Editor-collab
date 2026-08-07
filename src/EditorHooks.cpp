@@ -255,7 +255,6 @@ namespace {
         if (editor->m_objects) {
             for (auto* obj : CCArrayExt<GameObject*>(editor->m_objects)) {
                 if (!obj) continue;
-                if (obj->m_objectID == 31) continue; // Skip start pos
                 auto uuid = handler.getUUIDForObject(obj);
                 if (uuid.empty()) {
                     uuid = RemoteActionHandler::generateUUID();
@@ -737,9 +736,7 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                 
                 std::string currentSave = obj->getSaveString(this);
                 if (saveStringsBefore[obj] != currentSave) {
-                    if (obj->m_objectID != 31) {
-                        updatedObjects.push_back(ActionSerializer::extractObjectData(obj, uuid));
-                    }
+                    updatedObjects.push_back(ActionSerializer::extractObjectData(obj, uuid));
                 } else {
                     cocos2d::CCPoint oldPos = positionsBefore[obj];
                     float dx = obj->getPositionX() - oldPos.x;
@@ -807,7 +804,7 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
 
         // Send cursor position periodically
         m_fields->m_cursorSendTimer += dt;
-        if (m_fields->m_cursorSendTimer >= 0.1f) {  // 10 Hz cursor updates
+        if (m_fields->m_cursorSendTimer >= 0.033f) {  // 30 Hz cursor updates
             m_fields->m_cursorSendTimer = 0.f;
             
             if (this->m_objectLayer) {
@@ -856,7 +853,29 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                        << static_cast<int>(col1.r) << ":" << static_cast<int>(col1.g) << ":" << static_cast<int>(col1.b) << ":"
                        << static_cast<int>(col2.r) << ":" << static_cast<int>(col2.g) << ":" << static_cast<int>(col2.b) << ":"
                        << (glowEnabled ? 1 : 0) << ":"
-                       << static_cast<int>(colGlow.r) << ":" << static_cast<int>(colGlow.g) << ":" << static_cast<int>(colGlow.b);
+                       << static_cast<int>(colGlow.r) << ":" << static_cast<int>(colGlow.g) << ":" << static_cast<int>(colGlow.b) << ":"
+                       << (this->m_player1->m_vehicleSize < 1.0f ? 1 : 0);
+                       
+                    if (this->m_player2 && this->m_player2->isVisible()) {
+                        int p2IconType = 0;
+                        if (this->m_player2->m_isShip) p2IconType = this->m_player2->m_isPlatformer ? 8 : 1;
+                        else if (this->m_player2->m_isBall) p2IconType = 2;
+                        else if (this->m_player2->m_isBird) p2IconType = 3;
+                        else if (this->m_player2->m_isDart) p2IconType = 4;
+                        else if (this->m_player2->m_isRobot) p2IconType = 5;
+                        else if (this->m_player2->m_isSpider) p2IconType = 6;
+                        else if (this->m_player2->m_isSwing) p2IconType = 7;
+                        
+                        auto p2Pos = this->m_player2->getPosition();
+                        ss << ":1:"
+                           << p2Pos.x << ":" << p2Pos.y << ":"
+                           << this->m_player2->getRotation() << ":"
+                           << (this->m_player2->m_isUpsideDown ? 1 : 0) << ":"
+                           << (this->m_player2->m_vehicleSize < 1.0f ? 1 : 0) << ":"
+                           << p2IconType;
+                    } else {
+                        ss << ":0:0:0:0:0:0:0";
+                    }
                     statusStr = ss.str();
                 } else {
 #ifdef GEODE_IS_MOBILE
@@ -1088,7 +1107,7 @@ class $modify(MPEditorUI, EditorUI) {
                     // message already contains the complete object state.
                     if (handler.isObjectPendingPlacement(obj)) {
                         handler.flushPendingPlacements();
-                    } else if (obj->m_objectID != 31) {
+                    } else {
                         if (auto* editor = LevelEditorLayer::get()) {
                             auto objData = ActionSerializer::extractObjectData(obj, uuid);
                             auto syncData = proto::serializeUpdateObjects({objData});
@@ -1119,7 +1138,7 @@ class $modify(MPEditorUI, EditorUI) {
                     // immediately copy+paste) that slipped past the
                     // syncDeselections tick.
                     auto tIt = tracked.find(obj);
-                    if (tIt != tracked.end() && obj->m_objectID != 31) {
+                    if (tIt != tracked.end()) {
                         if (auto* editor = LevelEditorLayer::get()) {
                             std::string currentSave = obj->getSaveString(editor);
                             if (tIt->second != currentSave) {
@@ -1186,11 +1205,9 @@ class $modify(MPEditorUI, EditorUI) {
                     
                     uuids.push_back(uuid);
                     
-                    if (obj->m_objectID != 31) {
-                        std::string currentSave = obj->getSaveString(editor);
-                        if (savedString != currentSave) {
-                            updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
-                        }
+                    std::string currentSave = obj->getSaveString(editor);
+                    if (savedString != currentSave) {
+                        updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                     }
 
                     ActionSerializer::ReconcileData rec;
@@ -1488,10 +1505,8 @@ class $modify(MPEditorUI, EditorUI) {
                 // Only send UpdateObjects if there are deep property changes (color, groups, etc.)
                 // This prevents massive lag spikes from deleting/recreating objects that were only moved.
                 std::string currentSave = obj->getSaveString(editor);
-                if (ActionSerializer::hasDeepPropertyChanges(it->second, currentSave)) {
-                    if (obj->m_objectID != 31) {
-                        updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
-                    }
+                if (ActionSerializer::hasDeepPropertyChanges(obj, it->second, currentSave)) {
+                    updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                 }
                 
                 MessageBatcher::get().removePending(uuid); // Clear stale relative deltas
@@ -1506,10 +1521,8 @@ class $modify(MPEditorUI, EditorUI) {
                 // (as 0.3.0 did) silently dropped them. Cost is bounded: the loop
                 // only covers currently-selected objects.
                 std::string currentSave = obj->getSaveString(editor);
-                if (ActionSerializer::hasDeepPropertyChanges(it->second, currentSave)) {
-                    if (obj->m_objectID != 31) {
-                        updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
-                    }
+                if (ActionSerializer::hasDeepPropertyChanges(obj, it->second, currentSave)) {
+                    updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                     it->second = currentSave;
                 } else if (it->second != currentSave) {
                     // Update the cached save string anyway so we don't keep diffing position

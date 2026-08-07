@@ -713,12 +713,15 @@ namespace mpedit {
                 }
             }
 
+            auto objDataCopy = objData;
+            ActionSerializer::injectLocalStartPosState(objDataCopy, oldObj);
+
             // Remove old object
             editor->removeObject(oldObj, true);
-            unregisterObject(objData.uuid);
+            unregisterObject(objDataCopy.uuid);
 
             // Recreate object using saveString to ensure ALL properties are loaded
-            auto newObjs = createObjectsFromSaveStringRobust(editor, objData.saveString);
+            auto newObjs = createObjectsFromSaveStringRobust(editor, objDataCopy.saveString);
             if (!newObjs.empty()) {
                 GameObject* newObj = nullptr;
                 for (auto* createdObj : newObjs) {
@@ -963,8 +966,22 @@ namespace mpedit {
             if (editor->m_objects) {
                 auto copy = cocos2d::CCArray::create();
                 copy->addObjectsFromArray(editor->m_objects);
+                
+                // Pass 1: Null out all orange portal references to prevent double-frees/dangling pointers
+                // when the engine attempts to auto-delete linked portals during mass deletion.
                 for (auto* obj : CCArrayExt<GameObject*>(copy)) {
-                    editor->removeObject(obj, true);
+                    if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(obj)) {
+                        if (!tpPortal->m_isYellowPortal) {
+                            tpPortal->m_orangePortal = nullptr;
+                        }
+                    }
+                }
+
+                // Pass 2: Actually remove everything
+                for (auto* obj : CCArrayExt<GameObject*>(copy)) {
+                    if (editor->m_objects->containsObject(obj)) {
+                        editor->removeObject(obj, true);
+                    }
                 }
             }
             if (editor->m_undoObjects) editor->m_undoObjects->removeAllObjects();

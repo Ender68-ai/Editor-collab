@@ -113,9 +113,16 @@ namespace mpedit {
             
             // Smooth interpolation (lerp) towards target
             auto currentPos = pc.drawNode->getPosition();
-            float t = std::min(15.f * dt, 1.0f);
+            float t = std::min(25.f * dt, 1.0f);
             float newX = currentPos.x + (pc.targetX - currentPos.x) * t;
             float newY = currentPos.y + (pc.targetY - currentPos.y) * t;
+            
+            float new2X = 0.f, new2Y = 0.f;
+            if (pc.playtestIcon2) {
+                auto currentPos2 = pc.playtestIcon2->getPosition();
+                new2X = currentPos2.x + (pc.target2X - currentPos2.x) * t;
+                new2Y = currentPos2.y + (pc.target2Y - currentPos2.y) * t;
+            }
             
             pc.drawNode->setPosition({newX, newY});
             pc.label->setString(player.name.c_str());
@@ -224,6 +231,16 @@ namespace mpedit {
             int iconType = 0;
             float rotation = 0.f;
             bool isUpsideDown = false;
+            bool isMini = false;
+            
+            bool isDual = false;
+            float p2X = 0.f;
+            float p2Y = 0.f;
+            float p2Rot = 0.f;
+            bool p2UpsideDown = false;
+            bool p2Mini = false;
+            int p2IconType = 0;
+            
             int cubeFrame = 1, shipFrame = 1, ballFrame = 1, ufoFrame = 1, waveFrame = 1, robotFrame = 1, spiderFrame = 1, swingFrame = 1;
             cocos2d::ccColor3B col1{255, 255, 255}, col2{255, 255, 255}, glowCol{0, 0, 0};
             bool glowEnabled = false;
@@ -264,6 +281,19 @@ namespace mpedit {
                     glowCol.g = geode::utils::numFromString<int>(tokens[21]).unwrapOr(0);
                     glowCol.b = geode::utils::numFromString<int>(tokens[22]).unwrapOr(0);
                 }
+                
+                if (tokens.size() >= 31) {
+                    isMini = (tokens[23] == "1");
+                    isDual = (tokens[24] == "1");
+                    p2X = geode::utils::numFromString<float>(tokens[25]).unwrapOr(0.f);
+                    p2Y = geode::utils::numFromString<float>(tokens[26]).unwrapOr(0.f);
+                    pc.target2X = p2X;
+                    pc.target2Y = p2Y;
+                    p2Rot = geode::utils::numFromString<float>(tokens[27]).unwrapOr(0.f);
+                    p2UpsideDown = (tokens[28] == "1");
+                    p2Mini = (tokens[29] == "1");
+                    p2IconType = geode::utils::numFromString<int>(tokens[30]).unwrapOr(0);
+                }
             }
 
             if (isPlaytesting) {
@@ -280,7 +310,26 @@ namespace mpedit {
                 pc.playtestIcon->setVisible(true);
                 pc.playtestIcon->setPosition({newX, newY});
                 pc.playtestIcon->setRotation(rotation);
-                pc.playtestIcon->setScaleY(isUpsideDown ? -1.f : 1.f);
+                
+                float baseScale = isMini ? 0.6f : 1.0f;
+                pc.playtestIcon->setScaleX(baseScale);
+                pc.playtestIcon->setScaleY(isUpsideDown ? -baseScale : baseScale);
+                
+                if (isDual) {
+                    if (!pc.playtestIcon2) {
+                        pc.playtestIcon2 = SimplePlayer::create(1);
+                        this->addChild(pc.playtestIcon2);
+                    }
+                    pc.playtestIcon2->setVisible(true);
+                    pc.playtestIcon2->setPosition({new2X, new2Y});
+                    pc.playtestIcon2->setRotation(p2Rot);
+                    
+                    float p2BaseScale = p2Mini ? 0.6f : 1.0f;
+                    pc.playtestIcon2->setScaleX(p2BaseScale);
+                    pc.playtestIcon2->setScaleY(p2UpsideDown ? -p2BaseScale : p2BaseScale);
+                } else if (pc.playtestIcon2) {
+                    pc.playtestIcon2->setVisible(false);
+                }
                 
                 int activeIconId = cubeFrame;
                 IconType activeIconType = IconType::Cube;
@@ -319,6 +368,45 @@ namespace mpedit {
                     pc.playtestIcon->disableGlowOutline();
                 }
                 
+                if (isDual && pc.playtestIcon2) {
+                    int p2ActiveIconId = cubeFrame;
+                    IconType p2ActiveIconType = IconType::Cube;
+                    
+                    if (p2IconType == 1) {
+                        p2ActiveIconId = shipFrame;
+                        p2ActiveIconType = IconType::Ship;
+                    } else if (p2IconType == 2) {
+                        p2ActiveIconId = ballFrame;
+                        p2ActiveIconType = IconType::Ball;
+                    } else if (p2IconType == 3) {
+                        p2ActiveIconId = ufoFrame;
+                        p2ActiveIconType = IconType::Ufo;
+                    } else if (p2IconType == 4) {
+                        p2ActiveIconId = waveFrame;
+                        p2ActiveIconType = IconType::Wave;
+                    } else if (p2IconType == 5) {
+                        p2ActiveIconId = robotFrame;
+                        p2ActiveIconType = IconType::Robot;
+                    } else if (p2IconType == 6) {
+                        p2ActiveIconId = spiderFrame;
+                        p2ActiveIconType = IconType::Spider;
+                    } else if (p2IconType == 7) {
+                        p2ActiveIconId = swingFrame;
+                        p2ActiveIconType = IconType::Swing;
+                    } else if (p2IconType == 8) {
+                        p2ActiveIconId = shipFrame; // Jetpack uses ship frame
+                        p2ActiveIconType = IconType::Jetpack;
+                    }
+                    
+                    pc.playtestIcon2->updatePlayerFrame(p2ActiveIconId, p2ActiveIconType);
+                    pc.playtestIcon2->setColors(col1, col2);
+                    if (glowEnabled) {
+                        pc.playtestIcon2->setGlowOutline(glowCol);
+                    } else {
+                        pc.playtestIcon2->disableGlowOutline();
+                    }
+                }
+                
                 pc.label->setAnchorPoint({0.5f, 0.f});
                 pc.label->setPosition({newX, newY + 20.f});
             } else {
@@ -328,6 +416,9 @@ namespace mpedit {
                 }
                 if (pc.playtestIcon) {
                     pc.playtestIcon->setVisible(false);
+                }
+                if (pc.playtestIcon2) {
+                    pc.playtestIcon2->setVisible(false);
                 }
                 pc.label->setAnchorPoint({0.f, 0.5f});
                 pc.label->setPosition({newX + 15.f, newY - 15.f});
@@ -385,6 +476,7 @@ namespace mpedit {
                 if (it->second.label) it->second.label->removeFromParent();
                 if (it->second.toolIndicator) it->second.toolIndicator->removeFromParent();
                 if (it->second.playtestIcon) it->second.playtestIcon->removeFromParent();
+                if (it->second.playtestIcon2) it->second.playtestIcon2->removeFromParent();
                 it = m_cursors.erase(it);
             } else {
                 ++it;

@@ -15,9 +15,12 @@ namespace mpedit {
             cocos2d::CCLabelBMFont* label = nullptr;
             cocos2d::CCNode* toolIndicator = nullptr;
             SimplePlayer* playtestIcon = nullptr;
+            SimplePlayer* playtestIcon2 = nullptr; // For dual mode
             std::string lastStatus;
             float targetX = 0.f;
             float targetY = 0.f;
+            float target2X = 0.f; // Dual player X
+            float target2Y = 0.f; // Dual player Y
         };
 
         std::unordered_map<int, PlayerCursor> m_cursors;

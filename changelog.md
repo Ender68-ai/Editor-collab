@@ -1,3 +1,9 @@
+# 0.4.4
+- Start Position settings are now fully synced between players, while keeping the enabled/disabled state local for each player.
+- Fixed a crash that occurred when joining a host caused by a memory issue with teleport portals.
+- Fixed a bug where players would sometimes duplicate in the lobby, which caused missing/glitching cursors.
+- Improved playtesting sync to be much smoother and added support for mini and dual gamemodes.
+
 # 0.4.3
 - Fixed a bug where placing, moving, or deleting teleport portals would cause game crashes and duplicate portal desyncs.
 - Drastically reduced signaling server load by optimizing polling.
