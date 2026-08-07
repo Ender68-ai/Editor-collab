@@ -8,7 +8,8 @@
 - Fixed a crash that occurred when a guest unexpectedly closes the game.
 - Fixed an issue where the game would get stuck on "Waiting for level sync from host..."
 - Cleaned up a lot of the codebase.
-
+- Significantly optimized level syncing on massive levels by compressing level data.
+- Fixed object ID desyncs for pre-existing level objects when multiple players join.
 # 0.4.3
 - Fixed a bug where placing, moving, or deleting teleport portals would cause game crashes and duplicate portal desyncs.
 - Drastically reduced signaling server load by optimizing polling.

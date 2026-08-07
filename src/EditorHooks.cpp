@@ -5,6 +5,8 @@
 #include <Geode/modify/LevelBrowserLayer.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/binding/TeleportPortalObject.hpp>
+#include <Geode/utils/file.hpp>
+#include <Geode/loader/Dirs.hpp>
 
 #include "SessionManager.hpp"
 #include "P2PManager.hpp"
@@ -256,37 +258,80 @@ namespace {
     void sendChunkedSync(LevelEditorLayer* editor, int targetPlayerId) {
         auto& handler = RemoteActionHandler::get();
 
-        constexpr size_t BATCH_SIZE = 200;
-        struct ChunkData {
-            std::string objectsString;
-            std::vector<std::string> uuids;
-        };
-        std::vector<ChunkData> chunks;
-        ChunkData currentChunk;
+        std::string fullObjectsString;
+        std::vector<std::string> allUuids;
 
         if (editor->m_objects) {
+            int index = 0;
             for (auto* obj : CCArrayExt<GameObject*>(editor->m_objects)) {
                 if (!obj) continue;
                 auto uuid = handler.getUUIDForObject(obj);
                 if (uuid.empty()) {
-                    uuid = RemoteActionHandler::generateUUID();
+                    uuid = "lvl_obj_" + std::to_string(index);
                     handler.registerObject(uuid, obj);
                 }
-                currentChunk.uuids.push_back(uuid);
-                currentChunk.objectsString += std::string(obj->getSaveString(editor)) + ";";
-                
-                if (currentChunk.uuids.size() >= BATCH_SIZE) {
-                    chunks.push_back(std::move(currentChunk));
-                    currentChunk = ChunkData();
-                }
+                allUuids.push_back(uuid);
+                fullObjectsString += std::string(obj->getSaveString(editor)) + ";";
+                index++;
             }
         }
-        if (!currentChunk.uuids.empty() || chunks.empty()) {
-            if (chunks.empty() && currentChunk.uuids.empty()) {
-                chunks.push_back(ChunkData()); // Ensure at least 1 chunk for empty level
+
+        // Compress the full objects string using Geode's cross-platform zip via a temp file to ensure EOCD is written
+        std::string compressedBytes = "";
+        if (!fullObjectsString.empty()) {
+            auto tempPath = geode::dirs::getTempDir() / "sync_level.zip";
+            {
+                if (auto zipRes = geode::utils::file::Zip::create(tempPath)) {
+                    (void)zipRes.unwrap().add("level.txt", fullObjectsString);
+                } else {
+                    log::error("Failed to create temp zip for sync payload");
+                }
+            } // Zip goes out of scope, writing EOCD and closing
+
+            if (auto dataRes = geode::utils::file::readBinary(tempPath)) {
+                auto bytes = dataRes.unwrap();
+                compressedBytes = std::string(bytes.begin(), bytes.end());
             } else {
-                chunks.push_back(std::move(currentChunk));
+                log::error("Failed to read compressed sync payload from temp file");
             }
+
+            // Clean up temp file
+            std::error_code ec;
+            std::filesystem::remove(tempPath, ec);
+        }
+
+        constexpr size_t MAX_CHUNK_BYTES = 30000;
+        constexpr size_t MAX_UUIDS_PER_CHUNK = 500;
+
+        struct ChunkData {
+            std::string objectsString; // Compressed bytes chunk
+            std::vector<std::string> uuids;
+        };
+        std::vector<ChunkData> chunks;
+
+        size_t byteOffset = 0;
+        size_t uuidOffset = 0;
+
+        while (byteOffset < compressedBytes.size() || uuidOffset < allUuids.size()) {
+            ChunkData chunk;
+            
+            size_t bytesToTake = std::min(MAX_CHUNK_BYTES, compressedBytes.size() - byteOffset);
+            if (bytesToTake > 0) {
+                chunk.objectsString = compressedBytes.substr(byteOffset, bytesToTake);
+                byteOffset += bytesToTake;
+            }
+
+            size_t uuidsToTake = std::min(MAX_UUIDS_PER_CHUNK, allUuids.size() - uuidOffset);
+            if (uuidsToTake > 0) {
+                chunk.uuids.insert(chunk.uuids.end(), allUuids.begin() + uuidOffset, allUuids.begin() + uuidOffset + uuidsToTake);
+                uuidOffset += uuidsToTake;
+            }
+
+            chunks.push_back(std::move(chunk));
+        }
+
+        if (chunks.empty()) {
+            chunks.push_back(ChunkData()); // Ensure at least 1 chunk for empty level
         }
 
         // Settings only: LevelSettingsObject::getSaveString() uses the ','
@@ -302,10 +347,7 @@ namespace {
         }
 
         uint32_t totalChunks = static_cast<uint32_t>(chunks.size());
-        uint32_t totalObjects = 0;
-        for (auto const& chunk : chunks) {
-            totalObjects += chunk.uuids.size();
-        }
+        uint32_t totalObjects = static_cast<uint32_t>(allUuids.size());
 
         // 4. Send SyncLevelStart
         auto startMsg = proto::serializeSyncLevelStart(totalChunks, totalObjects, settings);
@@ -325,8 +367,8 @@ namespace {
                 P2PManager::get().sendTo(targetPlayerId, chunkMsg, ChannelType::Reliable);
             });
             
+            seqArr->addObject(cocos2d::CCDelayTime::create(0.01f));
             seqArr->addObject(callFunc);
-            seqArr->addObject(cocos2d::CCDelayTime::create(0.05f));
         }
 
         // 6. Gather locks
@@ -358,9 +400,9 @@ namespace {
             if (index < static_cast<int>(uuids.size()) && !uuids[index].empty()) {
                 handler.registerObject(uuids[index], obj);
             } else {
-                // Object count mismatch with host (rare): assign a fresh UUID.
+                // Object count mismatch with host (rare): assign a deterministic fallback UUID.
                 if (handler.getUUIDForObject(obj).empty()) {
-                    handler.registerObject(RemoteActionHandler::generateUUID(), obj);
+                    handler.registerObject("lvl_obj_" + std::to_string(index), obj);
                 }
             }
             index++;
@@ -434,18 +476,17 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         auto& handler = RemoteActionHandler::get();
         handler.clearMappings();
 
-        // Register callback to assign UUIDs to all existing objects as soon as host session starts
         SessionManager::get().onSessionStarted([this]() {
             auto& session = SessionManager::get();
-            if (session.getRole() == SessionManager::Role::Host) {
-                if (this->m_objects) {
-                    auto& handler = RemoteActionHandler::get();
-                    for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
-                        if (handler.getUUIDForObject(obj).empty()) {
-                            auto uuid = RemoteActionHandler::generateUUID();
-                            handler.registerObject(uuid, obj);
-                        }
+            if (this->m_objects) {
+                auto& handler = RemoteActionHandler::get();
+                int index = 0;
+                for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
+                    if (obj && handler.getUUIDForObject(obj).empty()) {
+                        auto uuid = "lvl_obj_" + std::to_string(index);
+                        handler.registerObject(uuid, obj);
                     }
+                    index++;
                 }
             }
         });
@@ -462,10 +503,12 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                     }
                     handler.clearExpectedUuids();
                 } else if (this->m_objects) {
+                    int index = 0;
                     for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
                         if (obj && handler.getUUIDForObject(obj).empty()) {
-                            handler.registerObject(RemoteActionHandler::generateUUID(), obj);
+                            handler.registerObject("lvl_obj_" + std::to_string(index), obj);
                         }
+                        index++;
                     }
                 }
             } else {

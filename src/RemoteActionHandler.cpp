@@ -5,6 +5,7 @@
 #include "MessageBatcher.hpp"
 #include "ui/MultiplayerPopup.hpp"
 #include <Geode/Geode.hpp>
+#include <Geode/utils/file.hpp>
 #include <random>
 #include <sstream>
 #include <iomanip>
@@ -197,9 +198,23 @@ namespace mpedit {
             if (!m_chunkedSync.active || playerId != m_chunkedSync.hostPlayerId) return;
 
             // Reconstruct objectsString
-            std::string objectsString = "";
+            std::string compressedString = "";
             for (auto const& chunk : m_chunkedSync.chunks) {
-                objectsString += chunk;
+                compressedString += chunk;
+            }
+            
+            std::string objectsString = "";
+            if (!compressedString.empty()) {
+                geode::ByteVector bytes(compressedString.begin(), compressedString.end());
+                if (auto unzip = geode::utils::file::Unzip::create(bytes)) {
+                    if (auto extracted = unzip.unwrap().extract("level.txt")) {
+                        objectsString = std::string(extracted.unwrap().begin(), extracted.unwrap().end());
+                    } else {
+                        log::error("RemoteActionHandler: Failed to extract level.txt from sync payload");
+                    }
+                } else {
+                    log::error("RemoteActionHandler: Failed to create unzipper for sync payload");
+                }
             }
             
             // Reconstruct uuids
@@ -933,7 +948,8 @@ namespace mpedit {
                     registerObject(uuids[index], obj);
                     index++;
                 } else {
-                    registerObject(generateUUID(), obj);
+                    registerObject("lvl_obj_" + std::to_string(index), obj);
+                    index++;
                 }
                 
                 if (obj->m_objectID == 31) {
