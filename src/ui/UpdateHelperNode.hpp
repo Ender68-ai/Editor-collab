@@ -5,13 +5,6 @@
 
 namespace mpedit {
 
-    /**
-     * A small CCNode that drives a callback on a fixed schedule.
-     *
-     * Used to run periodic work (network dispatch, cursor sync, selection sync)
-     * without relying on member-function scheduler selectors inside $modify
-     * classes, which historically caused DEP/ABI crashes.
-     */
     class UpdateHelperNode : public cocos2d::CCNode {
     public:
         using UpdateCallback = std::function<void(float)>;

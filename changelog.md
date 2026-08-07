@@ -1,8 +1,13 @@
 # 0.4.4
-- Start Position settings are now fully synced between players, while keeping the enabled/disabled state local for each player.
+- Start Position properties are now fully synced between players, except for the enabled/disabled state which is local for each player.
+- The multiplayer lobby UI now updates the player count and names in real time as players join or leave.
+- Improved playtesting sync to be much smoother and added support for mini and dual.
+- Minor changes to about.md and README.md to make some important points easier to understand.
 - Fixed a crash that occurred when joining a host caused by a memory issue with teleport portals.
 - Fixed a bug where players would sometimes duplicate in the lobby, which caused missing/glitching cursors.
-- Improved playtesting sync to be much smoother and added support for mini and dual gamemodes.
+- Fixed a crash that occurred when a guest unexpectedly closes the game.
+- Fixed an issue where the game would get stuck on "Waiting for level sync from host..."
+- Cleaned up a lot of the codebase.
 
 # 0.4.3
 - Fixed a bug where placing, moving, or deleting teleport portals would cause game crashes and duplicate portal desyncs.

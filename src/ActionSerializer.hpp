@@ -10,14 +10,9 @@ namespace mpedit {
 
     /**
      * Data structures for editor actions and state, along with extraction helpers.
-     * All network wire encoding/decoding is handled by mpedit::proto (BinaryProtocol).
      */
     namespace ActionSerializer {
 
-        /**
-         * Object data structure for network transmission.
-         * Contains all properties needed to reconstruct an object.
-         */
         struct ObjectData {
             std::string uuid;       // Mod-assigned unique identifier
             std::string saveString; // GD native save string (full object state)
@@ -82,8 +77,8 @@ namespace mpedit {
 
         ObjectData extractObjectData(GameObject* obj, std::string const& uuid);
         
-        std::unordered_map<int, std::string> parseSaveString(std::string const& str);
-        std::string buildSaveString(std::unordered_map<int, std::string> const& map);
+        std::unordered_map<std::string, std::string> parseSaveString(std::string const& str);
+        std::string buildSaveString(std::unordered_map<std::string, std::string> const& map);
         void injectLocalStartPosState(ObjectData& remoteData, GameObject* localObj);
 
         // Returns true if there are changes between two save strings, excluding transform properties

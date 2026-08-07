@@ -25,6 +25,18 @@ namespace {
     bool s_inTransformSync = false;
     cocos2d::CCPoint s_lastTouchPos = {0.f, 0.f};
     bool s_isTouching = false;
+    std::set<GameObject*> s_startPosObjects;
+    std::unordered_map<GameObject*, std::string> s_startPosSaveStrings;
+}
+
+namespace mpedit {
+    void updateStartPosCache(GameObject* obj) {
+        if (obj && obj->m_objectID == 31 && s_startPosObjects.count(obj)) {
+            if (auto* editor = LevelEditorLayer::get()) {
+                s_startPosSaveStrings[obj] = obj->getSaveString(editor);
+            }
+        }
+    }
 }
 
 // ============================================================
@@ -299,7 +311,8 @@ namespace {
         auto startMsg = proto::serializeSyncLevelStart(totalChunks, totalObjects, settings);
         P2PManager::get().sendTo(targetPlayerId, startMsg, ChannelType::Reliable);
 
-        // 5. Send chunks sequentially
+        auto* seqArr = cocos2d::CCArray::create();
+        
         for (uint32_t i = 0; i < totalChunks; ++i) {
             auto chunkMsg = proto::serializeSyncLevelChunk(
                 i, 
@@ -307,7 +320,13 @@ namespace {
                 chunks[i].objectsString.size(),
                 chunks[i].uuids
             );
-            P2PManager::get().sendTo(targetPlayerId, chunkMsg, ChannelType::Reliable);
+            
+            auto* callFunc = geode::cocos::CallFuncExt::create([targetPlayerId, chunkMsg]() {
+                P2PManager::get().sendTo(targetPlayerId, chunkMsg, ChannelType::Reliable);
+            });
+            
+            seqArr->addObject(callFunc);
+            seqArr->addObject(cocos2d::CCDelayTime::create(0.05f));
         }
 
         // 6. Gather locks
@@ -316,9 +335,14 @@ namespace {
             locks.push_back({uuid, lockInfo.playerId, lockInfo.timeLeft});
         }
 
-        // 7. Send SyncLevelEnd
-        auto endMsg = proto::serializeSyncLevelEnd(locks);
-        P2PManager::get().sendTo(targetPlayerId, endMsg, ChannelType::Reliable);
+        auto* endFunc = geode::cocos::CallFuncExt::create([targetPlayerId, locks]() {
+            auto endMsg = proto::serializeSyncLevelEnd(locks);
+            P2PManager::get().sendTo(targetPlayerId, endMsg, ChannelType::Reliable);
+        });
+        
+        seqArr->addObject(endFunc);
+        
+        editor->runAction(cocos2d::CCSequence::create(seqArr));
     }
 
     // Registers UUIDs onto the editor's currently-spawned objects, aligned by
@@ -392,6 +416,17 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
     bool init(GJGameLevel* level, bool unk) {
         if (!LevelEditorLayer::init(level, unk)) return false;
 
+        s_startPosObjects.clear();
+        s_startPosSaveStrings.clear();
+        if (this->m_objects) {
+            for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
+                if (obj->m_objectID == 31) {
+                    s_startPosObjects.insert(obj);
+                    s_startPosSaveStrings[obj] = obj->getSaveString(this);
+                }
+            }
+        }
+
         // Force construction of Fields immediately so its destructor runs reliably
         m_fields->m_sessionActive = SessionManager::get().isInSession();
 
@@ -417,13 +452,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
 
         auto& session = SessionManager::get();
         if (session.isInSession()) {
-            // If a sync_level arrived before the editor existed, we queued it as
-            // a pending sync (and stored its uuids in m_expectedUuids). The
-            // level string we pushed was settings-only, so m_objects is EMPTY
-            // right now — the objects live in objectsString and will be spawned
-            // by applyPendingSync() below. So do NOT try to register expected
-            // UUIDs onto m_objects here (it's empty; that just logged a
-            // spurious "count mismatch"). Let the pending sync own spawning.
             bool hasPending = handler.hasPendingSync();
 
             if (!hasPending) {
@@ -434,8 +462,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                     }
                     handler.clearExpectedUuids();
                 } else if (this->m_objects) {
-                    // No expected UUIDs (e.g. host just started): just ensure every
-                    // object has a UUID so future edits can be tracked.
                     for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
                         if (obj && handler.getUUIDForObject(obj).empty()) {
                             handler.registerObject(RemoteActionHandler::generateUUID(), obj);
@@ -443,17 +469,11 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                     }
                 }
             } else {
-                // Pending sync will create objects from objectsString and
-                // register host-supplied UUIDs in spawn order. Clear the
-                // expected-uuid staging list; it's redundant now.
                 handler.clearExpectedUuids();
             }
 
-            // Unconditionally mark initial sync as completed for the client
             handler.setInitialSyncCompleted(true);
 
-            // Host: immediately broadcast the level state to every already
-            // connected player (e.g. client joined while host editor was open).
             if (session.getRole() == SessionManager::Role::Host) {
                 for (auto const& player : session.getPlayers()) {
                     if (player.id != session.getLocalPlayerId()) {
@@ -464,8 +484,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             }
         }
 
-        // Host: broadcast the level state to any NEW player that joins later.
-        // Registered here (inside init) so it captures `this` editor instance.
         SessionManager::get().onPlayerJoined([this](PlayerInfo const& info) {
             auto& session = SessionManager::get();
             if (session.getRole() == SessionManager::Role::Host && info.id != session.getLocalPlayerId()) {
@@ -474,24 +492,12 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             }
         });
 
-        // Apply any pending sync_level packet that arrived early (client path):
-        // the editor was pushed by handleRemoteSyncLevel, then init() ran and
-        // registered UUIDs above; now finish applying settings + objects.
-        //
-        // NOTE: scene() runs init() synchronously, so by the time we reach here
-        // the editor is constructed but NOT yet added to the scene graph. That
-        // means LevelEditorLayer::get() / scene-walk lookups would miss it and
-        // send handleRemoteSyncLevel back into the "no editor" branch (infinite
-        // recursion). We hand it the editor explicitly via the init-bridge so
-        // it mutates `this` directly.
         if (handler.hasPendingSync()) {
             handler.setEditorForInit(this);
             handler.applyPendingSync();
-            // applyPendingSync clears the override on return; assert defensively.
             handler.setEditorForInit(nullptr);
         }
 
-        // Add a helper node to handle network updates safely without member function pointer layout mismatch
         auto* helper = UpdateHelperNode::create([this](float dt) {
             this->networkUpdate(dt);
         }, 0.05f);
@@ -522,6 +528,9 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             log::info("EditorHooks: Left session automatically on editor exit");
         }
         session.clearCallbacks();
+        
+        s_startPosObjects.clear();
+        s_startPosSaveStrings.clear();
     }
 
 
@@ -539,6 +548,11 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         if (!obj) {
             LevelEditorLayer::removeObject(obj, undo);
             return;
+        }
+
+        if (obj->m_objectID == 31) {
+            s_startPosObjects.erase(obj);
+            s_startPosSaveStrings.erase(obj);
         }
 
         // Prevent premature deallocation during cleanup — the object may only be kept alive
@@ -598,7 +612,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                 }
             }
 
-        // During undo/redo, handleAction already handles sync — skip here to avoid double-sync
         bool inUndoRedo = m_fields->m_inUndoRedo;
         bool shouldBroadcastDelete = session.isInSession()
             && !handler.isProcessingRemote() && !inUndoRedo && obj;
@@ -606,7 +619,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         if (shouldBroadcastDelete) {
             auto uuid = handler.getUUIDForObject(obj);
             if (!uuid.empty()) {
-                // Block deletion of objects locked by another player.
                 auto const& locks = handler.getObjectLocks();
                 auto it = locks.find(uuid);
                 if (it != locks.end() && it->second.playerId != session.getLocalPlayerId()) {
@@ -616,9 +628,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                 }
                 std::vector<std::string> uuids = {uuid};
 
-                // Broadcast the deletion and unregister in one place. Callers
-                // like onDeleteSelected unregister first, so this is a no-op for
-                // them; for other deletion paths this is the single broadcast.
                 auto data = proto::serializeDeleteObjects(uuids);
                 P2PManager::get().send(std::move(data), ChannelType::Reliable);
                 handler.unregisterObject(uuid);
@@ -626,8 +635,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             }
         }
 
-        // Always clean up dangling references in RemoteActionHandler maps so a
-        // later remote action can never resolve a freed GameObject pointer.
         if (obj) {
             auto uuid = handler.getUUIDForObject(obj);
             if (!uuid.empty()) {
@@ -641,7 +648,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         obj->release();
     }
 
-    // Hook handleAction to block locked undo/redo actions and synchronize local history updates
     void handleAction(bool undo, cocos2d::CCArray* undoObjects) {
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
@@ -651,7 +657,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             return;
         }
 
-        // 1. Gather ONLY objects affected by this specific action to prevent O(N) lag spikes
         std::unordered_set<GameObject*> affectedObjects;
         auto* lastItem = static_cast<UndoObject*>(undoObjects->lastObject());
         if (lastItem) {
@@ -665,7 +670,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             }
         }
 
-        // 2. Verify locks for affected objects
         for (auto* gObj : affectedObjects) {
             if (!gObj) continue;
             auto uuid = handler.getUUIDForObject(gObj);
@@ -679,7 +683,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             }
         }
 
-        // 3. Record baseline state for ONLY the affected objects
         std::unordered_map<GameObject*, cocos2d::CCPoint> positionsBefore;
         std::unordered_map<GameObject*, std::string> saveStringsBefore;
         std::unordered_set<GameObject*> existedBefore;
@@ -693,11 +696,9 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             }
         }
 
-        // 4. Execute base handleAction
         m_fields->m_inUndoRedo = true;
         LevelEditorLayer::handleAction(undo, undoObjects);
 
-        // 5. Detect changes using existedBefore vs existedAfter matrix
         std::vector<ActionSerializer::ObjectData> placedObjects;
         std::vector<std::string> deletedUuids;
         std::vector<ActionSerializer::MoveData> movedObjects;
@@ -710,7 +711,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             bool existed_after = this->m_objects && this->m_objects->containsObject(obj);
             
             if (existed_before && !existed_after) {
-                // Object was DELETED by Undo
                 std::string uuid = handler.getUUIDForObject(obj);
                 if (!uuid.empty()) {
                     deletedUuids.push_back(uuid);
@@ -718,7 +718,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                 }
             } 
             else if (!existed_before && existed_after) {
-                // Object was PLACED by Redo
                 std::string uuid = handler.getUUIDForObject(obj);
                 if (uuid.empty()) {
                     uuid = RemoteActionHandler::generateUUID();
@@ -727,7 +726,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                 placedObjects.push_back(ActionSerializer::extractObjectData(obj, uuid));
             } 
             else if (existed_before && existed_after) {
-                // Object was MODIFIED by Undo/Redo
                 std::string uuid = handler.getUUIDForObject(obj);
                 if (uuid.empty()) {
                     uuid = RemoteActionHandler::generateUUID();
@@ -751,8 +749,6 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                 }
             }
         }
-
-        // 6. Send updates
         if (!placedObjects.empty()) {
             auto data = proto::serializePlaceObjects(placedObjects);
             P2PManager::get().send(std::move(data), ChannelType::Reliable);
@@ -856,7 +852,7 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                        << static_cast<int>(colGlow.r) << ":" << static_cast<int>(colGlow.g) << ":" << static_cast<int>(colGlow.b) << ":"
                        << (this->m_player1->m_vehicleSize < 1.0f ? 1 : 0);
                        
-                    if (this->m_player2 && this->m_player2->isVisible()) {
+                    if (this->m_player2 && this->m_gameState.m_isDualMode) {
                         int p2IconType = 0;
                         if (this->m_player2->m_isShip) p2IconType = this->m_player2->m_isPlatformer ? 8 : 1;
                         else if (this->m_player2->m_isBall) p2IconType = 2;
@@ -921,23 +917,8 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
 // ============================================================
 
 namespace {
-    // Captures the pre-edit state of a set of objects, runs a mutating lambda
-    // (the real GD call), then broadcasts transform + move deltas for any
-    // objects that changed. Shared by transformObjectCall, rotateObjects,
-    // scaleObjects, flipObjectsX and flipObjectsY so they all sync identically.
-    //
-    // This is the single source of truth for transform syncing, including
-    // flipX/flipY (mirror) which previously slipped through because GD's
-    // mirror buttons call flipObjectsX/Y rather than transformObjectCall.
-    //
-    // NOTE: we deliberately do NOT also hook the umbrella EditorUI::transformObjects().
-    // Hooking that caused a stale-cache clobber on deselect: it ran the sync
-    // from a layer that committed the transform before syncDeselections had a
-    // chance to update its tracked-selection saveString baseline, so the
-    // subsequent deselect diff computed a spurious delta and re-broadcast a
-    // stale/empty transform. The property-diff in syncDeselections is already
-    // the universal fallback that syncs any transform (Q/E, buttons, mirror),
-    // so these per-command hooks are sufficient on their own.
+    // Intercepts transform actions and broadcasts deltas.
+    // Not hooking EditorUI::transformObjects() directly to avoid stale-cache clobber on deselect.
     void syncTransformedObjects(cocos2d::CCArray* objects,
                                 std::function<void()> applyBase) {
         if (s_inTransformSync) {
@@ -948,7 +929,6 @@ namespace {
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
 
-        // Pre-state: uuid + old position for every object we can track.
         struct ObjState {
             std::string uuid;
             GameObject* obj;
@@ -1000,8 +980,7 @@ namespace {
             }
         }
 
-        // Queue updates via MessageBatcher instead of sending directly to prevent
-        // network flooding during continuous dragging of rotation/scale handles.
+        // Queue updates to prevent network flooding during continuous dragging.
         for (auto const& t : transforms) {
             MessageBatcher::get().queueTransform(t.uuid, t);
         }
@@ -1009,10 +988,7 @@ namespace {
             MessageBatcher::get().queueMove(m.uuid, m.dx, m.dy);
         }
 
-        // Update tracked saveString baselines so syncDeselections does NOT
-        // see a stale diff for these changes and send a redundant
-        // UpdateObjects (which would cause double-move / double-transform
-        // on the remote side).
+        // Update baselines to prevent redundant syncs in syncDeselections.
         auto& tracked = handler.getTrackedSelections();
         auto* editor = LevelEditorLayer::get();
         if (editor) {
@@ -1079,7 +1055,6 @@ class $modify(MPEditorUI, EditorUI) {
                 auto const& locks = handler.getObjectLocks();
                 auto it = locks.find(uuid);
                 if (it != locks.end() && it->second.playerId != session.getLocalPlayerId()) {
-                    // Locked by another player! Do not select.
                     return;
                 }
             }
@@ -1098,13 +1073,6 @@ class $modify(MPEditorUI, EditorUI) {
                     auto data = proto::serializeLockObjects({uuid}, true);
                     P2PManager::get().send(std::move(data), ChannelType::Reliable);
 
-                    // Auto-sync: broadcast the object's full current state on
-                    // select. This acts as a reconciliation point — if the
-                    // object drifted due to fast actions or dropped deltas,
-                    // selecting it snaps all remotes back to the truth.
-                    // Flush objects still pending their initial PlaceObjects.
-                    // If we flushed, skip the UpdateObjects — the PlaceObjects
-                    // message already contains the complete object state.
                     if (handler.isObjectPendingPlacement(obj)) {
                         handler.flushPendingPlacements();
                     } else {
@@ -1133,10 +1101,6 @@ class $modify(MPEditorUI, EditorUI) {
 
                 auto uuid = handler.getUUIDForObject(obj);
                 if (!uuid.empty()) {
-                    // Send a final UpdateObjects if the object changed since
-                    // selection. This catches fast edits (e.g. rotate then
-                    // immediately copy+paste) that slipped past the
-                    // syncDeselections tick.
                     auto tIt = tracked.find(obj);
                     if (tIt != tracked.end()) {
                         if (auto* editor = LevelEditorLayer::get()) {
@@ -1149,9 +1113,6 @@ class $modify(MPEditorUI, EditorUI) {
                         }
                     }
 
-                    // ALWAYS send a ReconcileData to guarantee absolute state sync on deselect
-                    // This fixes the issue where free-rotating (no hooks) and extremely
-                    // quickly deselecting (<100ms) drops the transform completely.
                     ActionSerializer::ReconcileData rec;
                     rec.uuid = uuid;
                     rec.x = obj->getPositionX();
@@ -1187,10 +1148,6 @@ class $modify(MPEditorUI, EditorUI) {
                 
                 auto& tracked = handler.getTrackedSelections();
                 
-                // Iterate over tracked selections — this is OUR authoritative
-                // record of what we selected. The GD selection arrays
-                // (m_selectedObjects / m_selectedObject) may already be stale
-                // if the engine cleared them before calling deselectAll.
                 for (auto& [obj, savedString] : tracked) {
                     if (!editor || !editor->m_objects || !editor->m_objects->containsObject(obj)) {
                         continue;
@@ -1379,7 +1336,6 @@ class $modify(MPEditorUI, EditorUI) {
         auto const& locks = handler.getObjectLocks();
         int localId = session.getLocalPlayerId();
 
-        // 1. Gather all currently selected objects
         std::vector<GameObject*> currentSelection;
         if (m_selectedObject) {
             currentSelection.push_back(m_selectedObject);
@@ -1390,24 +1346,20 @@ class $modify(MPEditorUI, EditorUI) {
             }
         }
 
-        // 2. Identify objects to deselect (locked by others) or lock (newly selected by us)
         std::vector<GameObject*> toDeselect;
         std::vector<std::string> toLockUuids;
 
         for (auto* obj : currentSelection) {
             auto uuid = handler.getUUIDForObject(obj);
-            // If the object has no UUID (e.g. just pasted), register it immediately
             if (uuid.empty()) {
                 uuid = RemoteActionHandler::generateUUID();
                 handler.registerObject(uuid, obj);
             }
 
-            // Check if it's locked by another player
             auto it = locks.find(uuid);
             if (it != locks.end() && it->second.playerId != localId) {
                 toDeselect.push_back(obj);
             } else {
-                // If not tracked yet, track it and queue for locking
                 if (tracked.find(obj) == tracked.end()) {
                     tracked[obj] = obj->getSaveString(editor);
                     toLockUuids.push_back(uuid);
@@ -1415,7 +1367,6 @@ class $modify(MPEditorUI, EditorUI) {
             }
         }
 
-        // 3. Deselect locked objects
         for (auto* obj : toDeselect) {
             this->deselectObject(obj);
             if (m_selectedObject == obj) {
@@ -1426,13 +1377,11 @@ class $modify(MPEditorUI, EditorUI) {
             }
         }
 
-        // 4. Send lock messages for newly selected objects
         if (!toLockUuids.empty()) {
             auto data = proto::serializeLockObjects(toLockUuids, true);
             P2PManager::get().send(std::move(data), ChannelType::Reliable);
         }
 
-        // 5. selection lock refresh timer (for already tracked selections)
         m_fields->m_lockRefreshTimer += dt;
         if (m_fields->m_lockRefreshTimer >= 1.0f) {
             m_fields->m_lockRefreshTimer = 0.f;
@@ -1451,8 +1400,6 @@ class $modify(MPEditorUI, EditorUI) {
             }
         }
 
-        // 6. Handle deselections and update modified objects.
-        //
         // We run the property-diff (getSaveString) on every tracked selected
         // object every tick. This is NOT optional: transforms that don't go
         // through a touch (Q/E rotate, the rotate/scale buttons, Mirror/Flip X/Y)
@@ -1468,13 +1415,11 @@ class $modify(MPEditorUI, EditorUI) {
         for (auto it = tracked.begin(); it != tracked.end(); ) {
             GameObject* obj = it->first;
 
-            // Check if object still exists in the editor to avoid dangling pointers
             if (!editor->m_objects->containsObject(obj)) {
                 it = tracked.erase(it);
                 continue;
             }
 
-            // Check if object is still selected and not scheduled for deselection
             bool isSelected = (std::find(currentSelection.begin(), currentSelection.end(), obj) != currentSelection.end()) &&
                               (std::find(toDeselect.begin(), toDeselect.end(), obj) == toDeselect.end());
 
@@ -1490,7 +1435,6 @@ class $modify(MPEditorUI, EditorUI) {
             if (!isSelected) {
                 unlockUuids.push_back(uuid);
 
-                // Send a quick Reconcile on deselect to fix any drift!
                 ActionSerializer::ReconcileData rec;
                 rec.uuid = uuid;
                 rec.x = obj->getPositionX();
@@ -1502,33 +1446,23 @@ class $modify(MPEditorUI, EditorUI) {
                 rec.flipY = obj->isFlipY();
                 reconciles.push_back(rec);
 
-                // Only send UpdateObjects if there are deep property changes (color, groups, etc.)
-                // This prevents massive lag spikes from deleting/recreating objects that were only moved.
                 std::string currentSave = obj->getSaveString(editor);
                 if (ActionSerializer::hasDeepPropertyChanges(obj, it->second, currentSave)) {
                     updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                 }
                 
-                MessageBatcher::get().removePending(uuid); // Clear stale relative deltas
+                MessageBatcher::get().removePending(uuid);
 
                 it = tracked.erase(it);
             } else {
-                // If still selected, diff every tick and broadcast any change.
-                // This is the universal fallback that syncs ALL property edits
-                // regardless of how they were triggered (drag, Q/E rotate,
-                // rotate/scale/flip buttons, mirror) — those transforms don't go
-                // through a touch and don't set s_isTouching, so gating on touch
-                // (as 0.3.0 did) silently dropped them. Cost is bounded: the loop
-                // only covers currently-selected objects.
                 std::string currentSave = obj->getSaveString(editor);
                 if (ActionSerializer::hasDeepPropertyChanges(obj, it->second, currentSave)) {
                     updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                     it->second = currentSave;
                 } else if (it->second != currentSave) {
-                    // Update the cached save string anyway so we don't keep diffing position
                     it->second = currentSave;
                     
-                    MessageBatcher::get().removePending(uuid); // Clear stale relative deltas
+                    MessageBatcher::get().removePending(uuid);
                     
                     ActionSerializer::ReconcileData rec;
                     rec.uuid = uuid;
@@ -1545,6 +1479,26 @@ class $modify(MPEditorUI, EditorUI) {
             }
         }
 
+        for (auto it = s_startPosObjects.begin(); it != s_startPosObjects.end(); ) {
+            GameObject* obj = *it;
+            if (!editor->m_objects->containsObject(obj)) {
+                s_startPosSaveStrings.erase(obj);
+                it = s_startPosObjects.erase(it);
+                continue;
+            }
+            auto uuid = handler.getUUIDForObject(obj);
+            if (!uuid.empty()) {
+                std::string currentSave = obj->getSaveString(editor);
+                if (s_startPosSaveStrings.count(obj)) {
+                    if (ActionSerializer::hasDeepPropertyChanges(obj, s_startPosSaveStrings[obj], currentSave)) {
+                        updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
+                    }
+                }
+                s_startPosSaveStrings[obj] = currentSave;
+            }
+            ++it;
+        }
+
         if (!unlockUuids.empty()) {
             auto data = proto::serializeLockObjects(unlockUuids, false);
             P2PManager::get().send(std::move(data), ChannelType::Reliable);
@@ -1559,7 +1513,6 @@ class $modify(MPEditorUI, EditorUI) {
         }
     }
 
-    // Hook moveObject to detect object movement by the user
     void moveObject(GameObject* obj, CCPoint position) {
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
@@ -1570,7 +1523,6 @@ class $modify(MPEditorUI, EditorUI) {
                 auto const& locks = handler.getObjectLocks();
                 auto it = locks.find(uuid);
                 if (it != locks.end() && it->second.playerId != session.getLocalPlayerId()) {
-                    // Locked by another player! Do not move.
                     return;
                 }
             }
@@ -1583,9 +1535,6 @@ class $modify(MPEditorUI, EditorUI) {
         if (session.isInSession() && !handler.isProcessingRemote()) {
             auto uuid = handler.getUUIDForObject(obj);
             if (handler.isObjectPendingPlacement(obj)) {
-                // Don't send a move delta — the pending placement flush will
-                // capture the object's current (post-move) position already.
-                // Sending both would cause a double-move on the remote.
                 return;
             }
             if (!uuid.empty()) {
@@ -1598,13 +1547,6 @@ class $modify(MPEditorUI, EditorUI) {
                 if ((move.dx != 0.f || move.dy != 0.f) && !s_inTransformSync) {
                     MessageBatcher::get().queueMove(uuid, move.dx, move.dy);
 
-                    // Update the tracked saveString baseline so that
-                    // syncDeselections does NOT see a stale diff for this
-                    // position change and send a redundant UpdateObjects.
-                    // Without this, both MoveBatch (relative delta) AND
-                    // UpdateObjects (absolute pos via saveString rebuild)
-                    // reach the remote — if UpdateObjects arrives first the
-                    // delta gets applied on top → double-move.
                     auto& tracked = handler.getTrackedSelections();
                     auto tIt = tracked.find(obj);
                     if (tIt != tracked.end()) {
@@ -1635,9 +1577,6 @@ class $modify(MPEditorUI, EditorUI) {
         });
     }
 
-    // GD's "Mirror" buttons call flipObjectsX/flipObjectsY directly (NOT
-    // transformObjectCall), so without these hooks mirror was never synced
-    // to remote players. flipX/flipY are carried by the transform message.
     void flipObjectsX(cocos2d::CCArray* objects) {
         syncTransformedObjects(objects, [&]() {
             EditorUI::flipObjectsX(objects);
@@ -1654,6 +1593,14 @@ class $modify(MPEditorUI, EditorUI) {
 class $modify(MPBaseGameLayer, GJBaseGameLayer) {
     void addToSection(GameObject* obj) {
         GJBaseGameLayer::addToSection(obj);
+
+        if (obj && obj->m_objectID == 31) {
+            auto* editor = LevelEditorLayer::get();
+            if (editor && static_cast<GJBaseGameLayer*>(editor) == this) {
+                s_startPosObjects.insert(obj);
+                s_startPosSaveStrings[obj] = obj->getSaveString(editor);
+            }
+        }
 
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();

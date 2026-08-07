@@ -10,13 +10,7 @@ namespace mpedit {
 
     /**
      * Coalesces high-frequency messages (moves, transforms) into periodic
-     * batched sends. Instead of sending per-pixel-per-object during drag
-     * (which can be 3000+ msg/sec), this batches moves into 20 Hz flushes.
-     *
-     * Usage:
-     *   - EditorHooks calls queueMove() instead of sending immediately
-     *   - networkUpdate() calls update(dt) each tick to auto-flush
-     *   - On deselect/release, call flush() to send any remaining deltas
+     * batched sends.
      */
     class MessageBatcher {
     public:
@@ -40,6 +34,9 @@ namespace mpedit {
 
         // Remove any pending moves or transforms for a specific UUID (e.g., when placing a new object)
         void removePending(std::string const& uuid);
+
+        void flushMoves();
+        void flushTransforms();
 
         // Flush interval in seconds (default 0.05 = 20 Hz)
         void setFlushInterval(float interval) { m_flushInterval = interval; }

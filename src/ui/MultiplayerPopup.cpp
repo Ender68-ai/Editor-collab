@@ -46,6 +46,20 @@ namespace mpedit {
 
         auto& session = SessionManager::get();
         
+        session.onPlayerJoined([this](PlayerInfo const&) {
+            if (SessionManager::get().isInSession() && !this->m_statusLabel) {
+                this->clearContentNode();
+                this->createSessionView();
+            }
+        });
+
+        session.onPlayerLeft([this](PlayerInfo const&) {
+            if (SessionManager::get().isInSession() && !this->m_statusLabel) {
+                this->clearContentNode();
+                this->createSessionView();
+            }
+        });
+
         if (session.isInSession()) {
             createSessionView();
         } else {

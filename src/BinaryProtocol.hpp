@@ -197,7 +197,6 @@ namespace mpedit::proto {
         size_t remaining() const { return m_error ? 0 : m_len - m_pos; }
         size_t position() const { return m_pos; }
 
-        // Error state — replaces exceptions per Geode platform guidelines
         bool hasError() const { return m_error; }
 
         // Access raw remaining bytes (useful for chunked data)

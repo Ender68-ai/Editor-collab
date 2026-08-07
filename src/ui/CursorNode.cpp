@@ -399,7 +399,7 @@ namespace mpedit {
                     }
                     
                     pc.playtestIcon2->updatePlayerFrame(p2ActiveIconId, p2ActiveIconType);
-                    pc.playtestIcon2->setColors(col1, col2);
+                    pc.playtestIcon2->setColors(col2, col1);
                     if (glowEnabled) {
                         pc.playtestIcon2->setGlowOutline(glowCol);
                     } else {

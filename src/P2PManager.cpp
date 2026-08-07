@@ -11,7 +11,7 @@ using namespace geode::prelude;
 
 namespace mpedit {
 
-    // ── Singleton ─────────────────────────────────────────────
+
 
     P2PManager& P2PManager::get() {
         static P2PManager instance;
@@ -26,14 +26,12 @@ namespace mpedit {
         leaveSession();
     }
 
-    // ── ICE Configuration ─────────────────────────────────────
+
 
     rtc::Configuration P2PManager::makeRtcConfig() {
         rtc::Configuration config;
-        // Free STUN servers for NAT traversal (~85% of connections)
         config.iceServers.push_back({"stun:stun.l.google.com:19302"});
         config.iceServers.push_back({"stun:stun.cloudflare.com:3478"});
-        // Free TURN relay for symmetric NATs (~5-10% of connections)
         rtc::IceServer turn("openrelay.metered.ca", 443, "openrelayproject", "openrelayproject", rtc::IceServer::RelayType::TurnTcp);
         config.iceServers.push_back(turn);
         return config;
@@ -45,7 +43,7 @@ namespace mpedit {
         return url;
     }
 
-    // ── State Accessors ───────────────────────────────────────
+
 
     P2PManager::State P2PManager::getState() const {
         return m_state.load();
@@ -74,7 +72,7 @@ namespace mpedit {
         return m_error;
     }
 
-    // ── Callback Registration ─────────────────────────────────
+
 
     void P2PManager::onSessionStarted(SessionStartedCb cb) {
         m_onSessionStarted.push_back(std::move(cb));
@@ -95,7 +93,7 @@ namespace mpedit {
         m_onError.clear();
     }
 
-    // ── Handler Registration ──────────────────────────────────
+
 
     void P2PManager::on(proto::Opcode opcode, MessageCallback callback) {
         m_handlers[static_cast<uint8_t>(opcode)].push_back(std::move(callback));
@@ -105,7 +103,7 @@ namespace mpedit {
         m_handlers.clear();
     }
 
-    // ── Message Dispatch (main thread) ────────────────────────
+
 
     void P2PManager::dispatchMessages() {
         if (m_dispatching) return;
@@ -125,10 +123,8 @@ namespace mpedit {
 
                 auto it = m_handlers.find(opcodeRaw);
                 if (it != m_handlers.end()) {
-                    // Copy handlers to allow modification during dispatch
                     auto handlersCopy = it->second;
                     for (auto const& handler : handlersCopy) {
-                        // Reset reader position for each handler
                         proto::Reader handlerReader(msg.data.data() + 1, msg.data.size() - 1);
                         handler(msg.fromPlayerId, handlerReader);
                         if (m_handlers.empty()) break;
@@ -143,13 +139,12 @@ namespace mpedit {
         m_dispatching = false;
     }
 
-    // ── Sending ───────────────────────────────────────────────
+
 
     void P2PManager::send(std::vector<uint8_t> const& data, ChannelType channel) {
         if (m_role == Role::Host) {
             broadcast(data, channel);
         } else if (m_role == Role::Client) {
-            // Client sends only to host (playerId 0)
             sendTo(0, data, channel);
         }
     }
@@ -191,12 +186,11 @@ namespace mpedit {
         }
     }
 
-    // ── Peer Message Handling ─────────────────────────────────
+
 
     void P2PManager::onPeerMessage(int fromPlayerId, const uint8_t* data, size_t len) {
         if (len == 0) return;
 
-        // Enqueue for local main-thread dispatch
         {
             std::lock_guard lock(m_incomingMutex);
             m_incoming.push(QueuedMessage{
@@ -205,9 +199,7 @@ namespace mpedit {
             });
         }
 
-        // Host relays to all other clients
         if (m_role == Role::Host) {
-            // Determine channel from opcode for relay
             uint8_t opcode = data[0];
             ChannelType ch = ChannelType::Reliable;
             if (opcode == static_cast<uint8_t>(proto::Opcode::CursorUpdate)) {
@@ -235,7 +227,6 @@ namespace mpedit {
         log::info("P2PManager: Player {} disconnected (unexpected={})", playerId, unexpected);
 
         queueInMainThread([this, playerId, unexpected]() {
-            // If we're a client and the host disconnected, session is over
             if (m_role == Role::Client && playerId == 0) {
                 for (auto& cb : m_onError) {
                     cb("Host disconnected");
@@ -243,12 +234,10 @@ namespace mpedit {
                 return;
             }
 
-            // Notify callbacks
             for (auto& cb : m_onPeerDisconnected) {
                 cb(playerId);
             }
 
-            // Host notifies remaining clients about the departure
             if (m_role == Role::Host) {
                 auto msg = proto::serializePlayerLeft(playerId);
                 broadcast(msg, ChannelType::Reliable);
@@ -256,7 +245,7 @@ namespace mpedit {
         });
     }
 
-    // ── Host Session ──────────────────────────────────────────
+
 
     void P2PManager::hostSession(std::string const& playerName) {
         {
@@ -316,7 +305,6 @@ namespace mpedit {
                         cb(roomCode, 0);
                     }
 
-                    // Start long-polling for signaling messages (client_joined, answers)
                     startSignalPolling(roomCode, "host", 0);
                 } else {
                     std::vector<ErrorCb> callbacks;
@@ -334,7 +322,7 @@ namespace mpedit {
         );
     }
 
-    // ── Signaling: HTTP Long Polling ──────────────────────────
+
 
     void P2PManager::startSignalPolling(std::string const& code, std::string const& role, int playerId) {
         m_signalingActive.store(true);
@@ -348,7 +336,7 @@ namespace mpedit {
         auto url = getSignalingUrl() + "/rooms/" + code + "/signal?role=" + role + "&playerId=" + std::to_string(playerId);
 
         auto req = web::WebRequest();
-        req.timeout(std::chrono::seconds(30)); // slightly longer than server's 25s timeout
+        req.timeout(std::chrono::seconds(30));
 
         m_signalPollListener.spawn(
             req.get(url),
@@ -362,7 +350,6 @@ namespace mpedit {
                     log::warn("P2PManager: Signal poll returned {}", res.code());
                 }
 
-                // Re-poll (loop)
                 if (m_signalingActive.load()) {
                     pollSignalOnce(code, role, playerId);
                 }
@@ -380,12 +367,10 @@ namespace mpedit {
         auto req = web::WebRequest();
         req.header("Content-Type", "application/json");
         req.bodyJSON(msg);
-        // Fire-and-forget
         async::spawn(req.post(url));
     }
 
     void P2PManager::handleSignalingMessages(matjson::Value const& messages) {
-        // Server returns a JSON array of signaling messages
         if (!messages.isArray()) return;
 
         for (size_t i = 0; i < messages.size(); i++) {
@@ -396,7 +381,6 @@ namespace mpedit {
             auto type = msg.get<std::string>("type").unwrapOr("");
 
             if (type == "client_joined") {
-                // Host receives notification that a new client joined
                 int clientId = msg.get<int>("playerId").unwrapOr(-1);
                 auto clientName = msg.get<std::string>("playerName").unwrapOr("Player " + std::to_string(clientId));
                 if (clientId >= 0) {
@@ -405,13 +389,11 @@ namespace mpedit {
                     createHostPeer(clientId, clientName);
                 }
             } else if (type == "answer") {
-                // Host receives SDP answer from a client
                 auto sdp = msg.get<std::string>("sdp").unwrapOr("");
                 int clientId = msg.get<int>("playerId").unwrapOr(-1);
                 if (!sdp.empty() && clientId >= 0) {
                     log::info("P2PManager: Received SDP answer from client {} via poll", clientId);
 
-                    // Force answer role to active to fix libdatachannel crash
                     size_t setupPos = sdp.find("a=setup:actpass");
                     while (setupPos != std::string::npos) {
                         sdp.replace(setupPos, 15, "a=setup:active");
@@ -427,7 +409,6 @@ namespace mpedit {
                             it->second.pc->setRemoteDescription(
                                 rtc::Description(sdp, rtc::Description::Type::Answer, rtc::Description::Role::Active));
                             
-                            // Process any pending candidates
                             for (auto const& pCand : it->second.pendingCandidates) {
                                 it->second.pc->addRemoteCandidate(rtc::Candidate(pCand.candidate, pCand.mid));
                             }
@@ -438,7 +419,6 @@ namespace mpedit {
                     }
                 }
             } else if (type == "offer") {
-                // Client receives SDP offer from host
                 auto sdp = msg.get<std::string>("sdp").unwrapOr("");
                 if (!sdp.empty()) {
                     std::lock_guard lock(m_peersMutex);
@@ -450,7 +430,6 @@ namespace mpedit {
                             it->second.pc->setRemoteDescription(
                                 rtc::Description(sdp, rtc::Description::Type::Offer, rtc::Description::Role::ActPass));
                             
-                            // Process any pending candidates
                             for (auto const& pCand : it->second.pendingCandidates) {
                                 it->second.pc->addRemoteCandidate(rtc::Candidate(pCand.candidate, pCand.mid));
                             }
@@ -465,9 +444,7 @@ namespace mpedit {
             } else if (type == "candidate") {
                 auto cand = msg.get<std::string>("candidate").unwrapOr("");
                 auto mid = msg.get<std::string>("mid").unwrapOr("");
-                int clientId = msg.get<int>("playerId").unwrapOr(-1); // Only present if sent by client
-                
-                // If we are Host, we use the sender's clientId. If we are Client, the sender is always Host (0)
+                int clientId = msg.get<int>("playerId").unwrapOr(-1);
                 int fromId = (m_role == Role::Host) ? clientId : 0;
                 
                 if (!cand.empty() && !mid.empty() && fromId >= 0) {
@@ -487,7 +464,7 @@ namespace mpedit {
         }
     }
 
-    // ── Join Session ──────────────────────────────────────────
+
 
     void P2PManager::joinSession(std::string const& roomCode, std::string const& playerName) {
         {
@@ -536,7 +513,6 @@ namespace mpedit {
 
                     log::info("P2PManager: Joined room {} as player {}", roomCode, m_localPlayerId);
 
-                    // Create peer connection to host
                     auto pc = std::make_shared<rtc::PeerConnection>(makeRtcConfig());
 
                     PeerInfo hostPeer;
@@ -547,7 +523,6 @@ namespace mpedit {
 
                     int myId = m_localPlayerId;
 
-                    // Client receives data channels from host
                     pc->onDataChannel([this](std::shared_ptr<rtc::DataChannel> dc) {
                         bool isReliable = dc->label() == "reliable";
                         log::info("P2PManager: Received {} data channel", dc->label());
@@ -575,10 +550,8 @@ namespace mpedit {
                         dc->onClosed([this]() { log::info("P2PManager: Channel to host closed"); });
                     });
 
-                    // Shared flag to prevent sending SDP answer twice
                     auto answerSent = std::make_shared<bool>(false);
 
-                    // Handle ICE candidates (Trickle ICE)
                     pc->onLocalCandidate([this, myId, roomCode](rtc::Candidate candidate) {
                         auto body = matjson::Value();
                         body["type"] = "candidate";
@@ -590,11 +563,9 @@ namespace mpedit {
                         });
                     });
 
-                    // Send SDP answer immediately when local description is set (Trickle ICE)
                     pc->onLocalDescription([this, pc, myId, roomCode, answerSent](rtc::Description desc) {
                         std::string sdp = std::string(desc);
                         
-                        // Force answer role to active to fix libdatachannel crash
                         size_t setupPos = sdp.find("a=setup:actpass");
                         while (setupPos != std::string::npos) {
                             sdp.replace(setupPos, 15, "a=setup:active");
@@ -614,7 +585,6 @@ namespace mpedit {
                         });
                     });
 
-                    // Fallback: also send SDP answer when ICE gathering completes (full candidates)
                     pc->onGatheringStateChange([this, pc, myId, roomCode, answerSent](
                         rtc::PeerConnection::GatheringState state)
                     {
@@ -643,7 +613,6 @@ namespace mpedit {
                         }
                     });
 
-                    // Handle connection state changes
                     pc->onStateChange([this](rtc::PeerConnection::State state) {
                         if (state == rtc::PeerConnection::State::Disconnected ||
                             state == rtc::PeerConnection::State::Failed ||
@@ -659,7 +628,6 @@ namespace mpedit {
                         m_peers[0] = std::move(hostPeer);
                     }
 
-                    // Start long-polling to receive SDP offer from host
                     startSignalPolling(roomCode, "client", m_localPlayerId);
 
                 } else if (res.code() == 404) {
@@ -689,12 +657,11 @@ namespace mpedit {
         );
     }
 
-    // ── Host: Create Peer Connection for Client ───────────────
+
 
     void P2PManager::createHostPeer(int clientPlayerId, std::string const& clientName) {
         auto pc = std::make_shared<rtc::PeerConnection>(makeRtcConfig());
 
-        // Create both data channels
         auto reliable = pc->createDataChannel("reliable");
 
         rtc::DataChannelInit unreliableInit;
@@ -709,7 +676,6 @@ namespace mpedit {
         peer.playerName = clientName;
         peer.colorIndex = clientPlayerId % 6;
 
-        // Wire up data channel callbacks
         auto setupChannelCallbacks = [this, clientPlayerId](std::shared_ptr<rtc::DataChannel> dc, bool isReliable) {
             dc->onOpen([this, clientPlayerId, isReliable]() {
                 log::info("P2PManager: {} channel to player {} opened",
@@ -735,10 +701,8 @@ namespace mpedit {
 
         auto roomCode = getRoomCode();
 
-        // Shared flag to prevent sending SDP offer twice
         auto offerSent = std::make_shared<bool>(false);
 
-        // Handle ICE candidates (Trickle ICE)
         pc->onLocalCandidate([this, clientPlayerId, roomCode](rtc::Candidate candidate) {
             auto body = matjson::Value();
             body["type"] = "candidate";
@@ -750,7 +714,6 @@ namespace mpedit {
             });
         });
 
-        // Send SDP offer immediately when local description is set (Trickle ICE)
         pc->onLocalDescription([this, clientPlayerId, roomCode, offerSent](rtc::Description desc) {
             std::string sdp = std::string(desc);
             log::info("P2PManager: Local description set, sending SDP offer for player {} via HTTP (early/trickle)", clientPlayerId);
@@ -766,7 +729,6 @@ namespace mpedit {
             });
         });
 
-        // Fallback: also send SDP offer when ICE gathering completes (full candidates)
         pc->onGatheringStateChange([this, pc, clientPlayerId, roomCode, offerSent](
             rtc::PeerConnection::GatheringState state)
         {
@@ -799,7 +761,6 @@ namespace mpedit {
             }
         });
 
-        // Generate the offer
         pc->setLocalDescription();
 
         {
@@ -808,10 +769,9 @@ namespace mpedit {
         }
     }
 
-    // ── Peer Ready Check ──────────────────────────────────────
+
 
     void P2PManager::checkPeerReady(int playerId) {
-        // Collect info under lock, then perform actions outside lock
         bool becameReady = false;
         int pid = -1;
         std::string name;
@@ -834,7 +794,6 @@ namespace mpedit {
                 colorIdx = peer.colorIndex;
                 becameReady = true;
 
-                // Move pending messages out — we'll send them outside the lock
                 pending = std::move(peer.pendingMessages);
                 peer.pendingMessages.clear();
 
@@ -844,12 +803,10 @@ namespace mpedit {
 
         if (!becameReady) return;
 
-        // Send pending messages outside the lock
         for (auto& msg : pending) {
             sendTo(pid, msg.data, msg.channel);
         }
 
-        // If client connecting to host, we're now Connected — stop signaling
         if (m_role == Role::Client && pid == 0) {
             m_state.store(State::Connected);
             stopSignalPolling();
@@ -867,7 +824,6 @@ namespace mpedit {
                 cb(pid, name, colorIdx);
             }
 
-            // Host notifies existing clients about the new player
             if (m_role == Role::Host) {
                 auto msg = proto::serializePlayerJoined(pid, name, colorIdx);
                 broadcast(msg, ChannelType::Reliable, pid);
@@ -875,13 +831,11 @@ namespace mpedit {
         });
     }
 
-    // ── Leave Session ─────────────────────────────────────────
+
 
     void P2PManager::leaveSession() {
-        // Stop signaling long poll
         stopSignalPolling();
 
-        // Close all peer connections
         {
             std::lock_guard lock(m_peersMutex);
             for (auto& [id, peer] : m_peers) {
@@ -892,14 +846,12 @@ namespace mpedit {
             m_peers.clear();
         }
 
-        // Delete room on signaling server if host
         if (m_role == Role::Host && !m_roomCode.empty()) {
             auto url = getSignalingUrl() + "/rooms/" + m_roomCode;
             auto req = web::WebRequest();
-            async::spawn(req.send("DELETE", url)); // Fire-and-forget
+            async::spawn(req.send("DELETE", url));
         }
 
-        // Clear incoming queue
         {
             std::lock_guard lock(m_incomingMutex);
             std::queue<QueuedMessage> empty;

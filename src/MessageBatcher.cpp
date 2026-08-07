@@ -23,78 +23,56 @@ namespace mpedit {
         m_pendingTransforms[uuid] = transform;
     }
 
+    void MessageBatcher::flushMoves() {
+        if (m_pendingMoves.empty()) return;
+        
+        std::vector<ActionSerializer::MoveData> moves;
+        moves.reserve(m_pendingMoves.size());
+        for (auto& [uuid, accum] : m_pendingMoves) {
+            if (accum.dx == 0.f && accum.dy == 0.f) continue;
+            moves.push_back({uuid, accum.dx, accum.dy});
+        }
+        m_pendingMoves.clear();
+        m_moveTimer = 0.f;
+
+        if (!moves.empty()) {
+            auto data = proto::serializeMoveBatch(moves);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        }
+    }
+
+    void MessageBatcher::flushTransforms() {
+        if (m_pendingTransforms.empty()) return;
+
+        std::vector<ActionSerializer::TransformData> transforms;
+        transforms.reserve(m_pendingTransforms.size());
+        for (auto& [uuid, t] : m_pendingTransforms) {
+            transforms.push_back(t);
+        }
+        m_pendingTransforms.clear();
+        m_transformTimer = 0.f;
+
+        if (!transforms.empty()) {
+            auto data = proto::serializeTransformObjects(transforms);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        }
+    }
+
     void MessageBatcher::update(float dt) {
         m_moveTimer += dt;
         m_transformTimer += dt;
 
-        if (m_moveTimer >= m_flushInterval && !m_pendingMoves.empty()) {
-            // Build batched move message
-            std::vector<ActionSerializer::MoveData> moves;
-            moves.reserve(m_pendingMoves.size());
-            for (auto& [uuid, accum] : m_pendingMoves) {
-                // Skip zero-delta moves
-                if (accum.dx == 0.f && accum.dy == 0.f) continue;
-                moves.push_back({uuid, accum.dx, accum.dy});
-            }
-            m_pendingMoves.clear();
-            m_moveTimer = 0.f;
-
-            if (!moves.empty()) {
-                auto data = proto::serializeMoveBatch(moves);
-                // Send on reliable channel — since moves are deltas, a dropped packet means permanent desync
-                P2PManager::get().send(std::move(data), ChannelType::Reliable);
-            }
+        if (m_moveTimer >= m_flushInterval) {
+            flushMoves();
         }
-
-        if (m_transformTimer >= m_flushInterval && !m_pendingTransforms.empty()) {
-            std::vector<ActionSerializer::TransformData> transforms;
-            transforms.reserve(m_pendingTransforms.size());
-            for (auto& [uuid, t] : m_pendingTransforms) {
-                transforms.push_back(t);
-            }
-            m_pendingTransforms.clear();
-            m_transformTimer = 0.f;
-
-            if (!transforms.empty()) {
-                auto data = proto::serializeTransformObjects(transforms);
-                P2PManager::get().send(std::move(data), ChannelType::Reliable);
-            }
+        if (m_transformTimer >= m_flushInterval) {
+            flushTransforms();
         }
     }
 
     void MessageBatcher::flush() {
-        // Force send everything now, resetting timers
-        if (!m_pendingMoves.empty()) {
-            std::vector<ActionSerializer::MoveData> moves;
-            moves.reserve(m_pendingMoves.size());
-            for (auto& [uuid, accum] : m_pendingMoves) {
-                if (accum.dx == 0.f && accum.dy == 0.f) continue;
-                moves.push_back({uuid, accum.dx, accum.dy});
-            }
-            m_pendingMoves.clear();
-            m_moveTimer = 0.f;
-
-            if (!moves.empty()) {
-                // Final flush goes on reliable channel to ensure delivery
-                auto data = proto::serializeMoveBatch(moves);
-                P2PManager::get().send(std::move(data), ChannelType::Reliable);
-            }
-        }
-
-        if (!m_pendingTransforms.empty()) {
-            std::vector<ActionSerializer::TransformData> transforms;
-            transforms.reserve(m_pendingTransforms.size());
-            for (auto& [uuid, t] : m_pendingTransforms) {
-                transforms.push_back(t);
-            }
-            m_pendingTransforms.clear();
-            m_transformTimer = 0.f;
-
-            if (!transforms.empty()) {
-                auto data = proto::serializeTransformObjects(transforms);
-                P2PManager::get().send(std::move(data), ChannelType::Reliable);
-            }
-        }
+        flushMoves();
+        flushTransforms();
     }
 
     void MessageBatcher::clear() {
@@ -106,11 +84,7 @@ namespace mpedit {
 
     void MessageBatcher::removePending(std::string const& uuid) {
         m_pendingMoves.erase(uuid);
-        // Now that deselectObject/deselectAll unconditionally send a ReconcileData
-        // with the authoritative final state, we MUST also clear any pending
-        // transform for this uuid. Otherwise the batcher's next tick will send
-        // a stale TransformData that races the Reconcile and can overwrite the
-        // correct rotation/scale/flip on the remote side.
+        // Clear pending transforms to avoid races with final ReconcileData
         m_pendingTransforms.erase(uuid);
     }
 

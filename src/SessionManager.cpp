@@ -140,6 +140,8 @@ namespace mpedit {
     void SessionManager::clearPopupCallbacks() {
         m_onSessionStarted.clear();
         m_onError.clear();
+        m_onPlayerJoined.clear();
+        m_onPlayerLeft.clear();
     }
 
     void SessionManager::setupNetworkHandlers() {
