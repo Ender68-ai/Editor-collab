@@ -25,3 +25,7 @@ Collaborate with friends in real-time level editing! Host a session and build to
 This mod establishes direct Peer-to-Peer (P2P) connections between players using WebRTC. However, it requires a lightweight signaling server to exchange initial connection information to matchmake players. A public default signaling server is configured by default, but you can host your own.
 
 Setup instructions for hosting your own Deno signaling server are located in the `server/` directory of the source repository. You can update the **Signaling Server URL** setting in the mod settings in-game to connect to your custom server.
+
+## Support
+
+If you enjoy this mod and want to support my work, you can do so on my [Patreon](https://www.patreon.com/cw/d050/membership)!

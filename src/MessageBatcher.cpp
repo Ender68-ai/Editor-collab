@@ -19,7 +19,6 @@ namespace mpedit {
     void MessageBatcher::queueTransform(std::string const& uuid,
         ActionSerializer::TransformData const& transform)
     {
-        // Latest transform per-uuid wins (overwrites previous)
         m_pendingTransforms[uuid] = transform;
     }
 
@@ -84,8 +83,11 @@ namespace mpedit {
 
     void MessageBatcher::removePending(std::string const& uuid) {
         m_pendingMoves.erase(uuid);
-        // Clear pending transforms to avoid races with final ReconcileData
         m_pendingTransforms.erase(uuid);
     }
 
-} // namespace mpedit
+    bool MessageBatcher::hasPending(std::string const& uuid) const {
+        return m_pendingMoves.count(uuid) > 0 || m_pendingTransforms.count(uuid) > 0;
+    }
+
+}

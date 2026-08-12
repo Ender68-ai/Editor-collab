@@ -21,10 +21,10 @@ namespace mpedit {
         static const std::array<ccColor3B, 6> colors = {
             ccColor3B{100, 200, 255},  // Blue
             ccColor3B{255, 120, 100},  // Red
-            ccColor3B{100, 255, 150},  // Green
-            ccColor3B{255, 200, 100},  // Yellow
-            ccColor3B{200, 150, 255},  // Purple
-            ccColor3B{255, 150, 200},  // Pink
+            ccColor3B{100, 255, 150},
+            ccColor3B{255, 200, 100},
+            ccColor3B{200, 150, 255},
+            ccColor3B{255, 150, 200},
         };
         return colors[index % colors.size()];
     }
@@ -57,23 +57,20 @@ namespace mpedit {
         auto& players = session.getPlayers();
         int localId = session.getLocalPlayerId();
 
-        // Keep track of which players we updated this frame
         std::unordered_set<int> activeIds;
 
         for (auto& player : players) {
-            // Don't draw our own cursor
             if (player.id == localId) continue;
             
             activeIds.insert(player.id);
 
-            // Create cursor if it doesn't exist
             if (m_cursors.find(player.id) == m_cursors.end()) {
                 PlayerCursor pc;
                 pc.playtestIcon = nullptr;
+                pc.lockIcon = nullptr;
                 
                 pc.drawNode = CCDrawNode::create();
                 
-                // SVG-based pointer shape
                 cocos2d::CCPoint verts[] = {
                     {0.0f, 0.0f},
                     {0.0f, -17.8f},
@@ -83,12 +80,11 @@ namespace mpedit {
                 
                 auto color3 = getColorForIndex(player.colorIndex);
                 cocos2d::ccColor4F color4 = {color3.r / 255.f, color3.g / 255.f, color3.b / 255.f, 0.9f};
-                cocos2d::ccColor4F outline = {0.f, 0.f, 0.f, 1.f}; // Black outline
+                cocos2d::ccColor4F outline = {0.f, 0.f, 0.f, 1.f};
                 
                 pc.drawNode->drawPolygon(verts, 4, color4, 1.0f, outline);
                 this->addChild(pc.drawNode);
 
-                // Name label
                 pc.label = CCLabelBMFont::create(player.name.c_str(), "chatFont.fnt");
                 pc.label->setScale(0.4f);
                 pc.label->setColor(color3);
@@ -96,7 +92,6 @@ namespace mpedit {
                 pc.label->setAnchorPoint({0.f, 0.5f});
                 this->addChild(pc.label);
 
-                // Initial position
                 pc.targetX = player.cursorX;
                 pc.targetY = player.cursorY;
                 pc.drawNode->setPosition({pc.targetX, pc.targetY});
@@ -111,7 +106,6 @@ namespace mpedit {
 
             auto& pc = m_cursors[player.id];
             
-            // Smooth interpolation (lerp) towards target
             auto currentPos = pc.drawNode->getPosition();
             float t = std::min(25.f * dt, 1.0f);
             float newX = currentPos.x + (pc.targetX - currentPos.x) * t;
@@ -127,7 +121,18 @@ namespace mpedit {
             pc.drawNode->setPosition({newX, newY});
             pc.label->setString(player.name.c_str());
 
-            // Rebuild toolIndicator if status changed
+            if (player.isViewOnly) {
+                if (!pc.lockIcon) {
+                    pc.lockIcon = cocos2d::CCSprite::createWithSpriteFrameName("GJ_lock_001.png");
+                    pc.lockIcon->setScale(0.4f);
+                    this->addChild(pc.lockIcon, 10);
+                }
+                pc.lockIcon->setPosition({newX - 12.f, newY + 12.f});
+            } else if (pc.lockIcon) {
+                pc.lockIcon->removeFromParent();
+                pc.lockIcon = nullptr;
+            }
+
             if (player.status != pc.lastStatus) {
                 pc.lastStatus = player.status;
                 if (pc.toolIndicator) {
@@ -136,7 +141,6 @@ namespace mpedit {
                 }
 
                 if (!player.status.empty() && player.status.rfind("pt:", 0) != 0) {
-                    // Parse "mode:swipe:objectId"
                     int mode = 0;
                     int swipe = 0;
                     int objectId = 0;
@@ -226,7 +230,6 @@ namespace mpedit {
                 }
             }
 
-            // Parse playtesting information
             bool isPlaytesting = false;
             int iconType = 0;
             float rotation = 0.f;
@@ -424,7 +427,6 @@ namespace mpedit {
                 pc.label->setPosition({newX + 15.f, newY - 15.f});
             }
 
-            // Update toolIndicator position
             if (pc.toolIndicator && !isPlaytesting) {
                 float labelWidth = pc.label->getContentSize().width * pc.label->getScaleX();
                 float labelX = pc.label->getPositionX();
@@ -433,7 +435,6 @@ namespace mpedit {
             }
         }
 
-        // Draw visual indicators for remote-locked objects
         m_selectionDrawNode->clear();
         auto& handler = RemoteActionHandler::get();
         auto const& lockedObjects = handler.getObjectLocks();
@@ -442,21 +443,17 @@ namespace mpedit {
             auto* obj = handler.getObjectByUUID(uuid);
             if (!obj) continue;
             
-            // Get locking player's color if available
-            cocos2d::ccColor3B color3 = {255, 0, 0}; // Default red
+            cocos2d::ccColor3B color3 = {255, 0, 0};
             auto* player = session.getPlayer(lockInfo.playerId);
             if (player) {
                 color3 = getColorForIndex(player->colorIndex);
             }
             
-            // Ensure correct blending for transparency
             ccBlendFunc blend = {GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA};
             m_selectionDrawNode->setBlendFunc(blend);
 
-            // Draw a bounding box
             auto rect = obj->boundingBox();
             
-            // Fill and Border at 50%
             cocos2d::ccColor4F fill = {color3.r / 255.f, color3.g / 255.f, color3.b / 255.f, 0.50f};
             cocos2d::ccColor4F border = {color3.r / 255.f, color3.g / 255.f, color3.b / 255.f, 0.50f};
             
@@ -469,7 +466,6 @@ namespace mpedit {
             m_selectionDrawNode->drawPolygon(verts, 4, fill, 1.f, border);
         }
 
-        // Remove disconnected players
         for (auto it = m_cursors.begin(); it != m_cursors.end();) {
             if (activeIds.find(it->first) == activeIds.end()) {
                 if (it->second.drawNode) it->second.drawNode->removeFromParent();
@@ -484,4 +480,4 @@ namespace mpedit {
         }
     }
 
-} // namespace mpedit
+}

@@ -21,4 +21,4 @@ namespace mpedit {
         static SessionStatusNode* create();
     };
 
-} // namespace mpedit
+}

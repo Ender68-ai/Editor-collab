@@ -14,7 +14,9 @@
 #include "MessageBatcher.hpp"
 #include "ActionSerializer.hpp"
 #include "RemoteActionHandler.hpp"
-#include "ui/MultiplayerPopup.hpp"
+#include "ui/menu/MultiplayerMenuPopup.hpp"
+#include "ui/menu/CreateRoomPopup.hpp"
+
 #include "ui/SessionStatusNode.hpp"
 #include "ui/CursorNode.hpp"
 #include "ui/UpdateHelperNode.hpp"
@@ -41,15 +43,11 @@ namespace mpedit {
     }
 }
 
-// ============================================================
-// EditorPauseLayer — Add "Multiplayer" button to pause menu
-// ============================================================
 
 class $modify(MPEditorPauseLayer, EditorPauseLayer) {
     bool init(LevelEditorLayer* editor) {
         if (!EditorPauseLayer::init(editor)) return false;
 
-        // Create the multiplayer button
         auto* btnSprite = ButtonSprite::create(
             "Multiplayer Edit", 90, true, "bigFont.fnt", "GJ_button_01.png", 30.f, 0.45f
         );
@@ -60,11 +58,9 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
         );
         btn->setID("multiplayer-button"_spr);
 
-        // Find the center button menu
         CCMenu* targetMenu = typeinfo_cast<CCMenu*>(this->getChildByID("center-button-menu"));
         
         if (!targetMenu) {
-            // Fallback: look through all menus to find one with the most buttons (likely the center one)
             for (CCNode* child : this->getChildrenExt()) {
                 if (auto* menu = typeinfo_cast<CCMenu*>(child)) {
                     if (menu->getChildrenCount() >= 4) {
@@ -79,13 +75,12 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
             targetMenu->addChild(btn);
             targetMenu->updateLayout();
         } else {
-            // Fallback: create our own menu
             auto* fallbackMenu = CCMenu::create();
             fallbackMenu->setID("multiplayer-menu"_spr);
             fallbackMenu->setPosition({0, 0});
             
             auto winSize = CCDirector::sharedDirector()->getWinSize();
-            btn->setPosition({winSize.width / 2.f, 40.f}); // Bottom center
+            btn->setPosition({winSize.width / 2.f, 40.f});
             fallbackMenu->addChild(btn);
             this->addChild(fallbackMenu, 10);
         }
@@ -169,7 +164,11 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
     }
 
     void onMultiplayer(CCObject*) {
-        MultiplayerPopup::create()->show();
+        if (SessionManager::get().isInSession()) {
+            MultiplayerMenuPopup::create()->show();
+        } else {
+            CreateRoomPopup::create(nullptr)->show();
+        }
     }
 
     void onSave(CCObject* sender) {
@@ -209,9 +208,6 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
     }
 };
 
-// ============================================================
-// LevelBrowserLayer — Add "Multiplayer" button to My Levels page
-// ============================================================
 
 class $modify(MPLevelBrowserLayer, LevelBrowserLayer) {
     bool init(GJSearchObject* object) {
@@ -229,12 +225,10 @@ class $modify(MPLevelBrowserLayer, LevelBrowserLayer) {
         );
         btn->setID("multiplayer-button"_spr);
 
-        // Create a menu at the bottom center, underneath the level list
         auto* centerMenu = CCMenu::create();
         centerMenu->setID("multiplayer-menu"_spr);
         
         auto winSize = CCDirector::sharedDirector()->getWinSize();
-        // Place it horizontally centered and near the bottom edge
         centerMenu->setPosition({winSize.width / 2.f, 35.f});
         
         btn->setPosition({0, 0});
@@ -246,13 +240,10 @@ class $modify(MPLevelBrowserLayer, LevelBrowserLayer) {
     }
 
     void onMultiplayer(CCObject*) {
-        MultiplayerPopup::create()->show();
+        MultiplayerMenuPopup::create()->show();
     }
 };
 
-// ============================================================
-// LevelEditorLayer — Hook editor lifecycle for session management
-// ============================================================
 
 namespace {
     void sendChunkedSync(LevelEditorLayer* editor, int targetPlayerId) {
@@ -276,7 +267,6 @@ namespace {
             }
         }
 
-        // Compress the full objects string using Geode's cross-platform zip via a temp file to ensure EOCD is written
         std::string compressedBytes = "";
         if (!fullObjectsString.empty()) {
             auto tempPath = geode::dirs::getTempDir() / "sync_level.zip";
@@ -286,7 +276,7 @@ namespace {
                 } else {
                     log::error("Failed to create temp zip for sync payload");
                 }
-            } // Zip goes out of scope, writing EOCD and closing
+            }
 
             if (auto dataRes = geode::utils::file::readBinary(tempPath)) {
                 auto bytes = dataRes.unwrap();
@@ -295,7 +285,6 @@ namespace {
                 log::error("Failed to read compressed sync payload from temp file");
             }
 
-            // Clean up temp file
             std::error_code ec;
             std::filesystem::remove(tempPath, ec);
         }
@@ -304,7 +293,7 @@ namespace {
         constexpr size_t MAX_UUIDS_PER_CHUNK = 500;
 
         struct ChunkData {
-            std::string objectsString; // Compressed bytes chunk
+            std::string objectsString;
             std::vector<std::string> uuids;
         };
         std::vector<ChunkData> chunks;
@@ -331,11 +320,9 @@ namespace {
         }
 
         if (chunks.empty()) {
-            chunks.push_back(ChunkData()); // Ensure at least 1 chunk for empty level
+            chunks.push_back(ChunkData());
         }
 
-        // Settings only: LevelSettingsObject::getSaveString() uses the ','
-        // separator and carries colors (EffectManager), start mode, song, etc.
         ActionSerializer::LevelSettingsData settings;
         if (editor->m_levelSettings) {
             settings.saveString = editor->m_levelSettings->getSaveString();
@@ -349,47 +336,58 @@ namespace {
         uint32_t totalChunks = static_cast<uint32_t>(chunks.size());
         uint32_t totalObjects = static_cast<uint32_t>(allUuids.size());
 
-        // 4. Send SyncLevelStart
         auto startMsg = proto::serializeSyncLevelStart(totalChunks, totalObjects, settings);
         P2PManager::get().sendTo(targetPlayerId, startMsg, ChannelType::Reliable);
 
-        auto* seqArr = cocos2d::CCArray::create();
-        
-        for (uint32_t i = 0; i < totalChunks; ++i) {
-            auto chunkMsg = proto::serializeSyncLevelChunk(
-                i, 
-                reinterpret_cast<const uint8_t*>(chunks[i].objectsString.data()), 
-                chunks[i].objectsString.size(),
-                chunks[i].uuids
-            );
-            
-            auto* callFunc = geode::cocos::CallFuncExt::create([targetPlayerId, chunkMsg]() {
-                P2PManager::get().sendTo(targetPlayerId, chunkMsg, ChannelType::Reliable);
-            });
-            
-            seqArr->addObject(cocos2d::CCDelayTime::create(0.01f));
-            seqArr->addObject(callFunc);
-        }
-
-        // 6. Gather locks
         std::vector<ActionSerializer::LockData> locks;
         for (auto const& [uuid, lockInfo] : handler.getObjectLocks()) {
             locks.push_back({uuid, lockInfo.playerId, lockInfo.timeLeft});
         }
 
-        auto* endFunc = geode::cocos::CallFuncExt::create([targetPlayerId, locks]() {
-            auto endMsg = proto::serializeSyncLevelEnd(locks);
-            P2PManager::get().sendTo(targetPlayerId, endMsg, ChannelType::Reliable);
-        });
-        
-        seqArr->addObject(endFunc);
-        
-        editor->runAction(cocos2d::CCSequence::create(seqArr));
+        auto serializedChunks = std::make_shared<std::vector<std::vector<uint8_t>>>();
+        for (uint32_t i = 0; i < totalChunks; ++i) {
+            serializedChunks->push_back(
+                proto::serializeSyncLevelChunk(
+                    i,
+                    reinterpret_cast<const uint8_t*>(chunks[i].objectsString.data()),
+                    chunks[i].objectsString.size(),
+                    chunks[i].uuids
+                )
+            );
+        }
+
+        auto nextChunkIndex = std::make_shared<uint32_t>(0);
+        auto sharedLocks = std::make_shared<std::vector<ActionSerializer::LockData>>(std::move(locks));
+
+        auto* senderNode = UpdateHelperNode::create(
+            [targetPlayerId, totalChunks, serializedChunks, nextChunkIndex, sharedLocks](float dt) {
+                auto& net = P2PManager::get();
+
+                constexpr size_t BUFFER_THRESHOLD = 256 * 1024;
+                if (net.getReliableBufferedAmount(targetPlayerId) > BUFFER_THRESHOLD) {
+                    return;
+                }
+
+                if (*nextChunkIndex < totalChunks) {
+                    net.sendTo(targetPlayerId, (*serializedChunks)[*nextChunkIndex], ChannelType::Reliable);
+                    (*nextChunkIndex)++;
+                } else {
+                    auto endMsg = proto::serializeSyncLevelEnd(*sharedLocks);
+                    net.sendTo(targetPlayerId, endMsg, ChannelType::Reliable);
+
+                    if (auto* editor = LevelEditorLayer::get()) {
+                        if (auto* node = editor->getChildByTag(9991 + targetPlayerId)) {
+                            node->removeFromParentAndCleanup(true);
+                        }
+                    }
+                }
+            },
+            0.01f
+        );
+        senderNode->setTag(9991 + targetPlayerId);
+        editor->addChild(senderNode);
     }
 
-    // Registers UUIDs onto the editor's currently-spawned objects, aligned by
-    // index with the provided uuids list. Missing/extra objects get fresh
-    // generated UUIDs. Returns once registration is consistent.
     void registerObjectsWithUuids(LevelEditorLayer* editor,
                                   std::vector<std::string> const& uuids) {
         if (!editor || !editor->m_objects) return;
@@ -400,7 +398,6 @@ namespace {
             if (index < static_cast<int>(uuids.size()) && !uuids[index].empty()) {
                 handler.registerObject(uuids[index], obj);
             } else {
-                // Object count mismatch with host (rare): assign a deterministic fallback UUID.
                 if (handler.getUUIDForObject(obj).empty()) {
                     handler.registerObject("lvl_obj_" + std::to_string(index), obj);
                 }
@@ -469,14 +466,12 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             }
         }
 
-        // Force construction of Fields immediately so its destructor runs reliably
         m_fields->m_sessionActive = SessionManager::get().isInSession();
 
-        // Set up the remote action handler for this editor session
         auto& handler = RemoteActionHandler::get();
         handler.clearMappings();
 
-        SessionManager::get().onSessionStarted([this]() {
+        SessionManager::get().onSessionStarted(this, [this]() {
             auto& session = SessionManager::get();
             if (this->m_objects) {
                 auto& handler = RemoteActionHandler::get();
@@ -527,7 +522,7 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             }
         }
 
-        SessionManager::get().onPlayerJoined([this](PlayerInfo const& info) {
+        SessionManager::get().onPlayerJoined(this, [this](PlayerInfo const& info) {
             auto& session = SessionManager::get();
             if (session.getRole() == SessionManager::Role::Host && info.id != session.getLocalPlayerId()) {
                 sendChunkedSync(this, info.id);
@@ -549,12 +544,10 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             this->addChild(helper);
         }
 
-        // Add session status indicator
         auto* status = SessionStatusNode::create();
         status->setID("session-status"_spr);
         this->addChild(status, 1000);
 
-        // Add cursor node to the object layer so it scales/pans correctly
         auto* cursorNode = CursorNode::create();
         cursorNode->setID("cursor-node"_spr);
         this->m_objectLayer->addChild(cursorNode, 999);
@@ -570,23 +563,18 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             session.leaveSession();
             log::info("EditorHooks: Left session automatically on editor exit");
         }
-        session.clearCallbacks();
+        session.removeListener(this);
         
         s_startPosObjects.clear();
         s_startPosSaveStrings.clear();
     }
 
 
-    // Intercept object creation — UUID assignment and sync is handled by addToSection hook
     GameObject* createObject(int objectID, cocos2d::CCPoint position, bool noUndo) {
         auto* obj = LevelEditorLayer::createObject(objectID, position, noUndo);
-        // addToSection is called internally by LevelEditorLayer::createObject,
-        // which handles UUID assignment and placement sync.
-        // We do NOT sync here to avoid sending duplicate placement messages.
         return obj;
     }
 
-    // Intercept object removal to sync deletion
     void removeObject(GameObject* obj, bool undo) {
         if (!obj) {
             LevelEditorLayer::removeObject(obj, undo);
@@ -598,14 +586,11 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             s_startPosSaveStrings.erase(obj);
         }
 
-        // Prevent premature deallocation during cleanup — the object may only be kept alive
-        // by CCArrays (e.g., m_selectedObjects, m_touchingRings) that we're removing from.
         obj->retain();
 
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
 
-            // Clean up game state last activated portal references to prevent Use-After-Free crashes during playtesting/editing
             if (m_gameState.m_lastActivatedPortal1 == obj) {
                 m_gameState.m_lastActivatedPortal1 = nullptr;
             }
@@ -694,6 +679,11 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
     void handleAction(bool undo, cocos2d::CCArray* undoObjects) {
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
+
+        if (session.isLocalPlayerViewOnly() && !handler.isProcessingRemote()) {
+            LevelEditorLayer::handleAction(undo, undoObjects);
+            return;
+        }
 
         if (!session.isInSession() || handler.isProcessingRemote() || !undoObjects || undoObjects->count() == 0) {
             LevelEditorLayer::handleAction(undo, undoObjects);
@@ -827,23 +817,18 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             if (auto* ui = this->m_editorUI) {
                 ui->deselectAll();
             }
-        } else if (!isPlaytesting && m_fields->m_wasPlaytesting) {
-            handler.flushPlaytestQueue();
         }
         m_fields->m_wasPlaytesting = isPlaytesting;
 
-        // Dispatch queued network messages
         P2PManager::get().dispatchMessages();
 
         handler.updateLocks(dt);
         MessageBatcher::get().update(dt);
 
-        // Flush any batched placements (copy/paste/duplicate) as a single message.
         handler.flushPendingPlacements();
 
-        // Send cursor position periodically
         m_fields->m_cursorSendTimer += dt;
-        if (m_fields->m_cursorSendTimer >= 0.033f) {  // 30 Hz cursor updates
+        if (m_fields->m_cursorSendTimer >= 0.033f) {
             m_fields->m_cursorSendTimer = 0.f;
             
             if (this->m_objectLayer) {
@@ -854,9 +839,9 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                     levelPos = this->m_player1->getPosition();
                     
                     auto* gm = GameManager::get();
-                    int iconType = 0; // Cube
+                    int iconType = 0;
                     if (this->m_player1->m_isShip) {
-                        iconType = this->m_player1->m_isPlatformer ? 8 : 1; // 8 = Jetpack, 1 = Ship
+                        iconType = this->m_player1->m_isPlatformer ? 8 : 1;
                     } else if (this->m_player1->m_isBall) {
                         iconType = 2;
                     } else if (this->m_player1->m_isBird) {
@@ -933,9 +918,9 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                         int mode = ui->m_selectedMode;
                         int swipe = ui->m_swipeEnabled ? 1 : 0;
                         int objectId = 0;
-                        if (mode == 2) { // Build mode
+                        if (mode == 2) {
                             objectId = s_selectedObjectID;
-                        } else if (mode == 3) { // Edit mode
+                        } else if (mode == 3) {
                             if (ui->m_selectedObject) {
                                 objectId = ui->m_selectedObject->m_objectID;
                             } else if (ui->m_selectedObjects && ui->m_selectedObjects->count() > 0) {
@@ -955,13 +940,8 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
     }
 };
 
-// ============================================================
-// EditorUI — Hook object movement/transform to sync
-// ============================================================
 
 namespace {
-    // Intercepts transform actions and broadcasts deltas.
-    // Not hooking EditorUI::transformObjects() directly to avoid stale-cache clobber on deselect.
     void syncTransformedObjects(cocos2d::CCArray* objects,
                                 std::function<void()> applyBase) {
         if (s_inTransformSync) {
@@ -1023,7 +1003,6 @@ namespace {
             }
         }
 
-        // Queue updates to prevent network flooding during continuous dragging.
         for (auto const& t : transforms) {
             MessageBatcher::get().queueTransform(t.uuid, t);
         }
@@ -1031,7 +1010,6 @@ namespace {
             MessageBatcher::get().queueMove(m.uuid, m.dx, m.dy);
         }
 
-        // Update baselines to prevent redundant syncs in syncDeselections.
         auto& tracked = handler.getTrackedSelections();
         auto* editor = LevelEditorLayer::get();
         if (editor) {
@@ -1043,6 +1021,42 @@ namespace {
             }
         }
     }
+
+    void syncObjectProperties(cocos2d::CCArray* objects) {
+        if (!objects || objects->count() == 0) return;
+        auto& session = SessionManager::get();
+        if (!session.isInSession()) return;
+        
+        auto& handler = RemoteActionHandler::get();
+        if (handler.isProcessingRemote()) return;
+        
+        auto* editor = LevelEditorLayer::get();
+        if (!editor) return;
+        
+        auto& tracked = handler.getTrackedSelections();
+        std::vector<ActionSerializer::ObjectData> updates;
+        
+        for (auto* obj : CCArrayExt<GameObject*>(objects)) {
+            if (!obj) continue;
+            auto uuid = handler.getUUIDForObject(obj);
+            if (uuid.empty()) continue;
+            
+            auto tIt = tracked.find(obj);
+            if (tIt != tracked.end()) {
+                std::string currentSave = obj->getSaveString(editor);
+                if (tIt->second != currentSave) {
+                    updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
+                    tIt->second = currentSave;
+                }
+            }
+        }
+        
+        if (!updates.empty()) {
+            auto data = proto::serializeUpdateObjects(updates);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+            log::info("EditorHooks: Broadcasted granular property updates for {} objects from popup", updates.size());
+        }
+    }
 }
 
 class $modify(MPEditorUI, EditorUI) {
@@ -1050,12 +1064,34 @@ class $modify(MPEditorUI, EditorUI) {
         float m_lockRefreshTimer = 0.f;
     };
 
+    void onSettings(cocos2d::CCObject* sender) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
+        EditorUI::onSettings(sender);
+    }
+
+    void undoLastAction(cocos2d::CCObject* sender) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
+        EditorUI::undoLastAction(sender);
+    }
+
+    void redoLastAction(cocos2d::CCObject* sender) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
+        EditorUI::redoLastAction(sender);
+    }
+
     void onCreateObject(int id) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
         EditorUI::onCreateObject(id);
         s_selectedObjectID = id;
     }
 
     bool ccTouchBegan(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) {
+            if (this->m_selectedMode == 1 || this->m_selectedMode == 2) {
+                this->toggleMode(this->m_editModeBtn);
+            }
+            return EditorUI::ccTouchBegan(touch, event);
+        }
         bool res = EditorUI::ccTouchBegan(touch, event);
         if (touch) {
             s_lastTouchPos = touch->getLocation();
@@ -1089,6 +1125,7 @@ class $modify(MPEditorUI, EditorUI) {
     }
 
     void selectObject(GameObject* obj, bool filter) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
 
@@ -1118,12 +1155,6 @@ class $modify(MPEditorUI, EditorUI) {
 
                     if (handler.isObjectPendingPlacement(obj)) {
                         handler.flushPendingPlacements();
-                    } else {
-                        if (auto* editor = LevelEditorLayer::get()) {
-                            auto objData = ActionSerializer::extractObjectData(obj, uuid);
-                            auto syncData = proto::serializeUpdateObjects({objData});
-                            P2PManager::get().send(std::move(syncData), ChannelType::Reliable);
-                        }
                     }
                 }
             }
@@ -1148,7 +1179,7 @@ class $modify(MPEditorUI, EditorUI) {
                     if (tIt != tracked.end()) {
                         if (auto* editor = LevelEditorLayer::get()) {
                             std::string currentSave = obj->getSaveString(editor);
-                            if (tIt->second != currentSave) {
+                            if (ActionSerializer::hasDeepPropertyChanges(obj, tIt->second, currentSave)) {
                                 auto objData = ActionSerializer::extractObjectData(obj, uuid);
                                 auto data = proto::serializeUpdateObjects({objData});
                                 P2PManager::get().send(std::move(data), ChannelType::Reliable);
@@ -1206,7 +1237,7 @@ class $modify(MPEditorUI, EditorUI) {
                     uuids.push_back(uuid);
                     
                     std::string currentSave = obj->getSaveString(editor);
-                    if (savedString != currentSave) {
+                    if (ActionSerializer::hasDeepPropertyChanges(obj, savedString, currentSave)) {
                         updates.push_back(ActionSerializer::extractObjectData(obj, uuid));
                     }
 
@@ -1243,6 +1274,7 @@ class $modify(MPEditorUI, EditorUI) {
     }
 
     void onDeleteSelected(cocos2d::CCObject* sender) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
 
@@ -1284,7 +1316,6 @@ class $modify(MPEditorUI, EditorUI) {
                 auto const& locks = handler.getObjectLocks();
                 auto it = locks.find(uuid);
                 if (it != locks.end() && it->second.playerId != session.getLocalPlayerId()) {
-                    // Locked by another player! Do not delete.
                     return false;
                 }
             }
@@ -1293,6 +1324,7 @@ class $modify(MPEditorUI, EditorUI) {
     }
 
     void selectObjects(cocos2d::CCArray* objects, bool filter) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
 
@@ -1356,7 +1388,6 @@ class $modify(MPEditorUI, EditorUI) {
     bool init(LevelEditorLayer* editorLayer) {
         if (!EditorUI::init(editorLayer)) return false;
 
-        // Add a helper node to handle syncDeselections updates safely without member function pointer layout mismatch
         auto* helper = UpdateHelperNode::create([this](float dt) {
             this->syncDeselections(dt);
         }, 0.1f);
@@ -1443,14 +1474,6 @@ class $modify(MPEditorUI, EditorUI) {
             }
         }
 
-        // We run the property-diff (getSaveString) on every tracked selected
-        // object every tick. This is NOT optional: transforms that don't go
-        // through a touch (Q/E rotate, the rotate/scale buttons, Mirror/Flip X/Y)
-        // change object properties without setting s_isTouching, so gating the
-        // diff on touch (as 0.3.0 did) silently dropped those changes. The diff
-        // is the universal fallback that syncs any property change regardless of
-        // how it was triggered. Performance is fine because the loop only covers
-        // currently-selected objects, not the whole level.
         std::vector<std::string> unlockUuids;
         std::vector<ActionSerializer::ReconcileData> reconciles;
         std::vector<ActionSerializer::ObjectData> updates;
@@ -1556,7 +1579,8 @@ class $modify(MPEditorUI, EditorUI) {
         }
     }
 
-    void moveObject(GameObject* obj, CCPoint position) {
+    void moveObject(GameObject* obj, cocos2d::CCPoint position) {
+        if (SessionManager::get().isLocalPlayerViewOnly() && !RemoteActionHandler::get().isProcessingRemote()) return;
         auto& handler = RemoteActionHandler::get();
         auto& session = SessionManager::get();
 
@@ -1603,30 +1627,35 @@ class $modify(MPEditorUI, EditorUI) {
     }
 
     void transformObjectCall(EditCommand command) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
         syncTransformedObjects(m_selectedObjects, [&]() {
             EditorUI::transformObjectCall(command);
         });
     }
 
     void rotateObjects(cocos2d::CCArray* objects, float rotation, cocos2d::CCPoint pivotPoint) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
         syncTransformedObjects(objects, [&]() {
             EditorUI::rotateObjects(objects, rotation, pivotPoint);
         });
     }
 
     void scaleObjects(cocos2d::CCArray* objects, float scaleX, float scaleY, cocos2d::CCPoint pivotPoint, ObjectScaleType type, bool lockMove) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
         syncTransformedObjects(objects, [&]() {
             EditorUI::scaleObjects(objects, scaleX, scaleY, pivotPoint, type, lockMove);
         });
     }
 
     void flipObjectsX(cocos2d::CCArray* objects) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
         syncTransformedObjects(objects, [&]() {
             EditorUI::flipObjectsX(objects);
         });
     }
 
     void flipObjectsY(cocos2d::CCArray* objects) {
+        if (SessionManager::get().isLocalPlayerViewOnly()) return;
         syncTransformedObjects(objects, [&]() {
             EditorUI::flipObjectsY(objects);
         });
@@ -1666,7 +1695,6 @@ class $modify(MPBaseGameLayer, GJBaseGameLayer) {
             return;
         }
 
-        // If the object already has a UUID, it's already registered (e.g., via createObject)
         if (!handler.getUUIDForObject(obj).empty()) {
             return;
         }
@@ -1677,18 +1705,101 @@ class $modify(MPBaseGameLayer, GJBaseGameLayer) {
             }
         }
 
-        // Assign a new UUID and queue it for a batched placement flush.
-        // Copy/paste/duplicate can add dozens of objects in a single frame;
-        // queueing them lets us send one place_objects message (via the network
-        // tick) instead of one WebSocket send per object.
         auto uuid = RemoteActionHandler::generateUUID();
         handler.registerObject(uuid, obj);
         handler.queueObjectForPlacement(uuid, obj);
     }
 };
 
+namespace {
+    void forceSyncColorsToDict(GJEffectManager* effectMgr) {
+        if (!effectMgr || !effectMgr->m_colorActionDict) return;
+        for (size_t i = 0; i < effectMgr->m_colorActionVector.size(); i++) {
+            auto* vecAction = effectMgr->m_colorActionVector[i];
+            if (vecAction) {
+                int channelID = vecAction->m_colorID;
+                if (channelID == 0) channelID = static_cast<int>(i);
+        auto* dictAction = static_cast<ColorAction*>(effectMgr->m_colorActionDict->objectForKey(channelID));
+        if (!dictAction) {
+            effectMgr->m_colorActionDict->setObject(vecAction, channelID);
+        } else if (dictAction != vecAction) {
+            dictAction->m_color = vecAction->m_color;
+            dictAction->m_fromColor = vecAction->m_fromColor;
+            dictAction->m_toColor = vecAction->m_toColor;
+            dictAction->m_duration = vecAction->m_duration;
+            dictAction->m_blending = vecAction->m_blending;
+            dictAction->m_playerColor = vecAction->m_playerColor;
+            dictAction->m_fromOpacity = vecAction->m_fromOpacity;
+            dictAction->m_toOpacity = vecAction->m_toOpacity;
+            dictAction->m_copyHSV = vecAction->m_copyHSV;
+            dictAction->m_copyID = vecAction->m_copyID;
+            dictAction->m_copyOpacity = vecAction->m_copyOpacity;
+            dictAction->m_copyColorCalculated = vecAction->m_copyColorCalculated;
+            dictAction->m_colorID = vecAction->m_colorID;
+            dictAction->m_copyColorLoop = vecAction->m_copyColorLoop;
+            dictAction->m_legacyHSV = vecAction->m_legacyHSV;
+        }
+    }
+}
+}
+}
+
+namespace mpedit {
+ActionSerializer::ColorChannelData colorActionToData(ColorAction* action, int channelID) {
+    ActionSerializer::ColorChannelData data;
+    data.channelID = channelID;
+    if (action) {
+        data.color = action->m_color;
+        data.fromColor = action->m_fromColor;
+        data.toColor = action->m_toColor;
+        data.duration = action->m_duration;
+        data.blending = action->m_blending;
+        data.playerColor = action->m_playerColor;
+        data.fromOpacity = action->m_fromOpacity;
+        data.toOpacity = action->m_toOpacity;
+        data.copyHSV = action->m_copyHSV;
+        data.copyID = action->m_copyID;
+        data.copyOpacity = action->m_copyOpacity;
+        data.copyColorCalculated = action->m_copyColorCalculated;
+        data.colorID = action->m_colorID;
+        data.copyColorLoop = action->m_copyColorLoop;
+        data.legacyHSV = action->m_legacyHSV;
+    }
+    return data;
+}
+}
+
+
 #include <Geode/modify/GJColorSetupLayer.hpp>
 class $modify(MPGJColorSetupLayer, GJColorSetupLayer) {
+    struct Fields {
+        std::unordered_map<int, ActionSerializer::ColorChannelData> m_cachedColors;
+    };
+
+    bool init(LevelSettingsObject* p0) {
+        if (!GJColorSetupLayer::init(p0)) return false;
+
+        auto* effectMgr = m_settingsObject ? m_settingsObject->m_effectManager : nullptr;
+        if (!effectMgr) {
+            auto editor = LevelEditorLayer::get();
+            if (editor && editor->m_levelSettings) {
+                effectMgr = editor->m_levelSettings->m_effectManager;
+            }
+        }
+
+        if (effectMgr) {
+            for (size_t i = 0; i < effectMgr->m_colorActionVector.size(); i++) {
+                if (auto* action = effectMgr->m_colorActionVector[i]) {
+                    int channelID = action->m_colorID;
+                    if (channelID == 0) channelID = static_cast<int>(i);
+                    m_fields->m_cachedColors[channelID] = colorActionToData(action, channelID);
+                }
+            }
+        }
+
+        return true;
+    }
+
     void syncColors() {
         auto& handler = RemoteActionHandler::get();
         if (handler.isProcessingRemote() || !handler.isInitialSyncCompleted()) return;
@@ -1697,15 +1808,28 @@ class $modify(MPGJColorSetupLayer, GJColorSetupLayer) {
         if (!session.isInSession()) return;
         
         auto editor = LevelEditorLayer::get();
-        if (editor && editor->m_levelSettings) {
-            ActionSerializer::LevelSettingsData settings;
-            settings.saveString = editor->m_levelSettings->getSaveString();
-            settings.audioTrack = editor->m_level->m_audioTrack;
-            settings.songID = editor->m_level->m_songID;
-            settings.levelLength = editor->m_level->m_levelLength;
-            
-            auto packet = proto::serializeUpdateSettings(settings);
-            P2PManager::get().send(std::move(packet), ChannelType::Reliable);
+        auto* effectMgr = m_settingsObject ? m_settingsObject->m_effectManager : nullptr;
+        if (!effectMgr && editor && editor->m_levelSettings) {
+            effectMgr = editor->m_levelSettings->m_effectManager;
+        }
+
+        if (effectMgr) {
+            forceSyncColorsToDict(effectMgr);
+
+            for (size_t i = 0; i < effectMgr->m_colorActionVector.size(); i++) {
+                if (auto* action = effectMgr->m_colorActionVector[i]) {
+                    int channelID = action->m_colorID;
+                    if (channelID == 0) channelID = static_cast<int>(i);
+                    auto currentData = colorActionToData(action, channelID);
+                    
+                    if (m_fields->m_cachedColors.find(channelID) == m_fields->m_cachedColors.end() || m_fields->m_cachedColors[channelID] != currentData) {
+                        m_fields->m_cachedColors[channelID] = currentData;
+                        auto packet = proto::serializeUpdateColorChannel(currentData);
+                        P2PManager::get().send(std::move(packet), ChannelType::Reliable);
+                        log::info("Broadcasting granular UpdateColorChannel for channel {}", channelID);
+                    }
+                }
+            }
         }
     }
 
@@ -1738,12 +1862,71 @@ class $modify(MPGJColorSetupLayer, GJColorSetupLayer) {
         GJColorSetupLayer::onClose(sender);
         syncColors();
     }
+
+    void keyBackClicked() {
+        GJColorSetupLayer::keyBackClicked();
+        syncColors();
+    }
 };
 
 
 
 #include <Geode/modify/LevelSettingsLayer.hpp>
 class $modify(MPLevelSettingsLayer, LevelSettingsLayer) {
+    struct Fields {
+        std::map<int, ActionSerializer::ColorChannelData> m_cachedColors;
+    };
+
+    bool init(LevelSettingsObject* object, LevelEditorLayer* layer) {
+        if (!LevelSettingsLayer::init(object, layer)) return false;
+
+        auto editor = LevelEditorLayer::get();
+        if (editor && editor->m_levelSettings && editor->m_levelSettings->m_effectManager) {
+            auto effectMgr = editor->m_levelSettings->m_effectManager;
+            for (size_t i = 0; i < effectMgr->m_colorActionVector.size(); i++) {
+                if (auto* action = effectMgr->m_colorActionVector[i]) {
+                    int channelID = action->m_colorID;
+                    if (channelID == 0) channelID = static_cast<int>(i);
+                    m_fields->m_cachedColors[channelID] = colorActionToData(action, channelID);
+                }
+            }
+        }
+        return true;
+    }
+
+    void syncColors() {
+        auto& handler = RemoteActionHandler::get();
+        if (handler.isProcessingRemote() || !handler.isInitialSyncCompleted()) return;
+        auto& session = SessionManager::get();
+        if (!session.isInSession()) return;
+
+        auto editor = LevelEditorLayer::get();
+        if (editor && editor->m_levelSettings && editor->m_levelSettings->m_effectManager) {
+            auto effectMgr = editor->m_levelSettings->m_effectManager;
+            forceSyncColorsToDict(effectMgr);
+
+            for (size_t i = 0; i < effectMgr->m_colorActionVector.size(); i++) {
+                if (auto* action = effectMgr->m_colorActionVector[i]) {
+                    int channelID = action->m_colorID;
+                    if (channelID == 0) channelID = static_cast<int>(i);
+                    auto currentData = colorActionToData(action, channelID);
+                    
+                    if (m_fields->m_cachedColors.find(channelID) == m_fields->m_cachedColors.end() || m_fields->m_cachedColors[channelID] != currentData) {
+                        m_fields->m_cachedColors[channelID] = currentData;
+                        auto packet = proto::serializeUpdateColorChannel(currentData);
+                        P2PManager::get().send(std::move(packet), ChannelType::Reliable);
+                        log::info("Broadcasting UpdateColorChannel for channel {} from LevelSettingsLayer", channelID);
+                    }
+                }
+            }
+        }
+    }
+
+    void colorSelectClosed(cocos2d::CCNode* popup) {
+        LevelSettingsLayer::colorSelectClosed(popup);
+        syncColors();
+    }
+
     void onClose(cocos2d::CCObject* sender) {
         LevelSettingsLayer::onClose(sender);
 
@@ -1755,6 +1938,30 @@ class $modify(MPLevelSettingsLayer, LevelSettingsLayer) {
 
         auto editor = LevelEditorLayer::get();
         if (editor && editor->m_levelSettings) {
+            syncColors();
+            ActionSerializer::LevelSettingsData settings;
+            settings.saveString = editor->m_levelSettings->getSaveString();
+            settings.audioTrack = editor->m_level->m_audioTrack;
+            settings.songID = editor->m_level->m_songID;
+            settings.levelLength = editor->m_level->m_levelLength;
+            
+            auto packet = proto::serializeUpdateSettings(settings);
+            P2PManager::get().send(std::move(packet), ChannelType::Reliable);
+        }
+    }
+
+    void keyBackClicked() {
+        LevelSettingsLayer::keyBackClicked();
+
+        auto& handler = RemoteActionHandler::get();
+        if (handler.isProcessingRemote() || !handler.isInitialSyncCompleted()) return;
+
+        auto& session = SessionManager::get();
+        if (!session.isInSession()) return;
+
+        auto editor = LevelEditorLayer::get();
+        if (editor && editor->m_levelSettings) {
+            syncColors();
             ActionSerializer::LevelSettingsData settings;
             settings.saveString = editor->m_levelSettings->getSaveString();
             settings.audioTrack = editor->m_level->m_audioTrack;
@@ -1767,27 +1974,106 @@ class $modify(MPLevelSettingsLayer, LevelSettingsLayer) {
     }
 };
 
+#include <Geode/modify/CustomizeObjectLayer.hpp>
+class $modify(MPCustomizeObjectLayer, CustomizeObjectLayer) {
+    void syncSelected() {
+        if (auto editor = LevelEditorLayer::get()) {
+            if (auto ui = editor->m_editorUI) {
+                syncObjectProperties(ui->m_selectedObjects);
+            }
+        }
+    }
+
+    void colorSelectClosed(cocos2d::CCNode* popup) {
+        CustomizeObjectLayer::colorSelectClosed(popup);
+        syncSelected();
+    }
+
+    void hsvPopupClosed(HSVWidgetPopup* popup, cocos2d::ccHSVValue value) {
+        CustomizeObjectLayer::hsvPopupClosed(popup, value);
+        syncSelected();
+    }
+
+    void colorSetupClosed(int id) {
+        CustomizeObjectLayer::colorSetupClosed(id);
+        syncSelected();
+    }
+
+    void onClose(cocos2d::CCObject* sender) {
+        CustomizeObjectLayer::onClose(sender);
+        syncSelected();
+    }
+    void keyBackClicked() {
+        CustomizeObjectLayer::keyBackClicked();
+        syncSelected();
+    }
+};
+
+#include <Geode/modify/SetGroupIDLayer.hpp>
+class $modify(MPSetGroupIDLayer, SetGroupIDLayer) {
+    void onClose(cocos2d::CCObject* sender) {
+        SetGroupIDLayer::onClose(sender);
+        if (auto editor = LevelEditorLayer::get()) {
+            if (auto ui = editor->m_editorUI) {
+                syncObjectProperties(ui->m_selectedObjects);
+            }
+        }
+    }
+    void keyBackClicked() {
+        SetGroupIDLayer::keyBackClicked();
+        if (auto editor = LevelEditorLayer::get()) {
+            if (auto ui = editor->m_editorUI) {
+                syncObjectProperties(ui->m_selectedObjects);
+            }
+        }
+    }
+};
+
+#include <Geode/modify/SetupTriggerPopup.hpp>
+class $modify(MPSetupTriggerPopup, SetupTriggerPopup) {
+    void onClose(cocos2d::CCObject* sender) {
+        SetupTriggerPopup::onClose(sender);
+        if (auto editor = LevelEditorLayer::get()) {
+            if (auto ui = editor->m_editorUI) {
+                syncObjectProperties(ui->m_selectedObjects);
+            }
+        }
+    }
+    void keyBackClicked() {
+        SetupTriggerPopup::keyBackClicked();
+        if (auto editor = LevelEditorLayer::get()) {
+            if (auto ui = editor->m_editorUI) {
+                syncObjectProperties(ui->m_selectedObjects);
+            }
+        }
+    }
+};
+
 #include <Geode/modify/ColorSelectPopup.hpp>
 class $modify(MPColorSelectPopup, ColorSelectPopup) {
     void closeColorSelect(cocos2d::CCObject* sender) {
         ColorSelectPopup::closeColorSelect(sender);
+        syncColor();
+    }
 
+    void keyBackClicked() {
+        ColorSelectPopup::keyBackClicked();
+        syncColor();
+    }
+
+    void syncColor() {
         auto& handler = RemoteActionHandler::get();
         if (handler.isProcessingRemote() || !handler.isInitialSyncCompleted()) return;
 
         auto& session = SessionManager::get();
         if (!session.isInSession()) return;
 
-        auto editor = LevelEditorLayer::get();
-        if (editor && editor->m_levelSettings) {
-            ActionSerializer::LevelSettingsData settings;
-            settings.saveString = editor->m_levelSettings->getSaveString();
-            settings.audioTrack = editor->m_level->m_audioTrack;
-            settings.songID = editor->m_level->m_songID;
-            settings.levelLength = editor->m_level->m_levelLength;
-            
-            auto packet = proto::serializeUpdateSettings(settings);
+        if (m_colorAction) {
+            int channelID = m_colorAction->m_colorID;
+            auto data = colorActionToData(m_colorAction, channelID);
+            auto packet = proto::serializeUpdateColorChannel(data);
             P2PManager::get().send(std::move(packet), ChannelType::Reliable);
+            log::info("Broadcasting granular UpdateColorChannel for channel {} from ColorSelectPopup", channelID);
         }
     }
 };

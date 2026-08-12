@@ -30,3 +30,25 @@ In Geometry Dash, go to the Multiplayer Edit mod settings and change the **Signa
 4. **Host** polls for Offers, retrieves the Guest's Offer, generates an Answer, and POSTs it back.
 5. **Guest** polls for Answers and retrieves the Host's Answer.
 6. The direct P2P connection is established! The signaling server is no longer used for this session.
+
+## Features & Limits
+
+- **Auto-Expiration:** Rooms automatically expire and are cleaned up after 2 hours of inactivity.
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/rooms` | Create room. Body: `{playerName, playerLimit, isPrivate, password}` |
+| GET | `/rooms/:code` | Get room info |
+| POST | `/rooms/:code/join` | Join room. Body: `{playerName, password}` |
+| POST | `/rooms/:code/leave` | Leave room. Decrements player count |
+| POST | `/rooms/:code/offer` | Send SDP offer. Body: `{sdp, targetPlayerId}` |
+| GET | `/rooms/:code/offer?playerId=N` | Poll for SDP offer |
+| POST | `/rooms/:code/answer` | Send SDP answer. Body: `{sdp, playerId}` |
+| GET | `/rooms/:code/answer?playerId=N` | Poll for SDP answer |
+| POST | `/rooms/:code/ice` | Send ICE candidates. Body: `{playerId, candidates[], isHost}` |
+| GET | `/rooms/:code/ice?playerId=N&isHost=bool` | Poll for ICE candidates |
+| DELETE | `/rooms/:code` | Close room (Host only) |
+| POST | `/ban` | Ban a player from a room |
+| GET | `/health` | Health check |

@@ -22,11 +22,9 @@ namespace mpedit {
 
         auto winSize = CCDirector::sharedDirector()->getWinSize();
 
-        // Position in top-right corner
         this->setPosition({winSize.width - 10.f, winSize.height - 10.f});
         this->setAnchorPoint({1.f, 1.f});
 
-        // Status text
         m_statusLabel = CCLabelBMFont::create("", "chatFont.fnt");
         m_statusLabel->setAnchorPoint({1.f, 0.5f});
         m_statusLabel->setScale(0.45f);
@@ -49,7 +47,6 @@ namespace mpedit {
         std::string roomCode = session.getRoomCode();
         std::string errStr = net.getError();
 
-        // Check if anything has changed
         if (inSession == m_cachedInSession &&
             state == m_cachedState &&
             playerCount == m_cachedPlayerCount &&
@@ -58,7 +55,6 @@ namespace mpedit {
             return;
         }
 
-        // Update cache
         m_cachedInSession = inSession;
         m_cachedState = state;
         m_cachedPlayerCount = playerCount;
@@ -80,13 +76,13 @@ namespace mpedit {
                     roomCode,
                     playerCount
                 );
-                color = {100, 255, 100}; // Green
+                color = {100, 255, 100};
                 break;
 
             case P2PManager::State::Connecting:
             case P2PManager::State::Reconnecting:
                 statusText = "MP: Connecting...";
-                color = {255, 255, 100}; // Yellow
+                color = {255, 255, 100};
                 break;
 
             case P2PManager::State::Disconnected:
@@ -104,4 +100,4 @@ namespace mpedit {
         m_statusLabel->setColor(color);
     }
 
-} // namespace mpedit
+}

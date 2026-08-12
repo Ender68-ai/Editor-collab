@@ -4,7 +4,6 @@
 
 const kv = await Deno.openKv();
 const ROOM_TTL = 2 * 60 * 60 * 1000; // 2 hours
-const MAX_PLAYERS = 8;
 const CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L
 
 // ── In-memory Wakeup State (Zero signaling data stored here) ──
@@ -131,20 +130,51 @@ Deno.serve(async (req) => {
 
     if (parts[0] !== "rooms") return json({ error: "not found" }, 404);
 
+    // ── GET /rooms — list public rooms
+    if (parts.length === 1 && req.method === "GET") {
+        const rooms = [];
+        for await (const entry of kv.list({ prefix: ["rooms"] })) {
+            if (entry.key.length === 2) {
+                const room = entry.value;
+                if (!room.isPrivate) {
+                    rooms.push({
+                        roomCode: entry.key[1],
+                        hostName: room.hostName,
+                        roomName: room.roomName || "Room",
+                        description: room.description || "",
+                        playerCount: room.players.length,
+                        playerLimit: room.playerLimit || 0,
+                        isPrivate: !!room.isPrivate,
+                        hasPassword: !!room.hasPassword
+                    });
+                }
+            }
+        }
+        return json(rooms);
+    }
+
     // ── POST /rooms — create room
     if (parts.length === 1 && req.method === "POST") {
-        const { playerName } = await req.json();
+        const { hostName, playerName, roomName, description, playerLimit, isPrivate, hasPassword, password } = await req.json();
         const code = await genCode();
         const roomId = crypto.randomUUID();
+        
+        const host = hostName || playerName || "Unknown";
 
         await kv.set(
             ["rooms", code],
             {
                 roomId,
-                hostName: playerName,
+                hostName: host,
+                roomName: roomName || "Room",
+                description: description || "",
+                playerLimit: playerLimit || 0,
+                isPrivate: !!isPrivate,
+                hasPassword: !!hasPassword,
+                password: password || "",
                 nextId: 1,
                 created: Date.now(),
-                players: [{ id: 0, name: playerName }],
+                players: [{ id: 0, name: host }],
             },
             { expireIn: ROOM_TTL }
         );
@@ -179,7 +209,7 @@ Deno.serve(async (req) => {
 
     // ── POST /rooms/:code/join
     if (action === "join" && req.method === "POST") {
-        const { playerName } = await req.json();
+        const { playerName, password } = await req.json();
 
         let success = false;
         let playerId = -1;
@@ -190,7 +220,14 @@ Deno.serve(async (req) => {
             const currentRes = await kv.get(["rooms", code]);
             const currentRoom = currentRes.value;
             if (!currentRoom) return json({ error: "room not found" }, 404);
-            if (currentRoom.players.length >= MAX_PLAYERS)
+            
+            if (currentRoom.hasPassword && currentRoom.password !== password)
+                return json({ error: "invalid password" }, 403);
+                
+            if (currentRoom.banned && currentRoom.banned.includes(playerName))
+                return json({ error: "you are banned" }, 403);
+                
+            if (currentRoom.playerLimit > 0 && currentRoom.players.length >= currentRoom.playerLimit)
                 return json({ error: "room full" }, 400);
 
             hostName = currentRoom.hostName;
@@ -214,6 +251,62 @@ Deno.serve(async (req) => {
         wakeLocalAndBroadcast(code, "host");
 
         return json({ playerId, hostName });
+    }
+
+    // ── POST /rooms/:code/ban
+    if (action === "ban" && req.method === "POST") {
+        const { playerName } = await req.json();
+
+        let success = false;
+        let retries = 5;
+
+        while (!success && retries > 0) {
+            const currentRes = await kv.get(["rooms", code]);
+            const currentRoom = currentRes.value;
+            if (!currentRoom) return json({ error: "room not found" }, 404);
+
+            if (!currentRoom.banned) currentRoom.banned = [];
+            if (!currentRoom.banned.includes(playerName)) {
+                currentRoom.banned.push(playerName);
+            }
+
+            const commit = await kv
+                .atomic()
+                .check(currentRes)
+                .set(["rooms", code], currentRoom, { expireIn: ROOM_TTL })
+                .commit();
+
+            success = commit.ok;
+            retries--;
+        }
+        if (!success) return json({ error: "concurrent ban failed" }, 500);
+        return json({ ok: true });
+    }
+
+    // ── POST /rooms/:code/leave
+    if (action === "leave" && req.method === "POST") {
+        const { playerId } = await req.json();
+
+        let success = false;
+        let retries = 5;
+
+        while (!success && retries > 0) {
+            const currentRes = await kv.get(["rooms", code]);
+            const currentRoom = currentRes.value;
+            if (!currentRoom) return json({ error: "room not found" }, 404);
+
+            currentRoom.players = currentRoom.players.filter(p => p.id !== playerId);
+
+            const commit = await kv
+                .atomic()
+                .check(currentRes)
+                .set(["rooms", code], currentRoom, { expireIn: ROOM_TTL })
+                .commit();
+
+            success = commit.ok;
+            retries--;
+        }
+        return json({ ok: success });
     }
 
     // ── GET /rooms/:code/signal — Long poll endpoint
@@ -249,7 +342,7 @@ Deno.serve(async (req) => {
             else room.clientResolvers.set(playerId, complete);
 
             // Timeout after 25 seconds — client will re-poll, which
-            // gives us a natural KV check every 25s as a fallback
+            // gives us a natural KV check every 25s as a fallback.
             const timer = setTimeout(() => {
                 if (isResolved) return;
                 isResolved = true;

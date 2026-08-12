@@ -3,7 +3,6 @@
 #include "BinaryProtocol.hpp"
 #include "SessionManager.hpp"
 #include "MessageBatcher.hpp"
-#include "ui/MultiplayerPopup.hpp"
 #include <Geode/Geode.hpp>
 #include <Geode/utils/file.hpp>
 #include <random>
@@ -52,6 +51,14 @@ namespace mpedit {
             obj->setFlipY(flipY);
             obj->setScaleX(scaleX);
             obj->setScaleY(scaleY);
+
+            obj->dirtifyObjectRect();
+            
+            obj->getObjectRect();
+            obj->calculateOrientedBox();
+
+            obj->updateStartValues();
+            obj->updateStartPos();
         }
     }
 
@@ -155,6 +162,16 @@ namespace mpedit {
             handleRemoteUpdateSettings(playerId, msg.settings);
         });
 
+        net.on(proto::Opcode::UpdateColorChannel, [this](int playerId, proto::Reader& reader) {
+            if (playerId == P2PManager::get().getLocalPlayerId()) return;
+            auto msg = proto::deserializeUpdateColorChannel(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing UpdateColorChannel");
+                return;
+            }
+            handleRemoteUpdateColorChannel(playerId, msg.data);
+        });
+
         net.on(proto::Opcode::SyncLevelStart, [this](int playerId, proto::Reader& reader) {
             auto msg = proto::deserializeSyncLevelStart(reader);
             if (reader.hasError()) {
@@ -170,6 +187,9 @@ namespace mpedit {
             m_chunkedSync.uuidChunks.clear();
             m_chunkedSync.uuidChunks.resize(msg.totalChunks);
             m_chunkedSync.active = true;
+            
+            SessionManager::get().updateStatus(fmt::format("Syncing level (0/{})...", msg.totalChunks));
+
             log::info("RemoteActionHandler: SyncLevelStart received ({} chunks, {} objects)",
                 msg.totalChunks, msg.totalObjects);
         });
@@ -184,8 +204,105 @@ namespace mpedit {
             if (msg.chunkIndex < m_chunkedSync.totalChunks) {
                 m_chunkedSync.chunks[msg.chunkIndex] = std::string(msg.data.begin(), msg.data.end());
                 m_chunkedSync.uuidChunks[msg.chunkIndex] = msg.uuids;
+
+                SessionManager::get().updateStatus(fmt::format("Syncing level ({}/{})...", msg.chunkIndex + 1, m_chunkedSync.totalChunks));
+
                 log::info("RemoteActionHandler: SyncLevelChunk received: {}/{}",
                     msg.chunkIndex + 1, m_chunkedSync.totalChunks);
+            }
+        });
+
+        net.on(proto::Opcode::HostMigration, [this](int playerId, proto::Reader& reader) {
+            int newHostId = reader.readU32();
+            if (reader.hasError()) return;
+            log::info("RemoteActionHandler: Host migrated to {}", newHostId);
+        });
+
+        net.on(proto::Opcode::SetViewOnly, [](int playerId, proto::Reader& reader) {
+            uint32_t targetId = reader.readU32();
+            bool isViewOnly = reader.readBool();
+            if (reader.hasError()) return;
+            SessionManager::get().setPlayerViewOnly(targetId, isViewOnly);
+            if (targetId == SessionManager::get().getLocalPlayerId()) {
+                if (isViewOnly) {
+                    geode::Notification::create("You are now in View-Only mode.", cocos2d::CCSprite::createWithSpriteFrameName("GJ_lock_001.png"))->show();
+                } else {
+                    geode::Notification::create("You are no longer in View-Only mode.", cocos2d::CCSprite::createWithSpriteFrameName("GJ_completesIcon_001.png"))->show();
+                }
+            }
+        });
+
+        net.on(proto::Opcode::KickPlayer, [](int playerId, proto::Reader& reader) {
+            uint32_t targetId = reader.readU32();
+            if (reader.hasError()) return;
+            if (targetId == SessionManager::get().getLocalPlayerId()) {
+                geode::Notification::create("You have been kicked by the host.", cocos2d::CCSprite::createWithSpriteFrameName("GJ_deleteIcon_001.png"))->show();
+                SessionManager::get().leaveSession();
+                
+                geode::queueInMainThread([] {
+                    if (LevelEditorLayer::get()) {
+                        auto* director = cocos2d::CCDirector::sharedDirector();
+                        if (auto* runningScene = director->getRunningScene()) {
+                            std::function<EditorPauseLayer*(cocos2d::CCNode*)> findPauseLayer = [&](cocos2d::CCNode* parent) -> EditorPauseLayer* {
+                                if (!parent) return nullptr;
+                                if (auto* pause = typeinfo_cast<EditorPauseLayer*>(parent)) {
+                                    return pause;
+                                }
+                                if (parent->getChildren()) {
+                                    for (auto* child : geode::cocos::CCArrayExt<cocos2d::CCNode*>(parent->getChildren())) {
+                                        if (auto* p = findPauseLayer(child)) return p;
+                                    }
+                                }
+                                return nullptr;
+                            };
+
+                            auto* pauseLayer = findPauseLayer(runningScene);
+                            if (pauseLayer) {
+                                auto* dummySender = cocos2d::CCNode::create();
+                                pauseLayer->onExitEditor(dummySender);
+                            } else {
+                                director->popScene();
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+        net.on(proto::Opcode::BanPlayer, [](int playerId, proto::Reader& reader) {
+            uint32_t targetId = reader.readU32();
+            if (reader.hasError()) return;
+            if (targetId == SessionManager::get().getLocalPlayerId()) {
+                geode::Notification::create("You have been banned by the host.", cocos2d::CCSprite::createWithSpriteFrameName("GJ_deleteIcon_001.png"))->show();
+                SessionManager::get().leaveSession();
+                
+                geode::queueInMainThread([] {
+                    if (LevelEditorLayer::get()) {
+                        auto* director = cocos2d::CCDirector::sharedDirector();
+                        if (auto* runningScene = director->getRunningScene()) {
+                            std::function<EditorPauseLayer*(cocos2d::CCNode*)> findPauseLayer = [&](cocos2d::CCNode* parent) -> EditorPauseLayer* {
+                                if (!parent) return nullptr;
+                                if (auto* pause = typeinfo_cast<EditorPauseLayer*>(parent)) {
+                                    return pause;
+                                }
+                                if (parent->getChildren()) {
+                                    for (auto* child : geode::cocos::CCArrayExt<cocos2d::CCNode*>(parent->getChildren())) {
+                                        if (auto* p = findPauseLayer(child)) return p;
+                                    }
+                                }
+                                return nullptr;
+                            };
+
+                            auto* pauseLayer = findPauseLayer(runningScene);
+                            if (pauseLayer) {
+                                auto* dummySender = cocos2d::CCNode::create();
+                                pauseLayer->onExitEditor(dummySender);
+                            } else {
+                                director->popScene();
+                            }
+                        }
+                    }
+                });
             }
         });
 
@@ -197,7 +314,6 @@ namespace mpedit {
             }
             if (!m_chunkedSync.active || playerId != m_chunkedSync.hostPlayerId) return;
 
-            // Reconstruct objectsString
             std::string compressedString = "";
             for (auto const& chunk : m_chunkedSync.chunks) {
                 compressedString += chunk;
@@ -217,14 +333,16 @@ namespace mpedit {
                 }
             }
             
-            // Reconstruct uuids
             std::vector<std::string> uuids;
             uuids.reserve(m_chunkedSync.totalObjects);
             for (auto const& uuidChunk : m_chunkedSync.uuidChunks) {
                 uuids.insert(uuids.end(), uuidChunk.begin(), uuidChunk.end());
             }
 
-            log::info("RemoteActionHandler: SyncLevelEnd received, processing full sync");
+            SessionManager::get().updateStatus("Sync complete, loading...");
+
+            log::info("RemoteActionHandler: Reassembled sync string, size: {} bytes, {} objects",
+                objectsString.size(), uuids.size());
             handleRemoteSyncLevel(playerId, objectsString, uuids, m_chunkedSync.settings, msg.locks);
 
             m_chunkedSync.active = false;
@@ -320,14 +438,6 @@ namespace mpedit {
             return;
         }
 
-        if (editor->m_playbackMode != PlaybackMode::Not) {
-            QueuedAction qa;
-            qa.type = QueuedAction::Type::Place;
-            qa.playerId = playerId;
-            qa.placeObjects = objects;
-            m_playtestQueue.push_back(std::move(qa));
-            return;
-        }
 
         m_processingRemote = true;
 
@@ -435,14 +545,6 @@ namespace mpedit {
         auto* editor = getEditorLayer();
         if (!editor) return;
 
-        if (editor->m_playbackMode != PlaybackMode::Not) {
-            QueuedAction qa;
-            qa.type = QueuedAction::Type::Delete;
-            qa.playerId = playerId;
-            qa.deleteUuids = uuids;
-            m_playtestQueue.push_back(std::move(qa));
-            return;
-        }
 
         m_processingRemote = true;
 
@@ -498,14 +600,6 @@ namespace mpedit {
         auto* editor = getEditorLayer();
         if (!editor) return;
 
-        if (editor->m_playbackMode != PlaybackMode::Not) {
-            QueuedAction qa;
-            qa.type = QueuedAction::Type::Move;
-            qa.playerId = playerId;
-            qa.moveData = moves;
-            m_playtestQueue.push_back(std::move(qa));
-            return;
-        }
 
         m_processingRemote = true;
 
@@ -516,14 +610,30 @@ namespace mpedit {
                 continue;
             }
 
-            auto pos = obj->getPosition();
-            obj->setPosition({pos.x + move.dx, pos.y + move.dy});
-            editor->updateObjectSection(obj);
-            
+            TeleportPortalObject* tpOrange = nullptr;
             if (auto* tpPortal = typeinfo_cast<TeleportPortalObject*>(obj)) {
                 if (!tpPortal->m_isYellowPortal && tpPortal->m_orangePortal) {
-                    editor->updateObjectSection(tpPortal->m_orangePortal);
+                    tpOrange = tpPortal->m_orangePortal;
+                    editor->removeObjectFromSection(tpOrange);
                 }
+            }
+
+            editor->removeObjectFromSection(obj);
+            
+            auto pos = obj->getPosition();
+            obj->setPosition({pos.x + move.dx, pos.y + move.dy});
+            obj->dirtifyObjectRect();
+            
+            obj->getObjectRect();
+            obj->calculateOrientedBox();
+
+            obj->updateStartPos();
+            editor->addToSection(obj);
+            
+            if (tpOrange) {
+                tpOrange->getObjectRect();
+                tpOrange->calculateOrientedBox();
+                editor->addToSection(tpOrange);
             }
 
             log::debug("RemoteActionHandler: Moved object (uuid={}) by ({}, {})", move.uuid, move.dx, move.dy);
@@ -539,14 +649,6 @@ namespace mpedit {
         auto* editor = getEditorLayer();
         if (!editor) return;
 
-        if (editor->m_playbackMode != PlaybackMode::Not) {
-            QueuedAction qa;
-            qa.type = QueuedAction::Type::Transform;
-            qa.playerId = playerId;
-            qa.transformData = transforms;
-            m_playtestQueue.push_back(std::move(qa));
-            return;
-        }
 
         log::debug("RemoteActionHandler: applying remote transform (playerId={}, n={})", playerId, transforms.size());
         m_processingRemote = true;
@@ -558,7 +660,14 @@ namespace mpedit {
                 continue;
             }
 
+            editor->removeObjectFromSection(obj);
+            
             applyTransformSafe(obj, t.rotation, t.scaleX, t.scaleY, t.flipX, t.flipY);
+            
+            obj->getObjectRect();
+            obj->calculateOrientedBox();
+            
+            editor->addToSection(obj);
 
             log::debug("RemoteActionHandler: transformed object (uuid={}..., rot={:.1f}, flipX={}, flipY={})",
                 t.uuid.substr(0, 8), t.rotation, t.flipX, t.flipY);
@@ -574,14 +683,6 @@ namespace mpedit {
         auto* editor = getEditorLayer();
         if (!editor) return;
 
-        if (editor->m_playbackMode != PlaybackMode::Not) {
-            QueuedAction qa;
-            qa.type = QueuedAction::Type::Reconcile;
-            qa.playerId = playerId;
-            qa.reconcileData = reconciles;
-            m_playtestQueue.push_back(std::move(qa));
-            return;
-        }
 
         log::debug("RemoteActionHandler: applying remote reconcile (playerId={}, n={})", playerId, reconciles.size());
         m_processingRemote = true;
@@ -593,15 +694,17 @@ namespace mpedit {
                 continue;
             }
 
-            // Set absolute position
+            editor->removeObjectFromSection(obj);
+            
             obj->setPosition(cocos2d::CCPoint{r.x, r.y});
             
-            // Set absolute transform
             applyTransformSafe(obj, r.rotation, r.scaleX, r.scaleY, r.flipX, r.flipY);
-            editor->updateObjectSection(obj);
+            
+            obj->getObjectRect();
+            obj->calculateOrientedBox();
+            
+            editor->addToSection(obj);
 
-            // Reconcile makes any pending transforms/moves in locked state stale
-            // (Removed lockedSaveStrings handling)
 
             log::debug("RemoteActionHandler: reconciled object (uuid={}..., pos=({}, {}), rot={:.1f})",
                 r.uuid.substr(0, 8), r.x, r.y, r.rotation);
@@ -617,14 +720,6 @@ namespace mpedit {
         auto* editor = getEditorLayer();
         if (!editor) return;
 
-        if (editor->m_playbackMode != PlaybackMode::Not) {
-            QueuedAction qa;
-            qa.type = QueuedAction::Type::Update;
-            qa.playerId = playerId;
-            qa.updateObjects = objects;
-            m_playtestQueue.push_back(std::move(qa));
-            return;
-        }
 
         m_processingRemote = true;
         std::unordered_set<std::string> processedUUIDs;
@@ -810,7 +905,6 @@ namespace mpedit {
             auto* editor = getEditorLayer();
             auto* editorUI = editor ? editor->m_editorUI : nullptr;
             for (auto& uuid : uuids) {
-                // Set lock timeout to 3 seconds. It will be refreshed by cursor_update or explicitly released
                 m_objectLocks[uuid] = LockInfo { playerId, 3.0f }; 
                 
                 if (editorUI) {
@@ -881,10 +975,6 @@ namespace mpedit {
                 return;
             }
             cocos2d::CCDirector::sharedDirector()->pushScene(scene);
-
-            if (MultiplayerPopup::s_instance) {
-                MultiplayerPopup::s_instance->forceClose();
-            }
 
             log::info("RemoteActionHandler: Pushed editor scene; pending sync will apply in init() (hasPending={})",
                 m_pendingSync.has_value());
@@ -992,12 +1082,10 @@ namespace mpedit {
     }
 
     void RemoteActionHandler::registerObject(std::string const& uuid, GameObject* obj) {
-        // Clean up any existing mapping for this object (prevent orphaned UUID→object entries)
         auto existingUuidIt = m_objectToUuid.find(obj);
         if (existingUuidIt != m_objectToUuid.end()) {
             m_uuidToObject.erase(existingUuidIt->second);
         }
-        // Clean up any existing mapping for this UUID (prevent orphaned object→UUID entries)
         auto existingObjIt = m_uuidToObject.find(uuid);
         if (existingObjIt != m_uuidToObject.end()) {
             m_objectToUuid.erase(existingObjIt->second);
@@ -1025,7 +1113,6 @@ namespace mpedit {
                 if (!itemObj) continue;
                 auto* item = static_cast<UndoObject*>(itemObj);
                 
-                // Check m_objects array
                 if (item->m_objects) {
                     if (item->m_objects->containsObject(target)) {
                         item->m_objects->removeObject(target);
@@ -1036,7 +1123,6 @@ namespace mpedit {
                     }
                 }
                 
-                // Check m_objectCopy safely (m_objectCopy is already GameObjectCopy* in bindings)
                 if (item->m_objectCopy && item->m_objectCopy->m_object && item->m_objectCopy->m_object == target) {
                     toRemove.push_back(item);
                 }
@@ -1103,7 +1189,7 @@ namespace mpedit {
         m_objectLocks.clear();
         m_preSelectSaveStrings.clear();
         m_pendingPlacements.clear();
-        m_playtestQueue.clear();
+
         m_initialSyncCompleted = false;
     }
 
@@ -1118,26 +1204,6 @@ namespace mpedit {
             if (p.obj == obj) return true;
         }
         return false;
-    }
-
-    void RemoteActionHandler::flushPlaytestQueue() {
-        if (m_playtestQueue.empty()) return;
-        
-        log::info("RemoteActionHandler: Flushing {} queued playtest actions", m_playtestQueue.size());
-        
-        auto queueCopy = std::move(m_playtestQueue);
-        m_playtestQueue.clear();
-        
-        for (auto& qa : queueCopy) {
-            switch (qa.type) {
-                case QueuedAction::Type::Place:     handleRemotePlaceObjects(qa.playerId, qa.placeObjects); break;
-                case QueuedAction::Type::Delete:    handleRemoteDeleteObjects(qa.playerId, qa.deleteUuids); break;
-                case QueuedAction::Type::Move:      handleRemoteMoveObjects(qa.playerId, qa.moveData); break;
-                case QueuedAction::Type::Transform: handleRemoteTransformObjects(qa.playerId, qa.transformData); break;
-                case QueuedAction::Type::Reconcile: handleRemoteReconcileObjects(qa.playerId, qa.reconcileData); break;
-                case QueuedAction::Type::Update:    handleRemoteUpdateObjects(qa.playerId, qa.updateObjects); break;
-            }
-        }
     }
 
     void RemoteActionHandler::flushPendingPlacements() {
@@ -1185,8 +1251,7 @@ namespace mpedit {
     void RemoteActionHandler::downloadSongFinished(int id) {
         auto* editor = getEditorLayer();
         if (editor && editor->m_level && editor->m_level->m_songID == id) {
-            GameManager::get()->fadeInMusic(editor->m_level->getAudioFileName());
-            geode::Notification::create("Song downloaded! Playing now.", geode::NotificationIcon::Success)->show();
+            geode::Notification::create("Song downloaded!", geode::NotificationIcon::Success)->show();
         }
     }
 
@@ -1322,4 +1387,46 @@ namespace mpedit {
         m_processingRemote = false;
     }
 
-} // namespace mpedit
+    void RemoteActionHandler::handleRemoteUpdateColorChannel(int playerId, ActionSerializer::ColorChannelData const& data) {
+        auto* editor = getEditorLayer();
+        if (!editor || !editor->m_levelSettings || !editor->m_levelSettings->m_effectManager) return;
+
+        m_processingRemote = true;
+
+        log::info("RemoteActionHandler: Updating color channel {} from player {}", data.channelID, playerId);
+
+        auto* effectMgr = editor->m_levelSettings->m_effectManager;
+        
+        ColorAction* action = effectMgr->getColorAction(data.channelID);
+        if (!action) {
+            m_processingRemote = false;
+            return;
+        }
+
+        action->m_color = data.color;
+        action->m_fromColor = data.fromColor;
+        action->m_toColor = data.toColor;
+        action->m_duration = data.duration;
+        action->m_blending = data.blending;
+        action->m_playerColor = data.playerColor;
+        action->m_fromOpacity = data.fromOpacity;
+        action->m_toOpacity = data.toOpacity;
+        action->m_copyHSV = data.copyHSV;
+        action->m_copyID = data.copyID;
+        action->m_copyOpacity = data.copyOpacity;
+        action->m_copyColorCalculated = data.copyColorCalculated;
+        action->m_colorID = data.colorID;
+        action->m_copyColorLoop = data.copyColorLoop;
+        action->m_legacyHSV = data.legacyHSV;
+
+        if (action->m_colorSprite) {
+            effectMgr->updateColorAction(action);
+            effectMgr->colorActionChanged(action);
+        }
+
+        editor->m_updateColorSprites = true;
+        editor->updateOptions();
+
+        m_processingRemote = false;
+    }
+}

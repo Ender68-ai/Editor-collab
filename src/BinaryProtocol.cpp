@@ -2,7 +2,6 @@
 
 namespace mpedit::proto {
 
-    // ── Data helpers ─────────────────────────────────────────
 
     void writeObjectData(Writer& w, ActionSerializer::ObjectData const& obj) {
         w.writeString(obj.uuid);
@@ -332,7 +331,7 @@ namespace mpedit::proto {
         return std::move(w.takeData());
     }
 
-    // ── Deserialization ──────────────────────────────────────
+    // Deserialization
 
     PlaceObjectsMsg deserializePlaceObjects(Reader& r) {
         PlaceObjectsMsg msg;
@@ -511,4 +510,55 @@ namespace mpedit::proto {
         return msg;
     }
 
-} // namespace mpedit::proto
+    std::vector<uint8_t> serializeUpdateColorChannel(ActionSerializer::ColorChannelData const& data) {
+        Writer w;
+        w.writeOpcode(Opcode::UpdateColorChannel);
+        w.writeU32(data.channelID);
+        w.writeU8(data.color.r); w.writeU8(data.color.g); w.writeU8(data.color.b);
+        w.writeU8(data.fromColor.r); w.writeU8(data.fromColor.g); w.writeU8(data.fromColor.b);
+        w.writeU8(data.toColor.r); w.writeU8(data.toColor.g); w.writeU8(data.toColor.b);
+        w.writeF32(data.duration);
+        w.writeU8(data.blending ? 1 : 0);
+        w.writeU32(data.playerColor);
+        w.writeF32(data.fromOpacity);
+        w.writeF32(data.toOpacity);
+        w.writeF32(data.copyHSV.h);
+        w.writeF32(data.copyHSV.s);
+        w.writeF32(data.copyHSV.v);
+        w.writeU8(data.copyHSV.absoluteSaturation ? 1 : 0);
+        w.writeU8(data.copyHSV.absoluteBrightness ? 1 : 0);
+        w.writeU32(data.copyID);
+        w.writeU8(data.copyOpacity ? 1 : 0);
+        w.writeU8(data.copyColorCalculated ? 1 : 0);
+        w.writeU32(data.colorID);
+        w.writeU8(data.copyColorLoop ? 1 : 0);
+        w.writeU8(data.legacyHSV ? 1 : 0);
+        return w.takeData();
+    }
+
+    UpdateColorChannelMsg deserializeUpdateColorChannel(Reader& r) {
+        UpdateColorChannelMsg msg;
+        msg.data.channelID = r.readU32();
+        msg.data.color.r = r.readU8(); msg.data.color.g = r.readU8(); msg.data.color.b = r.readU8();
+        msg.data.fromColor.r = r.readU8(); msg.data.fromColor.g = r.readU8(); msg.data.fromColor.b = r.readU8();
+        msg.data.toColor.r = r.readU8(); msg.data.toColor.g = r.readU8(); msg.data.toColor.b = r.readU8();
+        msg.data.duration = r.readF32();
+        msg.data.blending = r.readU8() != 0;
+        msg.data.playerColor = r.readU32();
+        msg.data.fromOpacity = r.readF32();
+        msg.data.toOpacity = r.readF32();
+        msg.data.copyHSV.h = r.readF32();
+        msg.data.copyHSV.s = r.readF32();
+        msg.data.copyHSV.v = r.readF32();
+        msg.data.copyHSV.absoluteSaturation = r.readU8() != 0;
+        msg.data.copyHSV.absoluteBrightness = r.readU8() != 0;
+        msg.data.copyID = r.readU32();
+        msg.data.copyOpacity = r.readU8() != 0;
+        msg.data.copyColorCalculated = r.readU8() != 0;
+        msg.data.colorID = r.readU32();
+        msg.data.copyColorLoop = r.readU8() != 0;
+        msg.data.legacyHSV = r.readU8() != 0;
+        return msg;
+    }
+
+}

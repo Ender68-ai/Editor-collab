@@ -22,7 +22,10 @@ namespace mpedit {
         bool init(UpdateCallback callback, float interval) {
             if (!CCNode::init()) return false;
             m_callback = std::move(callback);
-            this->schedule(schedule_selector(UpdateHelperNode::onUpdate), interval);
+            cocos2d::CCScheduler::get()->scheduleSelector(
+                schedule_selector(UpdateHelperNode::onUpdate), 
+                this, interval, false
+            );
             return true;
         }
 
@@ -36,4 +39,4 @@ namespace mpedit {
         UpdateCallback m_callback;
     };
 
-} // namespace mpedit
+}

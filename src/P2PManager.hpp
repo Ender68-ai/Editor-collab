@@ -21,8 +21,8 @@ namespace rtc {
 namespace mpedit {
 
     enum class ChannelType {
-        Reliable,    // ordered, reliable — edits, sync, locks
-        Unreliable   // unordered, maxRetransmits=0 — cursors, move batches
+        Reliable,
+        Unreliable
     };
 
     /**
@@ -35,9 +35,9 @@ namespace mpedit {
     public:
         enum class State {
             Disconnected,
-            Connecting,     // signaling / ICE negotiation in progress
-            Connected,      // at least one peer connected (host) or connected to host (client)
-            Reconnecting,   // lost connection, trying to re-establish
+            Connecting,
+            Connected,
+            Reconnecting,
             Error
         };
 
@@ -51,9 +51,36 @@ namespace mpedit {
 
         static P2PManager& get();
 
+        void disconnectPeer(int playerId);
+        void banPlayer(std::string const& playerName);
 
-        void hostSession(std::string const& playerName);
-        void joinSession(std::string const& roomCode, std::string const& playerName);
+
+        struct RoomSettings {
+            std::string roomName;
+            std::string description;
+            uint32_t playerLimit;
+            bool isPrivate;
+            std::string password;
+
+            RoomSettings() : roomName("Room"), description(""), playerLimit(100), isPrivate(false), password("") {}
+        };
+
+        struct RoomInfo {
+            std::string roomCode;
+            std::string hostName;
+            std::string roomName;
+            std::string description;
+            int playerCount = 0;
+            int playerLimit = 100;
+            bool isPrivate = false;
+            bool hasPassword = false;
+        };
+
+        using FetchRoomsCb = std::function<void(std::vector<RoomInfo> const&)>;
+        void fetchRooms(FetchRoomsCb cb);
+
+        void hostSession(std::string const& playerName, RoomSettings const& settings = RoomSettings());
+        void joinSession(std::string const& roomCode, std::string const& playerName, std::string const& password = "");
         void leaveSession();
 
 
@@ -85,15 +112,19 @@ namespace mpedit {
         using PeerConnectedCb  = std::function<void(int playerId, std::string const& name, int colorIndex)>;
         using PeerDisconnectedCb = std::function<void(int playerId)>;
         using ErrorCb = std::function<void(std::string const& error)>;
+        using StatusCb = std::function<void(std::string const& status)>;
 
         void onSessionStarted(SessionStartedCb cb);
         void onPeerConnected(PeerConnectedCb cb);
         void onPeerDisconnected(PeerDisconnectedCb cb);
         void onError(ErrorCb cb);
+        void onStatus(StatusCb cb);
         void clearCallbacks();
 
 
         static std::string getSignalingUrl();
+
+        size_t getReliableBufferedAmount(int playerId);
 
     private:
         P2PManager();
@@ -120,7 +151,7 @@ namespace mpedit {
             int playerId = -1;
             std::string playerName;
             int colorIndex = 0;
-            bool ready = false; // both channels open
+            bool ready = false;
             std::vector<PendingMessage> pendingMessages;
             std::vector<PendingCandidate> pendingCandidates;
         };
@@ -128,8 +159,8 @@ namespace mpedit {
         rtc::Configuration makeRtcConfig();
         void createHostPeer(int clientPlayerId, std::string const& clientName);
 
-        void signalingCreateRoom(std::string const& playerName);
-        void signalingJoinRoom(std::string const& roomCode, std::string const& playerName);
+        void signalingCreateRoom(std::string const& playerName, RoomSettings const& settings);
+        void signalingJoinRoom(std::string const& roomCode, std::string const& playerName, std::string const& password);
         void startSignalPolling(std::string const& code, std::string const& role, int playerId);
         void pollSignalOnce(std::string const& code, std::string const& role, int playerId);
         void stopSignalPolling();
@@ -150,11 +181,12 @@ namespace mpedit {
         std::string m_localPlayerName;
         std::string m_error;
         mutable std::mutex m_stateMutex;
+        RoomSettings m_settings;
 
 
         std::unordered_map<int, PeerInfo> m_peers;
         std::mutex m_peersMutex;
-        int m_nextPlayerId = 1; // host assigns IDs (host = 0)
+        int m_nextPlayerId = 1;
 
 
         struct QueuedMessage {
@@ -173,14 +205,15 @@ namespace mpedit {
         std::vector<PeerConnectedCb> m_onPeerConnected;
         std::vector<PeerDisconnectedCb> m_onPeerDisconnected;
         std::vector<ErrorCb> m_onError;
+        std::vector<StatusCb> m_onStatus;
 
 
-        geode::async::TaskHolder<geode::utils::web::WebResponse> m_signalingListener;  // room create/join
-        geode::async::TaskHolder<geode::utils::web::WebResponse> m_signalPollListener; // long-poll loop
+        geode::async::TaskHolder<geode::utils::web::WebResponse> m_signalingListener;
+        geode::async::TaskHolder<geode::utils::web::WebResponse> m_signalPollListener;
         std::atomic<bool> m_signalingActive{false};
-        std::string m_signalingRoomId;   // server-side room ID
+        std::string m_signalingRoomId;
 
 
     };
 
-} // namespace mpedit
+}

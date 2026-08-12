@@ -3,20 +3,17 @@
 #include <string>
 #include <vector>
 
-// Forward declarations for GD types
 class GameObject;
 
 namespace mpedit {
 
-    /**
-     * Data structures for editor actions and state, along with extraction helpers.
-     */
+
     namespace ActionSerializer {
 
         struct ObjectData {
-            std::string uuid;       // Mod-assigned unique identifier
-            std::string saveString; // GD native save string (full object state)
-            int objectID = 0;       // GD object type ID
+            std::string uuid;
+            std::string saveString;
+            int objectID = 0;
             float x = 0.f;
             float y = 0.f;
             float rotation = 0.f;
@@ -27,9 +24,7 @@ namespace mpedit {
             int zOrder = 0;
             int editorLayer = 0;
             int editorLayer2 = 0;
-            // Groups
             std::vector<int> groups;
-            // Color channels
             int mainColorChannel = -1;
             int secondColorChannel = -1;
         };
@@ -39,6 +34,49 @@ namespace mpedit {
             int audioTrack = 0;
             int songID = 0;
             float levelLength = 0;
+        };
+
+        struct ColorChannelData {
+            int channelID = 0;
+            cocos2d::ccColor3B color = {255, 255, 255};
+            cocos2d::ccColor3B fromColor = {255, 255, 255};
+            cocos2d::ccColor3B toColor = {255, 255, 255};
+            float duration = 0.f;
+            bool blending = false;
+            int playerColor = 0;
+            float fromOpacity = 1.f;
+            float toOpacity = 1.f;
+            cocos2d::ccHSVValue copyHSV = {0.f, 1.f, 1.f, false, false};
+            int copyID = 0;
+            bool copyOpacity = false;
+            bool copyColorCalculated = false;
+            int colorID = 0;
+            bool copyColorLoop = false;
+            bool legacyHSV = false;
+
+            bool operator==(ColorChannelData const& o) const {
+                return channelID == o.channelID &&
+                       color.r == o.color.r && color.g == o.color.g && color.b == o.color.b &&
+                       fromColor.r == o.fromColor.r && fromColor.g == o.fromColor.g && fromColor.b == o.fromColor.b &&
+                       toColor.r == o.toColor.r && toColor.g == o.toColor.g && toColor.b == o.toColor.b &&
+                       duration == o.duration &&
+                       blending == o.blending &&
+                       playerColor == o.playerColor &&
+                       fromOpacity == o.fromOpacity &&
+                       toOpacity == o.toOpacity &&
+                       copyHSV.h == o.copyHSV.h && copyHSV.s == o.copyHSV.s && copyHSV.v == o.copyHSV.v &&
+                       copyHSV.absoluteSaturation == o.copyHSV.absoluteSaturation && copyHSV.absoluteBrightness == o.copyHSV.absoluteBrightness &&
+                       copyID == o.copyID &&
+                       copyOpacity == o.copyOpacity &&
+                       copyColorCalculated == o.copyColorCalculated &&
+                       colorID == o.colorID &&
+                       copyColorLoop == o.copyColorLoop &&
+                       legacyHSV == o.legacyHSV;
+            }
+
+            bool operator!=(ColorChannelData const& o) const {
+                return !(*this == o);
+            }
         };
 
         struct MoveData {
@@ -73,7 +111,6 @@ namespace mpedit {
             float timeLeft = 3.0f;
         };
 
-        // === GameObject helpers ===
 
         ObjectData extractObjectData(GameObject* obj, std::string const& uuid);
         
@@ -81,9 +118,8 @@ namespace mpedit {
         std::string buildSaveString(std::unordered_map<std::string, std::string> const& map);
         void injectLocalStartPosState(ObjectData& remoteData, GameObject* localObj);
 
-        // Returns true if there are changes between two save strings, excluding transform properties
         bool hasDeepPropertyChanges(GameObject* obj, std::string const& oldSave, std::string const& newSave);
 
-    } // namespace ActionSerializer
+    }
 
-} // namespace mpedit
+}

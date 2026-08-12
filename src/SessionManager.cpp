@@ -16,7 +16,7 @@ namespace mpedit {
         return instance;
     }
 
-    void SessionManager::hostSession(std::string const& playerName) {
+    void SessionManager::hostSession(std::string const& playerName, RoomSettings const& settings) {
         if (isInSession()) {
             log::warn("SessionManager: Already in a session");
             return;
@@ -26,12 +26,19 @@ namespace mpedit {
         m_role = Role::Host;
 
         setupNetworkHandlers();
-        P2PManager::get().hostSession(playerName);
+        P2PManager::RoomSettings p2pSettings;
+        p2pSettings.roomName = settings.roomName;
+        p2pSettings.description = settings.description;
+        p2pSettings.playerLimit = settings.playerLimit;
+        p2pSettings.isPrivate = settings.isPrivate;
+        p2pSettings.password = settings.password;
+
+        P2PManager::get().hostSession(playerName, p2pSettings);
 
         log::info("SessionManager: Hosting session as '{}'", playerName);
     }
 
-    void SessionManager::joinSession(std::string const& roomCode, std::string const& playerName) {
+    void SessionManager::joinSession(std::string const& roomCode, std::string const& playerName, std::string const& password) {
         if (isInSession()) {
             log::warn("SessionManager: Already in a session");
             return;
@@ -42,7 +49,7 @@ namespace mpedit {
         m_role = Role::Client;
 
         setupNetworkHandlers();
-        P2PManager::get().joinSession(roomCode, playerName);
+        P2PManager::get().joinSession(roomCode, playerName, password);
 
         log::info("SessionManager: Joining room '{}' as '{}'", roomCode, playerName);
     }
@@ -60,7 +67,7 @@ namespace mpedit {
         m_localPlayerId = -1;
         m_players.clear();
 
-        for (auto& cb : sessionEndedCallbacks) {
+        for (auto& [id, cb] : sessionEndedCallbacks) {
             cb();
         }
 
@@ -87,6 +94,22 @@ namespace mpedit {
         return m_localPlayerName;
     }
 
+    bool SessionManager::isLocalPlayerViewOnly() const {
+        if (auto p = getPlayer(m_localPlayerId)) {
+            return p->isViewOnly;
+        }
+        return false;
+    }
+
+    void SessionManager::setPlayerViewOnly(int id, bool viewOnly) {
+        for (auto& p : m_players) {
+            if (p.id == id) {
+                p.isViewOnly = viewOnly;
+                return;
+            }
+        }
+    }
+
     std::vector<PlayerInfo> const& SessionManager::getPlayers() const {
         return m_players;
     }
@@ -109,24 +132,44 @@ namespace mpedit {
         }
     }
 
-    void SessionManager::onSessionStarted(SessionCallback cb) {
-        m_onSessionStarted.push_back(std::move(cb));
+    void SessionManager::onSessionStarted(void* id, SessionCallback cb) {
+        m_onSessionStarted[id] = std::move(cb);
     }
 
-    void SessionManager::onSessionEnded(SessionCallback cb) {
-        m_onSessionEnded.push_back(std::move(cb));
+    void SessionManager::onSessionEnded(void* id, SessionCallback cb) {
+        m_onSessionEnded[id] = std::move(cb);
     }
 
-    void SessionManager::onPlayerJoined(PlayerCallback cb) {
-        m_onPlayerJoined.push_back(std::move(cb));
+    void SessionManager::onPlayerJoined(void* id, PlayerCallback cb) {
+        m_onPlayerJoined[id] = std::move(cb);
     }
 
-    void SessionManager::onPlayerLeft(PlayerCallback cb) {
-        m_onPlayerLeft.push_back(std::move(cb));
+    void SessionManager::onPlayerLeft(void* id, PlayerCallback cb) {
+        m_onPlayerLeft[id] = std::move(cb);
     }
 
-    void SessionManager::onError(ErrorCallback cb) {
-        m_onError.push_back(std::move(cb));
+    void SessionManager::onError(void* id, ErrorCallback cb) {
+        m_onError[id] = std::move(cb);
+    }
+
+    void SessionManager::onStatus(void* id, StatusCallback cb) {
+        m_onStatus[id] = std::move(cb);
+    }
+
+    void SessionManager::updateStatus(std::string const& status) {
+        auto callbacks = m_onStatus;
+        for (auto& [id, cb] : callbacks) {
+            cb(status);
+        }
+    }
+
+    void SessionManager::removeListener(void* id) {
+        m_onSessionStarted.erase(id);
+        m_onSessionEnded.erase(id);
+        m_onPlayerJoined.erase(id);
+        m_onPlayerLeft.erase(id);
+        m_onError.erase(id);
+        m_onStatus.erase(id);
     }
 
     void SessionManager::clearCallbacks() {
@@ -135,13 +178,7 @@ namespace mpedit {
         m_onPlayerJoined.clear();
         m_onPlayerLeft.clear();
         m_onError.clear();
-    }
-
-    void SessionManager::clearPopupCallbacks() {
-        m_onSessionStarted.clear();
-        m_onError.clear();
-        m_onPlayerJoined.clear();
-        m_onPlayerLeft.clear();
+        m_onStatus.clear();
     }
 
     void SessionManager::setupNetworkHandlers() {
@@ -161,11 +198,10 @@ namespace mpedit {
             m_players.push_back(self);
 
             auto callbacks = m_onSessionStarted;
-            for (auto& cb : callbacks) cb();
+            for (auto& [id, cb] : callbacks) cb();
         });
 
         net.onPeerConnected([this](int playerId, std::string const& name, int colorIndex) {
-            // Check if player already exists
             for (auto& p : m_players) {
                 if (p.id == playerId) {
                     p.name = name;
@@ -181,7 +217,7 @@ namespace mpedit {
             m_players.push_back(info);
 
             auto callbacks = m_onPlayerJoined;
-            for (auto& cb : callbacks) cb(info);
+            for (auto& [id, cb] : callbacks) cb(info);
         });
 
         net.onPeerDisconnected([this](int playerId) {
@@ -195,7 +231,7 @@ namespace mpedit {
             }
 
             auto callbacks = m_onPlayerLeft;
-            for (auto& cb : callbacks) cb(leftPlayer);
+            for (auto& [id, cb] : callbacks) cb(leftPlayer);
         });
 
         net.onError([this](std::string const& error) {
@@ -203,7 +239,7 @@ namespace mpedit {
             auto callbacks = m_onError;
             leaveSession();
 
-            for (auto& cb : callbacks) {
+            for (auto& [id, cb] : callbacks) {
                 cb(error);
             }
 
@@ -237,6 +273,13 @@ namespace mpedit {
                         }
                     }
                 });
+            }
+        });
+
+        net.onStatus([this](std::string const& status) {
+            auto callbacks = m_onStatus;
+            for (auto& [id, cb] : callbacks) {
+                cb(status);
             }
         });
 
@@ -281,12 +324,8 @@ namespace mpedit {
 
     void SessionManager::clearNetworkHandlers() {
         P2PManager::get().clearHandlers();
+        P2PManager::get().clearCallbacks();
         RemoteActionHandler::get().clearHandlers();
-        m_onSessionStarted.clear();
-        m_onSessionEnded.clear();
-        m_onPlayerJoined.clear();
-        m_onPlayerLeft.clear();
-        m_onError.clear();
     }
 
-} // namespace mpedit
+}

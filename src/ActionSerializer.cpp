@@ -7,9 +7,7 @@ using namespace geode::prelude;
 
 namespace mpedit::ActionSerializer {
 
-    // ============================================================
-    // GameObject Helpers
-    // ============================================================
+
 
     ObjectData extractObjectData(GameObject* obj, std::string const& uuid) {
         ObjectData data;
@@ -38,7 +36,6 @@ namespace mpedit::ActionSerializer {
             data.saveString = s;
         }
 
-        // Extract up to 10 groups
         if (obj->m_groups && obj->m_groupCount > 0) {
             int count = std::min(static_cast<int>(obj->m_groupCount), 10);
             for (int i = 0; i < count; i++) {
@@ -122,14 +119,11 @@ namespace mpedit::ActionSerializer {
         auto oldMap = parseSaveString(oldSave);
         auto newMap = parseSaveString(newSave);
 
-        // Keys to ignore for purely positional/transform reconciles:
-        // 2: X, 3: Y, 4: FlipX, 5: FlipY, 11: Rot, 32: Scale, 128: ScaleX, 129: ScaleY
-        for (auto const& k : {"2", "3", "4", "5", "11", "32", "128", "129"}) {
+        for (auto const& k : {"2", "3"}) {
             oldMap.erase(k);
             newMap.erase(k);
         }
 
-        // Ignore Disable Start Pos changes (kA21, kA9, and 93) so they remain local
         if (obj && obj->m_objectID == 31) {
             oldMap.erase("kA21");
             newMap.erase("kA21");
@@ -137,6 +131,24 @@ namespace mpedit::ActionSerializer {
             newMap.erase("kA9");
             oldMap.erase("93");
             newMap.erase("93");
+        }
+
+        auto getValue = [](std::unordered_map<std::string, std::string> const& m, std::string const& k, std::string const& def) {
+            auto it = m.find(k);
+            return it == m.end() ? def : it->second;
+        };
+
+        std::vector<std::pair<std::string, std::string>> transformKeys = {
+            {"4", "0"}, {"5", "0"}, {"6", "0"}, {"11", "0"}, 
+            {"32", "1"}, {"128", "1"}, {"129", "1"}
+        };
+
+        for (auto const& [k, def] : transformKeys) {
+            if (getValue(oldMap, k, def) != getValue(newMap, k, def)) {
+                return true;
+            }
+            oldMap.erase(k);
+            newMap.erase(k);
         }
 
         if (oldMap.size() != newMap.size()) return true;
@@ -147,4 +159,4 @@ namespace mpedit::ActionSerializer {
         return false;
     }
 
-} // namespace mpedit::ActionSerializer
+}
