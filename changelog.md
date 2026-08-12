@@ -1,17 +1,17 @@
 # 0.5.0
 - Massive UI Overhaul! The legacy Multiplayer menu has been completely replaced with a more user friendly interface.
-- Added a public room browser in the main menu to easily find and join active lobbies.
-- Added a dedicated session manager with a host configuration panel (set name, description, playerlimit, and password).
+- Added a public room browser to easily find and join active lobbies.
+- Added a dedicated session manager with a host config panel (set name, description, player limit, and password).
 - Added view-only restrictions. View-only players have a lock icon on their cursor and are prevented from editing the level while still being able to watch and playtest.
 - Added mod controls for hosts to kick, ban, or toggle players into view-only mode from the player list.
 - Fixed a game crash when a host or guest abruptly disconnects when joining or editing.
 - Fixed joining session sometimes being stuck on "syncing level" due to connections dropping during the connecting to host process.
 - Fixed cursor and icon positions wildly teleporting around the editor in lobbies with more than 2 players.
-- Removed queuing level edits while players are in playtest, and just switched back to real time playtest editing.
+- Removed queuing level edits while players are in playtest, and just switched back to real time playtest editing to prevent bugs with object syncing.
 - Overhauled logic for color channel sync.
 - Hosting/Joining now gives you more feedback.
 - Removed the song autoplay when downloading a song in a session.
-- Fixed hitboxes and collision not updating for objects that have been scaled.
+- Fixed hitboxes and collision not updating in real time for objects that have been scaled.
 - Fixed a visual bug where multi-part objects (like slopes) would flip their main body but fail to flip their detail lines.
 - Fixed selecting/deselecting objects causing them to be unnecessarily recreated for other players, which broke Z-order and corrupted transforms.
 - Fixed hosting being bugged after subsequent hosting of sessions without restarting the editor.
