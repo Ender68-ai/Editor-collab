@@ -16,6 +16,7 @@
 - Fixed a visual bug where multi-part objects (like slopes) would flip their main body but fail to flip their detail lines.
 - Fixed selecting/deselecting objects causing them to be unnecessarily recreated for other players, which broke Z-order and corrupted transforms.
 - Fixed hosting being bugged after subsequent hosting of sessions without restarting the editor.
+- Fixed the display name not being used in certain places.
 - Removed some test files from the codebase.
 - Updated to Geode 5.9.0.
 

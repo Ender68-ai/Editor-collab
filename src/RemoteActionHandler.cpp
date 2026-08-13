@@ -30,13 +30,10 @@ namespace mpedit {
             std::vector<GameObject*> newObjects;
             if (!editor || saveStr.empty()) return newObjects;
 
-            auto existing = snapshotExistingObjects(editor);
-
-            editor->createObjectsFromString(saveStr, true, true);
-
-            if (editor->m_objects) {
-                for (auto* obj : CCArrayExt<GameObject*>(editor->m_objects)) {
-                    if (obj && !existing.count(obj)) {
+            auto* arr = editor->createObjectsFromString(saveStr, true, true);
+            if (arr) {
+                for (auto* obj : CCArrayExt<GameObject*>(arr)) {
+                    if (obj) {
                         newObjects.push_back(obj);
                     }
                 }
