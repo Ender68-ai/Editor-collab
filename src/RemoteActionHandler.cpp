@@ -1038,7 +1038,7 @@ namespace mpedit {
                     registerObject(uuids[index], obj);
                     index++;
                 } else {
-                    registerObject("lvl_obj_" + std::to_string(index), obj);
+                    registerObject(generateUUID(), obj);
                     index++;
                 }
                 

@@ -110,7 +110,7 @@ namespace mpedit {
         
         settings.isPrivate = m_privateToggle->isToggled();
         
-        SessionManager::get().hostSession(GJAccountManager::sharedState()->m_username, settings);
+        SessionManager::get().hostSession(Mod::get()->getSettingValue<std::string>("player-name"), settings);
         
         if (m_parentPopup) {
             m_parentPopup->onConnecting();

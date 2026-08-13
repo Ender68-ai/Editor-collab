@@ -41,7 +41,7 @@ namespace mpedit {
 
         void onJoin(cocos2d::CCObject*) {
             std::string pwd = m_input->getString();
-            SessionManager::get().joinSession(m_room.roomCode, GJAccountManager::sharedState()->m_username, pwd);
+            SessionManager::get().joinSession(m_room.roomCode, Mod::get()->getSettingValue<std::string>("player-name"), pwd);
             if (m_parent) m_parent->onConnecting();
             this->onClose(nullptr);
         }
@@ -525,7 +525,7 @@ namespace mpedit {
         }
 
         m_lastJoinCode = code;
-        SessionManager::get().joinSession(code, GJAccountManager::sharedState()->m_username, "");
+        SessionManager::get().joinSession(code, Mod::get()->getSettingValue<std::string>("player-name"), "");
         this->onConnecting();
     }
 
@@ -732,7 +732,7 @@ namespace mpedit {
         if (room.hasPassword) {
             promptPassword(room);
         } else {
-            SessionManager::get().joinSession(room.roomCode, GJAccountManager::sharedState()->m_username, "");
+            SessionManager::get().joinSession(room.roomCode, Mod::get()->getSettingValue<std::string>("player-name"), "");
             this->onConnecting();
         }
     }

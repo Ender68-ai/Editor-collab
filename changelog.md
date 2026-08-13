@@ -4,11 +4,12 @@
 - Added a dedicated session manager with a host config panel (set name, description, player limit, and password).
 - Added view-only restrictions. View-only players have a lock icon on their cursor and are prevented from editing the level while still being able to watch and playtest.
 - Added mod controls for hosts to kick, ban, or toggle players into view-only mode from the player list.
+- Fixed a major issue where pre-existing level objects would randomly jumble around when selected or moved.
 - Fixed a game crash when a host or guest abruptly disconnects when joining or editing.
 - Fixed joining session sometimes being stuck on "syncing level" due to connections dropping during the connecting to host process.
 - Fixed cursor and icon positions wildly teleporting around the editor in lobbies with more than 2 players.
 - Removed queuing level edits while players are in playtest, and just switched back to real time playtest editing to prevent bugs with object syncing.
-- Overhauled logic for color channel sync.
+- Overhauled logic for color channel sync and fixed a lot of bugs regarding it.
 - Hosting/Joining now gives you more feedback.
 - Removed the song autoplay when downloading a song in a session.
 - Fixed hitboxes and collision not updating in real time for objects that have been scaled.

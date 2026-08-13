@@ -258,7 +258,7 @@ namespace {
                 if (!obj) continue;
                 auto uuid = handler.getUUIDForObject(obj);
                 if (uuid.empty()) {
-                    uuid = "lvl_obj_" + std::to_string(index);
+                    uuid = RemoteActionHandler::generateUUID();
                     handler.registerObject(uuid, obj);
                 }
                 allUuids.push_back(uuid);
@@ -399,7 +399,7 @@ namespace {
                 handler.registerObject(uuids[index], obj);
             } else {
                 if (handler.getUUIDForObject(obj).empty()) {
-                    handler.registerObject("lvl_obj_" + std::to_string(index), obj);
+                    handler.registerObject(RemoteActionHandler::generateUUID(), obj);
                 }
             }
             index++;
@@ -478,8 +478,7 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                 int index = 0;
                 for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
                     if (obj && handler.getUUIDForObject(obj).empty()) {
-                        auto uuid = "lvl_obj_" + std::to_string(index);
-                        handler.registerObject(uuid, obj);
+                        handler.registerObject(RemoteActionHandler::generateUUID(), obj);
                     }
                     index++;
                 }
@@ -501,7 +500,7 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                     int index = 0;
                     for (auto* obj : CCArrayExt<GameObject*>(this->m_objects)) {
                         if (obj && handler.getUUIDForObject(obj).empty()) {
-                            handler.registerObject("lvl_obj_" + std::to_string(index), obj);
+                            handler.registerObject(RemoteActionHandler::generateUUID(), obj);
                         }
                         index++;
                     }
@@ -642,7 +641,7 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
 
         bool inUndoRedo = m_fields->m_inUndoRedo;
         bool shouldBroadcastDelete = session.isInSession()
-            && !handler.isProcessingRemote() && !inUndoRedo && obj;
+            && !handler.isProcessingRemote() && !inUndoRedo && !session.isLocalPlayerViewOnly() && obj;
 
         if (shouldBroadcastDelete) {
             auto uuid = handler.getUUIDForObject(obj);
@@ -1085,9 +1084,17 @@ class $modify(MPEditorUI, EditorUI) {
         s_selectedObjectID = id;
     }
 
+    void toggleMode(cocos2d::CCObject* btn) {
+        if (SessionManager::get().isLocalPlayerViewOnly() && btn != this->m_editModeBtn) {
+            EditorUI::toggleMode(this->m_editModeBtn);
+            return;
+        }
+        EditorUI::toggleMode(btn);
+    }
+
     bool ccTouchBegan(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) {
         if (SessionManager::get().isLocalPlayerViewOnly()) {
-            if (this->m_selectedMode == 1 || this->m_selectedMode == 2) {
+            if (this->m_selectedMode != 2) {
                 this->toggleMode(this->m_editModeBtn);
             }
             return EditorUI::ccTouchBegan(touch, event);
@@ -2074,6 +2081,41 @@ class $modify(MPColorSelectPopup, ColorSelectPopup) {
             auto packet = proto::serializeUpdateColorChannel(data);
             P2PManager::get().send(std::move(packet), ChannelType::Reliable);
             log::info("Broadcasting granular UpdateColorChannel for channel {} from ColorSelectPopup", channelID);
+        }
+    }
+};
+
+#include <Geode/modify/ColorSelectLiveOverlay.hpp>
+class $modify(MPColorSelectLiveOverlay, ColorSelectLiveOverlay) {
+    void closeColorSelect(cocos2d::CCObject* sender) {
+        ColorSelectLiveOverlay::closeColorSelect(sender);
+        syncColor();
+    }
+
+    void keyBackClicked() {
+        ColorSelectLiveOverlay::keyBackClicked();
+        syncColor();
+    }
+
+    void syncColor() {
+        auto& handler = RemoteActionHandler::get();
+        if (handler.isProcessingRemote() || !handler.isInitialSyncCompleted()) return;
+
+        auto& session = SessionManager::get();
+        if (!session.isInSession()) return;
+
+        if (m_baseColorAction) {
+            int channelID = m_baseColorAction->m_colorID;
+            auto data = colorActionToData(m_baseColorAction, channelID);
+            auto packet = proto::serializeUpdateColorChannel(data);
+            P2PManager::get().send(std::move(packet), ChannelType::Reliable);
+        }
+        
+        if (m_detailColorAction) {
+            int channelID = m_detailColorAction->m_colorID;
+            auto data = colorActionToData(m_detailColorAction, channelID);
+            auto packet = proto::serializeUpdateColorChannel(data);
+            P2PManager::get().send(std::move(packet), ChannelType::Reliable);
         }
     }
 };
