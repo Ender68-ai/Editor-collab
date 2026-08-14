@@ -1929,10 +1929,6 @@ class $modify(MPLevelSettingsLayer, LevelSettingsLayer) {
         }
     }
 
-    void colorSelectClosed(cocos2d::CCNode* popup) {
-        LevelSettingsLayer::colorSelectClosed(popup);
-        syncColors();
-    }
 
     void onClose(cocos2d::CCObject* sender) {
         LevelSettingsLayer::onClose(sender);

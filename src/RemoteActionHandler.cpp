@@ -1026,6 +1026,13 @@ namespace mpedit {
         applyLevelSettings(editor, settings);
 
         if (!objectsString.empty()) {
+            std::vector<std::string> parts;
+            std::stringstream ss(objectsString);
+            std::string item;
+            while (std::getline(ss, item, ';')) {
+                if (!item.empty()) parts.push_back(item);
+            }
+
             auto newObjs = createObjectsFromSaveStringRobust(editor, objectsString);
             log::info("RemoteActionHandler: Spawned {} objects from objectsString (len={})",
                 newObjs.size(), objectsString.size());
@@ -1033,15 +1040,20 @@ namespace mpedit {
             for (auto* obj : newObjs) {
                 if (index < static_cast<int>(uuids.size())) {
                     registerObject(uuids[index], obj);
-                    index++;
                 } else {
                     registerObject(generateUUID(), obj);
-                    index++;
                 }
                 
                 if (obj->m_objectID == 31) {
+                    if (index < static_cast<int>(parts.size())) {
+                        if (auto* startPos = typeinfo_cast<StartPosObject*>(obj)) {
+                            startPos->loadSettingsFromString(parts[index]);
+                        }
+                    }
                     updateStartPosCache(obj);
                 }
+                
+                index++;
             }
             if (index != static_cast<int>(uuids.size())) {
                 log::warn("RemoteActionHandler: object/uuid count mismatch on sync "
@@ -1269,6 +1281,17 @@ namespace mpedit {
                 editor->m_levelSettings->m_twoPlayerMode = newSettings->m_twoPlayerMode;
                 editor->m_levelSettings->m_isFlipped = newSettings->m_isFlipped;
                 editor->m_levelSettings->m_songOffset = newSettings->m_songOffset;
+                
+                editor->m_levelSettings->m_mirrorMode = newSettings->m_mirrorMode;
+                editor->m_levelSettings->m_rotateGameplay = newSettings->m_rotateGameplay;
+                editor->m_levelSettings->m_platformerMode = newSettings->m_platformerMode;
+                editor->m_levelSettings->m_fadeIn = newSettings->m_fadeIn;
+                editor->m_levelSettings->m_fadeOut = newSettings->m_fadeOut;
+                editor->m_levelSettings->m_backgroundIndex = newSettings->m_backgroundIndex;
+                editor->m_levelSettings->m_groundIndex = newSettings->m_groundIndex;
+                editor->m_levelSettings->m_fontIndex = newSettings->m_fontIndex;
+                editor->m_levelSettings->m_middleGroundIndex = newSettings->m_middleGroundIndex;
+                editor->m_levelSettings->m_startsWithStartPos = newSettings->m_startsWithStartPos;
 
                 if (auto* newEffectMgr = newSettings->m_effectManager) {
                     if (auto* oldEffectMgr = editor->m_levelSettings->m_effectManager) {
