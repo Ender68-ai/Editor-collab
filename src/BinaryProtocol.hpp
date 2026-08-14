@@ -207,6 +207,7 @@ namespace mpedit::proto {
             return true;
         }
 
+    private:
         const uint8_t* m_data;
         size_t m_len;
         size_t m_pos;

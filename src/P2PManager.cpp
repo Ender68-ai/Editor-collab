@@ -144,14 +144,31 @@ namespace mpedit {
 
             if (!msg.data.empty()) {
                 uint8_t opcodeRaw = msg.data[0];
+                int fromId = msg.fromPlayerId;
+                const uint8_t* payloadData = msg.data.data();
+                size_t payloadLen = msg.data.size();
 
-                auto it = m_handlers.find(opcodeRaw);
-                if (it != m_handlers.end()) {
-                    auto handlersCopy = it->second;
-                    for (auto const& handler : handlersCopy) {
-                        proto::Reader handlerReader(msg.data.data() + 1, msg.data.size() - 1);
-                        handler(msg.fromPlayerId, handlerReader);
-                        if (m_handlers.empty()) break;
+                if (opcodeRaw == static_cast<uint8_t>(proto::Opcode::Relay)) {
+                    proto::Reader r(msg.data.data() + 1, msg.data.size() - 1);
+                    fromId = static_cast<int>(r.readVarInt());
+                    payloadLen = msg.data.size() - 1 - r.position();
+                    payloadData = msg.data.data() + 1 + r.position();
+                    if (payloadLen > 0) {
+                        opcodeRaw = payloadData[0];
+                    } else {
+                        opcodeRaw = 0; 
+                    }
+                }
+
+                if (payloadLen > 0) {
+                    auto it = m_handlers.find(opcodeRaw);
+                    if (it != m_handlers.end()) {
+                        auto handlersCopy = it->second;
+                        for (auto const& handler : handlersCopy) {
+                            proto::Reader handlerReader(payloadData + 1, payloadLen - 1);
+                            handler(fromId, handlerReader);
+                            if (m_handlers.empty()) break;
+                        }
                     }
                 }
             }
@@ -241,7 +258,12 @@ namespace mpedit {
     }
 
     void P2PManager::relayMessage(int fromPlayerId, const uint8_t* data, size_t len, ChannelType channel) {
-        std::vector<uint8_t> relayData(data, data + len);
+        proto::Writer w;
+        w.writeU8(static_cast<uint8_t>(proto::Opcode::Relay));
+        w.writeVarInt(static_cast<uint32_t>(fromPlayerId));
+        w.writeBytes(data, len);
+        
+        std::vector<uint8_t> relayData = w.data();
         broadcast(relayData, channel, fromPlayerId);
     }
 
@@ -1006,6 +1028,25 @@ namespace mpedit {
             if (m_role == Role::Host) {
                 auto msg = proto::serializePlayerJoined(pid, name, colorIdx);
                 broadcast(msg, ChannelType::Reliable, pid);
+                
+                std::vector<std::vector<uint8_t>> existingPeerMsgs;
+                {
+                    std::lock_guard lock(m_peersMutex);
+                    for (auto& [existingId, peer] : m_peers) {
+                        if (existingId != pid && peer.ready) {
+                            existingPeerMsgs.push_back(
+                                proto::serializePlayerJoined(existingId, peer.playerName, peer.colorIndex)
+                            );
+                        }
+                    }
+                }
+                
+                for (auto const& peerMsg : existingPeerMsgs) {
+                    sendTo(pid, peerMsg, ChannelType::Reliable);
+                }
+                
+                auto hostMsg = proto::serializePlayerJoined(0, m_localPlayerName, 0);
+                sendTo(pid, hostMsg, ChannelType::Reliable);
             }
         });
     }

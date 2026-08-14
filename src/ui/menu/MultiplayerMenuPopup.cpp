@@ -502,7 +502,7 @@ namespace mpedit {
         m_scrollLayer->m_contentLayer->setPositionY(
             std::max(0.f, m_scrollLayer->getContentSize().height - m_scrollLayer->m_contentLayer->getContentSize().height)
         );
-        geode::cocos::handleTouchPriority(m_scrollLayer->m_contentLayer);
+        geode::cocos::handleTouchPriority(this);
     }
 
     void MultiplayerMenuPopup::onRefresh(CCObject*) {
@@ -564,7 +564,7 @@ namespace mpedit {
         cancelMenu->addChild(cancelBtn);
         m_sessionUiNode->addChild(cancelMenu);
 
-        geode::cocos::handleTouchPriority(m_sessionUiNode);
+        geode::cocos::handleTouchPriority(this);
     }
 
     void MultiplayerMenuPopup::updateStatus(std::string const& status) {
@@ -671,8 +671,7 @@ namespace mpedit {
         leaveMenu->addChild(leaveBtn);
         m_sessionUiNode->addChild(leaveMenu);
 
-        geode::cocos::handleTouchPriority(m_centerNode);
-        geode::cocos::handleTouchPriority(m_sessionUiNode);
+        geode::cocos::handleTouchPriority(this);
     }
 
     void MultiplayerMenuPopup::onLeave(CCObject*) {
@@ -786,7 +785,7 @@ namespace mpedit {
         cancelMenu->addChild(cancelBtn);
         m_sessionUiNode->addChild(cancelMenu);
 
-        geode::cocos::handleTouchPriority(m_sessionUiNode);
+        geode::cocos::handleTouchPriority(this);
     }
 
 }

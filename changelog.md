@@ -5,6 +5,7 @@
 - Added view-only restrictions. View-only players have a lock icon on their cursor and are prevented from editing the level while still being able to watch and playtest.
 - Added mod controls for hosts to kick, ban, or toggle players into view-only mode from the player list.
 - Fixed a major issue where pre-existing level objects would randomly jumble around when selected or moved.
+- Fixed issue where guests can only see the host, and no other players in lobbies with more than two people.
 - Added syncing to the levels font, background, ground, middleground, platformer mode toggle, starting mirror toggle, rotate gameplay toggle, and both audio fade toggles.
 - Fixed a game crash when a host or guest abruptly disconnects when joining or editing.
 - Fixed joining session sometimes being stuck on "syncing level" due to connections dropping during the connecting to host process.
@@ -20,6 +21,7 @@
 - Fixed the display name not being used in certain places.
 - Fixed pre-existing start positions not syncing when guests join.
 - Fixed crash on ARM devices where trying to change certain level settings crash the game.
+- Fixed issue where you softlock after hosting on mobile.
 - Removed some test files from the codebase.
 - Updated to Geode 5.9.0.
 
