@@ -175,7 +175,7 @@ namespace mpedit {
             nameLabel->setScale(0.45f);
             this->addChild(nameLabel);
 
-            auto hostStr = fmt::format("Host: {}", info.hostName);
+            auto hostStr = fmt::format("Host: {} (v{})", info.hostName, info.version);
             auto hostLabel = CCLabelBMFont::create(hostStr.c_str(), "goldFont.fnt");
             hostLabel->setAnchorPoint({0, 0.5f});
             hostLabel->setPosition({12.f, 13.f});
@@ -494,15 +494,15 @@ namespace mpedit {
         m_scrollLayer->m_contentLayer->removeAllChildren();
         if (m_statusLabel) m_statusLabel->setVisible(rooms.empty());
 
+        float totalHeight = rooms.size() * 45.f;
+        m_scrollLayer->m_contentLayer->setContentHeight(std::max(m_scrollLayer->getContentSize().height, totalHeight));
+
         for (auto const& r : rooms) {
             auto cell = RoomCell::create(r, this, m_scrollLayer->getContentSize().width);
             m_scrollLayer->m_contentLayer->addChild(cell);
         }
         m_scrollLayer->m_contentLayer->updateLayout();
-        m_scrollLayer->m_contentLayer->setPositionY(
-            std::max(0.f, m_scrollLayer->getContentSize().height - m_scrollLayer->m_contentLayer->getContentSize().height)
-        );
-        
+        m_scrollLayer->scrollToTop();
     }
 
     void MultiplayerMenuPopup::onRefresh(CCObject*) {
@@ -644,6 +644,10 @@ namespace mpedit {
             auto cell = ActivePlayerCell::create(p, m_scrollLayer->getContentSize().width, playerColors[p.colorIndex % playerColors.size()]);
             m_scrollLayer->m_contentLayer->addChild(cell);
         }
+
+        float totalPlayersHeight = players.size() * 30.f + std::max(0, (int)players.size() - 1) * 2.f;
+        m_scrollLayer->m_contentLayer->setContentHeight(std::max(m_scrollLayer->getContentSize().height, totalPlayersHeight));
+
         m_scrollLayer->m_contentLayer->updateLayout();
         m_scrollLayer->m_contentLayer->setPositionY(
             std::max(0.f, m_scrollLayer->getContentSize().height - m_scrollLayer->m_contentLayer->getContentSize().height)

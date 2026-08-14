@@ -52,6 +52,13 @@ if(NOT mbedtls_POPULATED)
         file(WRITE "${MBEDTLS_CONFIG_H}" "${MBEDTLS_CONFIG_CONTENTS}")
     endif()
     
+    set(MBEDTLS_CMAKE "${mbedtls_SOURCE_DIR}/CMakeLists.txt")
+    if(EXISTS "${MBEDTLS_CMAKE}")
+        file(READ "${MBEDTLS_CMAKE}" MBEDTLS_CMAKE_CONTENTS)
+        string(REGEX REPLACE "cmake_minimum_required\\(VERSION [0-9.]+\\)" "cmake_minimum_required(VERSION 3.10)" MBEDTLS_CMAKE_CONTENTS "${MBEDTLS_CMAKE_CONTENTS}")
+        file(WRITE "${MBEDTLS_CMAKE}" "${MBEDTLS_CMAKE_CONTENTS}")
+    endif()
+
     add_subdirectory(${mbedtls_SOURCE_DIR} ${mbedtls_BINARY_DIR})
 endif()
 
@@ -85,7 +92,6 @@ FetchContent_GetProperties(libdatachannel)
 if(NOT libdatachannel_POPULATED)
     FetchContent_Populate(libdatachannel)
     
-    # Patch usrsctp warning flags for Clang cross-compilation
     set(USRSCTP_CMAKE "${libdatachannel_SOURCE_DIR}/deps/usrsctp/CMakeLists.txt")
     if(EXISTS "${USRSCTP_CMAKE}")
         message(STATUS "Patching ${USRSCTP_CMAKE} for Clang compiler warning flags...")
@@ -95,6 +101,15 @@ if(NOT libdatachannel_POPULATED)
                        USRSCTP_CONTENTS "${USRSCTP_CONTENTS}")
         file(WRITE "${USRSCTP_CMAKE}" "${USRSCTP_CONTENTS}")
     endif()
+
+    foreach(dep plog usrsctp libjuice)
+        set(DEP_CMAKE "${libdatachannel_SOURCE_DIR}/deps/${dep}/CMakeLists.txt")
+        if(EXISTS "${DEP_CMAKE}")
+            file(READ "${DEP_CMAKE}" DEP_CONTENTS)
+            string(REGEX REPLACE "cmake_minimum_required\\(VERSION [0-9.]+\\)" "cmake_minimum_required(VERSION 3.10)" DEP_CONTENTS "${DEP_CONTENTS}")
+            file(WRITE "${DEP_CMAKE}" "${DEP_CONTENTS}")
+        endif()
+    endforeach()
     
     add_subdirectory(${libdatachannel_SOURCE_DIR} ${libdatachannel_BINARY_DIR})
 endif()

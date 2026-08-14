@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
         for await (const entry of kv.list({ prefix: ["rooms"] })) {
             if (entry.key.length === 2) {
                 const room = entry.value;
-                if (!room.isPrivate) {
+                if (!room.isPrivate && room.version) {
                     rooms.push({
                         roomCode: entry.key[1],
                         hostName: room.hostName,
@@ -145,17 +145,21 @@ Deno.serve(async (req) => {
                         playerCount: room.players.length,
                         playerLimit: room.playerLimit || 0,
                         isPrivate: !!room.isPrivate,
-                        hasPassword: !!room.hasPassword
+                        hasPassword: !!room.hasPassword,
+                        version: room.version || "Unknown",
+                        created: room.created || 0
                     });
                 }
             }
         }
+        
+        rooms.sort((a, b) => b.created - a.created);
         return json(rooms);
     }
 
     // ── POST /rooms — create room
     if (parts.length === 1 && req.method === "POST") {
-        const { hostName, playerName, roomName, description, playerLimit, isPrivate, hasPassword, password } = await req.json();
+        const { hostName, playerName, roomName, description, playerLimit, isPrivate, hasPassword, password, version } = await req.json();
         const code = await genCode();
         const roomId = crypto.randomUUID();
         
@@ -172,6 +176,7 @@ Deno.serve(async (req) => {
                 isPrivate: !!isPrivate,
                 hasPassword: !!hasPassword,
                 password: password || "",
+                version: version || "Unknown",
                 nextId: 1,
                 created: Date.now(),
                 players: [{ id: 0, name: host }],

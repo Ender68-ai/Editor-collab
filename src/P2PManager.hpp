@@ -74,6 +74,7 @@ namespace mpedit {
             int playerLimit = 100;
             bool isPrivate = false;
             bool hasPassword = false;
+            std::string version = "";
         };
 
         using FetchRoomsCb = std::function<void(std::vector<RoomInfo> const&)>;

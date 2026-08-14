@@ -359,7 +359,8 @@ namespace mpedit {
             {"description", settings.description},
             {"playerLimit", settings.playerLimit},
             {"isPrivate", settings.isPrivate},
-            {"hasPassword", settings.password != ""}
+            {"hasPassword", settings.password != ""},
+            {"version", geode::Mod::get()->getVersion().toVString()}
         });
         if (settings.password != "") {
             body.set("password", settings.password);
@@ -446,6 +447,7 @@ namespace mpedit {
                             info.playerLimit = roomJson.get<int>("playerLimit").unwrapOr(100);
                             info.isPrivate = roomJson.get<bool>("isPrivate").unwrapOr(false);
                             info.hasPassword = roomJson.get<bool>("hasPassword").unwrapOr(false);
+                            info.version = roomJson.get<std::string>("version").unwrapOr("Unknown");
                             rooms.push_back(info);
                         }
                     }

@@ -1,3 +1,9 @@
+# 0.5.1
+- Fixed overlapping UI in the room browser when there are a large numbers of rooms.
+- The room browser now shows the specific mod version being used by the host.
+- Rooms are now sorted by their time created, with newer lobbies being sorted first.
+- Now filters out rooms before the v0.5.0 update.
+
 # 0.5.0
 - Massive UI Overhaul! The legacy Multiplayer menu has been completely replaced with a more user friendly interface.
 - Added a public room browser to easily find and join active lobbies.
