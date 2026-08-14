@@ -33,3 +33,5 @@ server/.env
 # Local docs
 geode docs/
 
+build-android32/
+build-android64/

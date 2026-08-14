@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
         for await (const entry of kv.list({ prefix: ["rooms"] })) {
             if (entry.key.length === 2) {
                 const room = entry.value;
-                if (!room.isPrivate && room.version) {
+                if (!room.isPrivate && room.version && room.version !== "Unknown") {
                     rooms.push({
                         roomCode: entry.key[1],
                         hostName: room.hostName,

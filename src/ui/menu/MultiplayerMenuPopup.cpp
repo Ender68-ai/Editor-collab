@@ -175,7 +175,7 @@ namespace mpedit {
             nameLabel->setScale(0.45f);
             this->addChild(nameLabel);
 
-            auto hostStr = fmt::format("Host: {} (v{})", info.hostName, info.version);
+            auto hostStr = fmt::format("Host: {} ({})", info.hostName, info.version);
             auto hostLabel = CCLabelBMFont::create(hostStr.c_str(), "goldFont.fnt");
             hostLabel->setAnchorPoint({0, 0.5f});
             hostLabel->setPosition({12.f, 13.f});
@@ -375,7 +375,13 @@ namespace mpedit {
         SessionManager::get().onError(this, [this](std::string const& error) {
             geode::queueInMainThread([this, error]() {
                 this->setupRoomBrowser();
-                FLAlertLayer::create("Error", error, "OK")->show();
+                if (error.find("invalid password") != std::string::npos && !m_lastJoinCode.empty()) {
+                    P2PManager::RoomInfo fakeRoom;
+                    fakeRoom.roomCode = m_lastJoinCode;
+                    this->promptPassword(fakeRoom);
+                } else {
+                    FLAlertLayer::create("Error", error, "OK")->show();
+                }
             });
         });
 
