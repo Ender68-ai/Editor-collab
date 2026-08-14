@@ -6,14 +6,14 @@ Real-time collaborative level editing for Geometry Dash! Host a session, invite 
 
 ## Features
 
-- **Real-Time Collaborative Editing** — Host a session, share the 6-character room code, and build together.
-- **Instant Synchronization** — Placement, deletion, rotation, scaling, and movement are updated instantly across all connected clients.
-- **Isolated Undo/Redo Stacks** — Action history is tracked per player, meaning your undo/redo actions won't overwrite or disrupt your collaborators' builds.
-- **Player Cursors & Equipped Object Badges** — Track player movements live in the editor. Badges display next to player cursors showing the specific object they currently have selected.
-- **Playtesting Avatar Sync** — Watch collaborators playtest in the editor. Their standard mouse cursor transforms into their actual in-game avatar, syncing frames (cube, ship, ball, etc.), colors, custom glow outline, gravity flips, and orientation in real-time.
-- **Smart Object Locking** — Automatically locks selected objects to prevent multiple players from editing the same items simultaneously, ensuring no race conditions or crashes.
-- **Session HUD & Player List** — Keep track of room details with a built-in player list and status overlay showing the active session code.
-- **Join/Leave Notifications** — In-game notifications alert you when collaborators enter or leave the room.
+- **Real-Time Collaborative Editing:** Host a session, share the room code, and build together.
+- **Instant Synchronization:** Placement, deletion, rotation, scaling, and movement are updated across all connected clients.
+- **Isolated Undo/Redo Stacks:** Action history is tracked per player, meaning your undo/redo actions won't overwrite other players' actions.
+- **Player Cursors & Badges:** Track player movements live in the editor. Badges display next to player cursors showing the specific object they currently have selected.
+- **Playtesting icon Sync:** Watch players playtest in the editor.
+- **Smart Object Locking:** Automatically locks selected objects to prevent multiple players from editing the same objects, ensuring no race conditions or crashes.
+- **Session HUD & Player List:** Keep track of room details with a player list and status overlay showing the active session code.
+- **Join/Leave Notifications:** In-game notifications alert you when players enter or leave the room.
 
 ## How to Use
 
