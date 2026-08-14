@@ -220,6 +220,45 @@ namespace mpedit {
             for (auto& [id, cb] : callbacks) cb(info);
         });
 
+        net.on(proto::Opcode::PlayerJoined, [this](int fromPlayerId, proto::Reader& reader) {
+            auto msg = proto::deserializePlayerJoined(reader);
+            if (msg.name.empty()) return;
+
+            for (auto& p : m_players) {
+                if (p.id == msg.playerId) {
+                    p.name = msg.name;
+                    p.colorIndex = msg.colorIndex;
+                    return;
+                }
+            }
+
+            PlayerInfo info;
+            info.id = msg.playerId;
+            info.name = msg.name;
+            info.colorIndex = msg.colorIndex;
+            m_players.push_back(info);
+
+            auto callbacks = m_onPlayerJoined;
+            for (auto& [id, cb] : callbacks) cb(info);
+        });
+
+        net.on(proto::Opcode::PlayerLeft, [this](int fromPlayerId, proto::Reader& reader) {
+            int leftId = static_cast<int>(reader.readVarInt());
+            PlayerInfo leftPlayer;
+            for (auto it = m_players.begin(); it != m_players.end(); ++it) {
+                if (it->id == leftId) {
+                    leftPlayer = *it;
+                    m_players.erase(it);
+                    break;
+                }
+            }
+            if (!leftPlayer.name.empty()) {
+                auto callbacks = m_onPlayerLeft;
+                for (auto& [id, cb] : callbacks) cb(leftPlayer);
+            }
+        });
+
+
         net.onPeerDisconnected([this](int playerId) {
             PlayerInfo leftPlayer;
             for (auto it = m_players.begin(); it != m_players.end(); ++it) {

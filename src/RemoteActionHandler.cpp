@@ -1289,7 +1289,6 @@ namespace mpedit {
                 editor->m_levelSettings->m_fadeOut = newSettings->m_fadeOut;
                 editor->m_levelSettings->m_backgroundIndex = newSettings->m_backgroundIndex;
                 editor->m_levelSettings->m_groundIndex = newSettings->m_groundIndex;
-                editor->m_levelSettings->m_fontIndex = newSettings->m_fontIndex;
                 editor->m_levelSettings->m_middleGroundIndex = newSettings->m_middleGroundIndex;
                 editor->m_levelSettings->m_startsWithStartPos = newSettings->m_startsWithStartPos;
 

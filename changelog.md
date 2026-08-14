@@ -6,7 +6,7 @@
 - Added mod controls for hosts to kick, ban, or toggle players into view-only mode from the player list.
 - Fixed a major issue where pre-existing level objects would randomly jumble around when selected or moved.
 - Fixed issue where guests can only see the host, and no other players in lobbies with more than two people.
-- Added syncing to the levels font, background, ground, middleground, platformer mode toggle, starting mirror toggle, rotate gameplay toggle, and both audio fade toggles.
+- Added syncing to the levels background, ground, middleground, platformer mode toggle, and a bunch more.
 - Fixed a game crash when a host or guest abruptly disconnects when joining or editing.
 - Fixed joining session sometimes being stuck on "syncing level" due to connections dropping during the connecting to host process.
 - Fixed cursor and icon positions wildly teleporting around the editor in lobbies with more than 2 players.
@@ -23,6 +23,7 @@
 - Fixed crash on ARM devices where trying to change certain level settings crash the game.
 - Fixed issue where you softlock after hosting on mobile.
 - Removed some test files from the codebase.
+- Added role check for guests to prevent guests from potentially sending malicious "Relay" packets.
 - Updated to Geode 5.9.0.
 
 # 0.4.4

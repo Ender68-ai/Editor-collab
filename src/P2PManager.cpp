@@ -148,7 +148,7 @@ namespace mpedit {
                 const uint8_t* payloadData = msg.data.data();
                 size_t payloadLen = msg.data.size();
 
-                if (opcodeRaw == static_cast<uint8_t>(proto::Opcode::Relay)) {
+                if (m_role == Role::Client && opcodeRaw == static_cast<uint8_t>(proto::Opcode::Relay)) {
                     proto::Reader r(msg.data.data() + 1, msg.data.size() - 1);
                     fromId = static_cast<int>(r.readVarInt());
                     payloadLen = msg.data.size() - 1 - r.position();
@@ -290,6 +290,13 @@ namespace mpedit {
                 if (it->second.pc) it->second.pc->close();
                 m_peers.erase(it);
             }
+        }
+
+        if (m_role == Role::Host) {
+            proto::Writer w;
+            w.writeOpcode(proto::Opcode::PlayerLeft);
+            w.writeVarInt(static_cast<uint32_t>(playerId));
+            broadcast(w.data(), ChannelType::Reliable);
         }
 
         log::info("P2PManager: Player {} disconnected (unexpected={})", playerId, unexpected);
