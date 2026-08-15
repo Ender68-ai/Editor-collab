@@ -60,17 +60,6 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
 
         CCMenu* targetMenu = typeinfo_cast<CCMenu*>(this->getChildByID("center-button-menu"));
         
-        if (!targetMenu) {
-            for (CCNode* child : this->getChildrenExt()) {
-                if (auto* menu = typeinfo_cast<CCMenu*>(child)) {
-                    if (menu->getChildrenCount() >= 4) {
-                        targetMenu = menu;
-                        break;
-                    }
-                }
-            }
-        }
-
         if (targetMenu) {
             targetMenu->addChild(btn);
             targetMenu->updateLayout();
@@ -90,54 +79,13 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
             auto disableBtn = [this](const char* id) {
                 if (auto* btn = typeinfo_cast<CCMenuItemSpriteExtra*>(this->getChildByIDRecursive(id))) {
                     btn->setEnabled(false);
-                    if (auto* sprite = typeinfo_cast<cocos2d::CCSprite*>(btn->getNormalImage())) {
-                        sprite->setColor({100, 100, 100});
-                    }
-                }
-            };
-
-            auto disableBtnByText = [this](bool isSavePlay, bool isSaveExit) {
-                std::function<CCMenuItemSpriteExtra*(CCNode*)> findBtn = [&](CCNode* node) -> CCMenuItemSpriteExtra* {
-                    if (!node) return nullptr;
-                    if (auto* item = typeinfo_cast<CCMenuItemSpriteExtra*>(node)) {
-                        if (auto* normal = item->getNormalImage()) {
-                            std::function<CCLabelBMFont*(CCNode*)> findLabel = [&](CCNode* n) -> CCLabelBMFont* {
-                                if (auto* lbl = typeinfo_cast<CCLabelBMFont*>(n)) return lbl;
-                                if (n->getChildren()) {
-                                    for (auto* c : CCArrayExt<CCNode*>(n->getChildren())) {
-                                        if (auto* l = findLabel(c)) return l;
-                                    }
-                                }
-                                return nullptr;
-                            };
-                            if (auto* label = findLabel(normal)) {
-                                std::string s = label->getString();
-                                bool hasSave = s.find("Save") != std::string::npos;
-                                bool hasPlay = s.find("Play") != std::string::npos;
-                                bool hasExit = s.find("Exit") != std::string::npos;
-                                
-                                if (isSavePlay && hasSave && hasPlay) return item;
-                                if (isSaveExit && hasSave && hasExit) return item;
-                                if (!isSavePlay && !isSaveExit && hasSave && !hasPlay && !hasExit) return item;
-                            }
-                        }
-                    }
-                    if (node->getChildren()) {
-                        for (auto* c : CCArrayExt<CCNode*>(node->getChildren())) {
-                            if (auto* b = findBtn(c)) return b;
-                        }
-                    }
-                    return nullptr;
-                };
-
-                if (auto* btn = findBtn(this)) {
-                    btn->setEnabled(false);
-                    std::function<void(CCNode*)> grayOut = [&](CCNode* n) {
+                    std::function<void(cocos2d::CCNode*)> grayOut = [&](cocos2d::CCNode* n) {
+                        if (!n) return;
                         if (auto* rgba = typeinfo_cast<cocos2d::CCNodeRGBA*>(n)) {
                             rgba->setColor({100, 100, 100});
                         }
                         if (n->getChildren()) {
-                            for (auto* c : CCArrayExt<CCNode*>(n->getChildren())) {
+                            for (auto* c : CCArrayExt<cocos2d::CCNode*>(n->getChildren())) {
                                 grayOut(c);
                             }
                         }
@@ -148,15 +96,10 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
 
             if (session.getRole() == SessionManager::Role::Host) {
                 disableBtn("save-and-play-button");
-                disableBtnByText(true, false);
             } else if (session.getRole() == SessionManager::Role::Client) {
                 disableBtn("save-button");
                 disableBtn("save-and-play-button");
                 disableBtn("save-and-exit-button");
-                
-                disableBtnByText(false, false);
-                disableBtnByText(true, false);
-                disableBtnByText(false, true);
             }
         }
 

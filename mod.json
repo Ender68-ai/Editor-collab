@@ -11,6 +11,9 @@
     "version": "v0.5.1",
     "developer": "d050",
     "description": "Collaborate with friends in real-time level editing! Host a session and build together.",
+    "dependencies": {
+        "geode.node-ids": ">=1.0.0"
+    },
     "tags": [
         "editor",
         "online",
@@ -44,8 +47,8 @@
         "player-name": {
             "type": "string",
             "name": "Player Name",
-            "description": "Your display name in multiplayer sessions.",
-            "default": "Player"
+            "description": "Your display name in multiplayer sessions. Leave empty to automatically use your username.",
+            "default": ""
         },
         "display-section": {
             "type": "title",

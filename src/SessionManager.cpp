@@ -22,7 +22,13 @@ namespace mpedit {
             return;
         }
 
-        m_localPlayerName = playerName;
+        std::string actualName = playerName;
+        if (actualName == "Player" || actualName.empty()) {
+            actualName = GJAccountManager::sharedState()->m_username;
+            if (actualName.empty()) actualName = "Player";
+        }
+
+        m_localPlayerName = actualName;
         m_role = Role::Host;
 
         setupNetworkHandlers();
@@ -33,9 +39,9 @@ namespace mpedit {
         p2pSettings.isPrivate = settings.isPrivate;
         p2pSettings.password = settings.password;
 
-        P2PManager::get().hostSession(playerName, p2pSettings);
+        P2PManager::get().hostSession(actualName, p2pSettings);
 
-        log::info("SessionManager: Hosting session as '{}'", playerName);
+        log::info("SessionManager: Hosting session as '{}'", actualName);
     }
 
     void SessionManager::joinSession(std::string const& roomCode, std::string const& playerName, std::string const& password) {
@@ -44,14 +50,20 @@ namespace mpedit {
             return;
         }
 
-        m_localPlayerName = playerName;
+        std::string actualName = playerName;
+        if (actualName == "Player" || actualName.empty()) {
+            actualName = GJAccountManager::sharedState()->m_username;
+            if (actualName.empty()) actualName = "Player";
+        }
+
+        m_localPlayerName = actualName;
         m_roomCode = roomCode;
         m_role = Role::Client;
 
         setupNetworkHandlers();
-        P2PManager::get().joinSession(roomCode, playerName, password);
+        P2PManager::get().joinSession(roomCode, actualName, password);
 
-        log::info("SessionManager: Joining room '{}' as '{}'", roomCode, playerName);
+        log::info("SessionManager: Joining room '{}' as '{}'", roomCode, actualName);
     }
 
     void SessionManager::leaveSession() {
