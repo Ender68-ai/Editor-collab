@@ -28,7 +28,7 @@ Real-time collaborative level editing for Geometry Dash! Host a session, invite 
 
 1. Open any level in the Geometry Dash level editor.
 2. Click the **Multiplayer** button in the editor pause menu if hosting, or on the "My Levels" page if joining.
-3. Click **Host** to create a session and share the room code, or click **Join** and enter your friend's room code.
+3. Click **Host** to create a session and share the room code, or click **Join** and enter your friend's room code, or join through the public room browser.
 4. Once connected, your changes will sync automatically!
 
 ## Build Instructions

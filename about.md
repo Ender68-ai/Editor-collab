@@ -4,21 +4,21 @@ Collaborate with friends in real-time level editing! Host a session and build to
 
 ## Features
 
-- **Host & Join Sessions** — Create a room with a 6-character code and invite friends to join.
-- **Live Sync** — Object placement, deletion, movement, rotation, and scaling sync instantly across all players.
-- **Isolated Undo/Redo** — Action stacks are kept local, ensuring undoing a placement doesn't interfere with other players.
-- **Player Cursors & Equipped Badges** — View live player cursors with tool badges showing the object they currently have selected.
-- **Real-time Playtest Icons** — Watch players playtest in real time with their actual icons.
-- **Edit Locking** — Smart selection locks prevent multiple players from editing the same objects simultaneously, preventing conflicts or crashes.
-- **In-Editor HUD** — Displays connection state, room code, and a player list.
-- **Notifications** — Alerts when players join or leave the session.
+- **Real-Time Collaborative Editing:** Host a session, share the room code, and build together.
+- **Instant Synchronization:** Placement, deletion, rotation, scaling, and movement are updated across all connected clients.
+- **Isolated Undo/Redo Stacks:** Action history is tracked per player, meaning your undo/redo actions won't overwrite other players' actions.
+- **Player Cursors & Badges:** Track player movements live in the editor. Badges display next to player cursors showing the specific object they currently have selected.
+- **Playtesting icon Sync:** Watch players playtest in the editor.
+- **Smart Object Locking:** Automatically locks selected objects to prevent multiple players from editing the same objects, ensuring no race conditions or crashes.
+- **Session HUD & Player List:** Keep track of room details with a player list and status overlay showing the active session code.
+- **Join/Leave Notifications:** In-game notifications alert you when players enter or leave the room.
 
 ## How to Use
 
 1. Open any level in the editor.
 2. Click the **Multiplayer** button in the editor pause menu if hosting, or on the "My Levels" page if joining.
-3. **Host** a new session to generate a room code, or **Join** using a code shared by your friend.
-4. Build, edit, and playtest together in real-time!
+3. Click **Host** to create a session and share the room code, or click **Join** and enter your friend's room code, or join through the public room browser.
+4. Once connected, your changes will sync automatically!
 
 ## Server Configuration
 
