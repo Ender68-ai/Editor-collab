@@ -1,3 +1,6 @@
+# 0.5.3
+- Removed unncessary hooks in the edit object menu to fix crashes on android.
+
 # 0.5.2
 - Added node-ids to dependencies.
 - Cleaned up some code in EditorHooks.cpp.
