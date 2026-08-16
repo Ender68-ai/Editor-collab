@@ -1783,11 +1783,6 @@ class $modify(MPGJColorSetupLayer, GJColorSetupLayer) {
         }
     }
 
-    // Note: We intentionally do NOT hook colorSelectClosed here.
-    // It is a virtual from the secondary base class ColorSelectDelegate, and
-    // hooking it causes SIGILL crashes on Android (same issue as CustomizeObjectLayer).
-    // The syncColors() call in onClose/keyBackClicked covers this case.
-
     void onClose(cocos2d::CCObject* sender) {
         GJColorSetupLayer::onClose(sender);
         syncColors();
@@ -1909,15 +1904,6 @@ class $modify(MPCustomizeObjectLayer, CustomizeObjectLayer) {
             }
         }
     }
-
-    // Note: We intentionally only hook onClose/keyBackClicked here, NOT the
-    // delegate callbacks (colorSelectClosed, hsvPopupClosed, colorSetupClosed).
-    // Hooking virtual functions from secondary base classes (ColorSelectDelegate,
-    // HSVWidgetDelegate, ColorSetupDelegate) causes SIGILL crashes on Android
-    // because addresser::getVirtual resolves incorrect addresses for these
-    // multiple-inheritance delegate virtuals with [[link(android)]] symbol linking,
-    // corrupting nearby functions via misplaced inline hook patches.
-    // Syncing on close is sufficient since all changes are captured at that point.
 
     void onClose(cocos2d::CCObject* sender) {
         CustomizeObjectLayer::onClose(sender);
