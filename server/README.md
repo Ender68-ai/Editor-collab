@@ -1,8 +1,6 @@
-# Multiplayer Edit — Signaling Server
+# Multiplayer Edit Signaling Server
 
 This is the Deno Deploy signaling server that handles matchmaking and WebRTC SDP (Session Description Protocol) exchange for the Multiplayer Edit mod.
-
-> **Note**: As of v0.4.0, Multiplayer Edit uses WebRTC P2P connections and a new Deno Deploy signaling server. If you want to use the old NodeJS WebSocket relay server, please refer to the `MultiplayerEdit-LEGACY-0.3.0` release/branch for the 0.3.0 files.
 
 Because the mod uses WebRTC Data Channels, players connect directly to each other peer-to-peer (P2P). This server is **only** used for the initial handshake to exchange IP addresses and connection metadata. Once a player joins a room, all game data flows directly between players.
 

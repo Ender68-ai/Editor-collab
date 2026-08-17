@@ -59,7 +59,7 @@ The mod establishes direct Peer-to-Peer (P2P) connections between players using 
 
 See the [server/README.md](server/README.md) file for setup and hosting instructions. You can update the **Signaling Server URL** setting in the mod settings in-game to connect to your custom server.
 
-> **Note**: If you want to use the old centralized NodeJS WebSocket relay server, you will need to use version 0.3.0. Please refer to the `MultiplayerEdit-LEGACY-0.3.0` release for the older server files and compatible mod version.
+> **Note**: It is not recommended to use the old NodeJS WebSocket relay server (version 0.3.0 and older). Those older versions are much buggier and less stable compared to the newer P2P WebRTC releases.
 
 ## Support Development
 

@@ -1,13 +1,8 @@
-// Signaling server for WebRTC P2P connections (Deno Deploy)
-// Room metadata and signaling queues use Deno.Kv.
-// BroadcastChannel is used as a fast wake-up signal across isolates in the same region.
 
 const kv = await Deno.openKv();
-const ROOM_TTL = 2 * 60 * 60 * 1000; // 2 hours
-const CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L
+const ROOM_TTL = 2 * 60 * 60 * 1000;
+const CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
-// ── In-memory Wakeup State (Zero signaling data stored here) ──
-// code -> { hostResolver: Function|null, clientResolvers: Map<playerId, Function> }
 const sigRooms = new Map();
 
 function getSigRoom(code) {
@@ -25,10 +20,9 @@ function cleanupSigRoom(code) {
     }
 }
 
-// ── Cross-isolate relay via BroadcastChannel ─────────────────
 const bc = new BroadcastChannel("signaling_wake");
 bc.onmessage = (e) => {
-    const { roomCode, target } = e.data; // target: "host" or playerId
+    const { roomCode, target } = e.data;
     const room = sigRooms.get(roomCode);
     if (!room) return;
 
@@ -51,10 +45,8 @@ function wakeLocalAndBroadcast(code, target) {
     bc.postMessage({ roomCode: code, target });
 }
 
-// ── KV Queue Helpers ─────────────────────────────────────────
-
 async function enqueueKv(code, queueName, msg) {
-    // Give each message a unique, sortable key to prevent write conflicts
+
     const msgId = Date.now() + "_" + crypto.randomUUID();
     await kv.set(["rooms", code, queueName, msgId], msg, { expireIn: ROOM_TTL });
 }
@@ -63,16 +55,14 @@ async function dequeueKv(code, queueName) {
     const prefix = ["rooms", code, queueName];
     const msgs = [];
     const entriesToDelete = [];
-    
-    // Fetch all messages in the queue
+
     for await (const entry of kv.list({ prefix })) {
         msgs.push(entry.value);
         entriesToDelete.push(entry);
     }
-    
+
     if (msgs.length === 0) return [];
 
-    // Delete them in atomic batches (Deno KV allows max 10 mutations per atomic block)
     let atomic = kv.atomic();
     let ops = 0;
     for (const entry of entriesToDelete) {
@@ -87,11 +77,9 @@ async function dequeueKv(code, queueName) {
     if (ops > 0) {
         await atomic.commit();
     }
-    
+
     return msgs;
 }
-
-// ── Core HTTP ────────────────────────────────────────────────
 
 async function genCode() {
     let code;
@@ -130,7 +118,6 @@ Deno.serve(async (req) => {
 
     if (parts[0] !== "rooms") return json({ error: "not found" }, 404);
 
-    // ── GET /rooms — list public rooms
     if (parts.length === 1 && req.method === "GET") {
         const rooms = [];
         for await (const entry of kv.list({ prefix: ["rooms"] })) {
@@ -152,17 +139,16 @@ Deno.serve(async (req) => {
                 }
             }
         }
-        
+
         rooms.sort((a, b) => b.created - a.created);
         return json(rooms);
     }
 
-    // ── POST /rooms — create room
     if (parts.length === 1 && req.method === "POST") {
         const { hostName, playerName, roomName, description, playerLimit, isPrivate, hasPassword, password, version } = await req.json();
         const code = await genCode();
         const roomId = crypto.randomUUID();
-        
+
         const host = hostName || playerName || "Unknown";
 
         await kv.set(
@@ -180,8 +166,9 @@ Deno.serve(async (req) => {
                 nextId: 1,
                 created: Date.now(),
                 players: [{ id: 0, name: host }],
+                lastPing: Date.now(),
             },
-            { expireIn: ROOM_TTL }
+            { expireIn: 5 * 60 * 1000 }
         );
 
         return json({ roomCode: code, roomId });
@@ -190,7 +177,6 @@ Deno.serve(async (req) => {
     const code = parts[1]?.toUpperCase();
     const action = parts[2];
 
-    // ── GET /rooms/:code — room info
     if (parts.length === 2 && req.method === "GET") {
         const roomRes = await kv.get(["rooms", code]);
         const room = roomRes.value;
@@ -203,16 +189,13 @@ Deno.serve(async (req) => {
         });
     }
 
-    // ── DELETE /rooms/:code — close room
     if (parts.length === 2 && req.method === "DELETE") {
         await kv.delete(["rooms", code]);
         wakeLocalAndBroadcast(code, "host");
-        // We can't cleanly wake all clients across all isolates without iterating,
-        // but they will timeout anyway, which is fine for delete.
+
         return json({ ok: true });
     }
 
-    // ── POST /rooms/:code/join
     if (action === "join" && req.method === "POST") {
         const { playerName, password } = await req.json();
 
@@ -225,13 +208,13 @@ Deno.serve(async (req) => {
             const currentRes = await kv.get(["rooms", code]);
             const currentRoom = currentRes.value;
             if (!currentRoom) return json({ error: "room not found" }, 404);
-            
+
             if (currentRoom.hasPassword && currentRoom.password !== password)
                 return json({ error: "invalid password" }, 403);
-                
+
             if (currentRoom.banned && currentRoom.banned.includes(playerName))
                 return json({ error: "you are banned" }, 403);
-                
+
             if (currentRoom.playerLimit > 0 && currentRoom.players.length >= currentRoom.playerLimit)
                 return json({ error: "room full" }, 400);
 
@@ -242,7 +225,7 @@ Deno.serve(async (req) => {
             const commit = await kv
                 .atomic()
                 .check(currentRes)
-                .set(["rooms", code], currentRoom, { expireIn: ROOM_TTL })
+                .set(["rooms", code], currentRoom, { expireIn: 5 * 60 * 1000 })
                 .commit();
 
             success = commit.ok;
@@ -258,7 +241,6 @@ Deno.serve(async (req) => {
         return json({ playerId, hostName });
     }
 
-    // ── POST /rooms/:code/ban
     if (action === "ban" && req.method === "POST") {
         const { playerName } = await req.json();
 
@@ -278,7 +260,7 @@ Deno.serve(async (req) => {
             const commit = await kv
                 .atomic()
                 .check(currentRes)
-                .set(["rooms", code], currentRoom, { expireIn: ROOM_TTL })
+                .set(["rooms", code], currentRoom, { expireIn: 5 * 60 * 1000 })
                 .commit();
 
             success = commit.ok;
@@ -288,7 +270,6 @@ Deno.serve(async (req) => {
         return json({ ok: true });
     }
 
-    // ── POST /rooms/:code/leave
     if (action === "leave" && req.method === "POST") {
         const { playerId } = await req.json();
 
@@ -305,7 +286,7 @@ Deno.serve(async (req) => {
             const commit = await kv
                 .atomic()
                 .check(currentRes)
-                .set(["rooms", code], currentRoom, { expireIn: ROOM_TTL })
+                .set(["rooms", code], currentRoom, { expireIn: 5 * 60 * 1000 })
                 .commit();
 
             success = commit.ok;
@@ -314,7 +295,6 @@ Deno.serve(async (req) => {
         return json({ ok: success });
     }
 
-    // ── GET /rooms/:code/signal — Long poll endpoint
     if (action === "signal" && req.method === "GET") {
         const role = url.searchParams.get("role");
         const playerId = Number(url.searchParams.get("playerId") || "0");
@@ -322,7 +302,30 @@ Deno.serve(async (req) => {
         const target = role === "host" ? "host" : playerId;
         const room = getSigRoom(code);
 
-        // Check KV immediately
+        if (role === "host") {
+
+            let success = false;
+            let retries = 3;
+            while (!success && retries > 0) {
+                const currentRes = await kv.get(["rooms", code]);
+                if (!currentRes.value) break;
+
+                const now = Date.now();
+
+                if (currentRes.value.lastPing && now - currentRes.value.lastPing < 30000) {
+                    break;
+                }
+
+                currentRes.value.lastPing = now;
+                const commit = await kv.atomic()
+                    .check(currentRes)
+                    .set(["rooms", code], currentRes.value, { expireIn: 5 * 60 * 1000 })
+                    .commit();
+                success = commit.ok;
+                retries--;
+            }
+        }
+
         const initialMsgs = await dequeueKv(code, queueName);
         if (initialMsgs.length > 0) return json(initialMsgs);
 
@@ -333,7 +336,7 @@ Deno.serve(async (req) => {
                 if (isResolved) return;
                 isResolved = true;
                 clearTimeout(timer);
-                
+
                 if (role === "host") room.hostResolver = null;
                 else room.clientResolvers.delete(playerId);
                 cleanupSigRoom(code);
@@ -342,26 +345,22 @@ Deno.serve(async (req) => {
                 resolve(json(msgs));
             };
 
-            // Wake up on BroadcastChannel (cross-isolate) or local wake
             if (role === "host") room.hostResolver = complete;
             else room.clientResolvers.set(playerId, complete);
 
-            // Timeout after 25 seconds — client will re-poll, which
-            // gives us a natural KV check every 25s as a fallback.
             const timer = setTimeout(() => {
                 if (isResolved) return;
                 isResolved = true;
-                
+
                 if (role === "host") room.hostResolver = null;
                 else room.clientResolvers.delete(playerId);
                 cleanupSigRoom(code);
-                
-                resolve(json([])); // resolve empty to restart poll
+
+                resolve(json([]));
             }, 25000);
         });
     }
 
-    // ── POST /rooms/:code/signal — Send signaling message
     if (action === "signal" && req.method === "POST") {
         const msg = await req.json();
         let targetQueue = "";
