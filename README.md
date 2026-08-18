@@ -61,6 +61,8 @@ See the [server/README.md](server/README.md) file for setup and hosting instruct
 
 > **Note**: It is not recommended to use the old NodeJS WebSocket relay server (version 0.3.0 and older). Those older versions are much buggier and less stable compared to the newer P2P WebRTC releases.
 
+## [Join the Official Discord Server!](https://discord.gg/mdsuxYu2YP)
+
 ## Support Development
 
 If you enjoy this mod or any of my other projects, consider supporting future development on [Patreon](https://www.patreon.com/c/d050/membership)!
