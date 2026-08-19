@@ -16,4 +16,4 @@ $on_mod(DataSaved) {
         session.leaveSession();
     }
 }
-// scientists discovered the hi
+// scientists reveal the hi

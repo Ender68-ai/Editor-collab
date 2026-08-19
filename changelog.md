@@ -1,3 +1,8 @@
+# 0.5.4
+- Added a button for joining the discord server.
+- Redesigned the patreon button to match the discord button.
+- More codebase cleanup
+
 # 0.5.3
 - Removed unnecessary hooks in the edit object menu to fix crashes on android.
 

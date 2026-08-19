@@ -4,6 +4,8 @@
 
 Real-time collaborative level editing for Geometry Dash! Host a session, invite your friends with a room code, and build levels together in real-time.
 
+## [Join the Official Discord Server!](https://discord.gg/mdsuxYu2YP)
+
 ## Features
 
 - **Real-Time Collaborative Editing:** Host a session, share the room code, and build together.
@@ -14,8 +16,6 @@ Real-time collaborative level editing for Geometry Dash! Host a session, invite 
 - **Smart Object Locking:** Automatically locks selected objects to prevent multiple players from editing the same objects, ensuring no race conditions or crashes.
 - **Session HUD & Player List:** Keep track of room details with a player list and status overlay showing the active session code.
 - **Join/Leave Notifications:** In-game notifications alert you when players enter or leave the room.
-
-## [Join the Official Discord Server!](https://discord.gg/mdsuxYu2YP)
 
 ## How to Use
 

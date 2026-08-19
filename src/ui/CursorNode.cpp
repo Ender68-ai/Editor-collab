@@ -19,8 +19,8 @@ namespace mpedit {
 
     ccColor3B CursorNode::getColorForIndex(int index) {
         static const std::array<ccColor3B, 6> colors = {
-            ccColor3B{100, 200, 255},  // Blue
-            ccColor3B{255, 120, 100},  // Red
+            ccColor3B{100, 200, 255},
+            ccColor3B{255, 120, 100},
             ccColor3B{100, 255, 150},
             ccColor3B{255, 200, 100},
             ccColor3B{200, 150, 255},
@@ -45,7 +45,7 @@ namespace mpedit {
         if (!session.isInSession()) {
             this->removeAllChildren();
             m_cursors.clear();
-            m_selectionDrawNode = nullptr; // Since removeAllChildren deleted it
+            m_selectionDrawNode = nullptr;
             return;
         }
         
@@ -155,14 +155,14 @@ namespace mpedit {
                     ccColor4F bgColor;
                     std::string modeText;
                     bool hasIndicator = true;
-                    if (mode == 2) { // Build
-                        bgColor = {0.12f, 0.56f, 1.0f, 0.9f}; // Dodger Blue
+                    if (mode == 2) {
+                        bgColor = {0.12f, 0.56f, 1.0f, 0.9f};
                         modeText = "BUILD";
-                    } else if (mode == 1) { // Delete
-                        bgColor = {1.0f, 0.25f, 0.25f, 0.9f}; // Red
+                    } else if (mode == 1) {
+                        bgColor = {1.0f, 0.25f, 0.25f, 0.9f};
                         modeText = "DELETE";
-                    } else if (mode == 3) { // Edit
-                        bgColor = {1.0f, 0.6f, 0.07f, 0.9f}; // Orange
+                    } else if (mode == 3) {
+                        bgColor = {1.0f, 0.6f, 0.07f, 0.9f};
                         modeText = "EDIT";
                     } else {
                         hasIndicator = false;
@@ -359,7 +359,7 @@ namespace mpedit {
                     activeIconId = swingFrame;
                     activeIconType = IconType::Swing;
                 } else if (iconType == 8) {
-                    activeIconId = shipFrame; // Jetpack uses ship frame
+                    activeIconId = shipFrame;
                     activeIconType = IconType::Jetpack;
                 }
                 
@@ -397,7 +397,7 @@ namespace mpedit {
                         p2ActiveIconId = swingFrame;
                         p2ActiveIconType = IconType::Swing;
                     } else if (p2IconType == 8) {
-                        p2ActiveIconId = shipFrame; // Jetpack uses ship frame
+                        p2ActiveIconId = shipFrame;
                         p2ActiveIconType = IconType::Jetpack;
                     }
                     

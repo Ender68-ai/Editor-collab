@@ -34,6 +34,7 @@ namespace mpedit {
         void onRefresh(cocos2d::CCObject*);
         void onHostForm(cocos2d::CCObject*);
         void onLeave(cocos2d::CCObject*);
+        void onDiscord(cocos2d::CCObject*);
         void onPatreon(cocos2d::CCObject*);
         void onCopyCode(cocos2d::CCObject*);
         void onJoinByCode(cocos2d::CCObject*);

@@ -87,12 +87,12 @@ namespace mpedit {
 
             case P2PManager::State::Disconnected:
                 statusText = "MP: Disconnected";
-                color = {255, 100, 100}; // Red
+                color = {255, 100, 100};
                 break;
 
             case P2PManager::State::Error:
                 statusText = fmt::format("MP: Error - {}", errStr);
-                color = {255, 100, 100}; // Red
+                color = {255, 100, 100};
                 break;
         }
 

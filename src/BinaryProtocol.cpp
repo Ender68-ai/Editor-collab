@@ -147,7 +147,6 @@ namespace mpedit::proto {
         return s;
     }
 
-    // ── Complete message serializers ─────────────────────────
 
     std::vector<uint8_t> serializePlaceObjects(
         std::vector<ActionSerializer::ObjectData> const& objects)
@@ -331,7 +330,6 @@ namespace mpedit::proto {
         return std::move(w.takeData());
     }
 
-    // Deserialization
 
     PlaceObjectsMsg deserializePlaceObjects(Reader& r) {
         PlaceObjectsMsg msg;

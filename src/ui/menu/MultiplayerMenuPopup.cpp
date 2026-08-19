@@ -5,14 +5,13 @@
 #include "../core/BasePopup.hpp"
 #include "../UpdateHelperNode.hpp"
 #include <Geode/ui/TextInput.hpp>
+#include <Geode/ui/BasedButtonSprite.hpp>
 #include <Geode/utils/web.hpp>
 
 using namespace geode::prelude;
 
 namespace mpedit {
 
-    // =========================================================================
-    // =========================================================================
 
     class PasswordPopup : public BasePopup {
     protected:
@@ -58,8 +57,6 @@ namespace mpedit {
         }
     };
 
-    // =========================================================================
-    // =========================================================================
 
     class PlayerControlsPopup : public BasePopup {
     protected:
@@ -299,8 +296,6 @@ namespace mpedit {
         }
     };
 
-    // =========================================================================
-    // =========================================================================
 
     MultiplayerMenuPopup* MultiplayerMenuPopup::create() {
         auto ret = new MultiplayerMenuPopup();
@@ -400,15 +395,23 @@ namespace mpedit {
 
     void MultiplayerMenuPopup::setupMenus() {
         auto topMenu = CCMenu::create();
-        topMenu->setContentSize({50.f, 40.f});
-        topMenu->setPosition(this->fromTopRight(15.f, 15.f));
+        topMenu->setContentSize({80.f, 40.f});
+        topMenu->setPosition(this->fromTopRight(10.f, 10.f));
         topMenu->setAnchorPoint({1.f, 1.f});
-        topMenu->setLayout(RowLayout::create()->setAxisAlignment(AxisAlignment::End));
+        topMenu->setLayout(RowLayout::create()->setAxisAlignment(AxisAlignment::End)->setGap(5.f));
         m_uiMenu->addChild(topMenu);
 
-        auto patreonSprite = ButtonSprite::create("Patreon", "goldFont.fnt", "GJ_button_02.png", 0.8f);
-        patreonSprite->setScale(0.6f);
-        auto patreonBtn = CCMenuItemSpriteExtra::create(patreonSprite, this, menu_selector(MultiplayerMenuPopup::onPatreon));
+        auto discordSpr = CCSprite::createWithSpriteFrameName("gj_discordIcon_001.png");
+        discordSpr->setScale(1.0f);
+        auto discordBtn = CCMenuItemSpriteExtra::create(discordSpr, this, menu_selector(MultiplayerMenuPopup::onDiscord));
+        topMenu->addChild(discordBtn);
+
+        auto patreonIcon = CCSprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
+        auto patreonSpr = CircleButtonSprite::create(
+            patreonIcon, CircleBaseColor::Pink, CircleBaseSize::Small
+        );
+        patreonSpr->setScale(0.85f);
+        auto patreonBtn = CCMenuItemSpriteExtra::create(patreonSpr, this, menu_selector(MultiplayerMenuPopup::onPatreon));
         topMenu->addChild(patreonBtn);
         topMenu->updateLayout();
 
@@ -727,8 +730,26 @@ namespace mpedit {
         }
     }
 
+    void MultiplayerMenuPopup::onDiscord(CCObject*) {
+        createQuickPopup(
+            "Discord",
+            "Join the <cy>Multiplayer Edit</c> Discord server?",
+            "Cancel", "Join",
+            [](auto, bool btn2) {
+                if (btn2) geode::utils::web::openLinkInBrowser("https://discord.gg/mdsuxYu2YP");
+            }
+        );
+    }
+
     void MultiplayerMenuPopup::onPatreon(CCObject*) {
-        geode::utils::web::openLinkInBrowser("https://www.patreon.com/cw/d050/membership");
+        createQuickPopup(
+            "Patreon",
+            "Support me on <cy>Patreon</c>?",
+            "Cancel", "Open",
+            [](auto, bool btn2) {
+                if (btn2) geode::utils::web::openLinkInBrowser("https://www.patreon.com/cw/d050/membership");
+            }
+        );
     }
 
     void MultiplayerMenuPopup::onCopyCode(CCObject*) {
