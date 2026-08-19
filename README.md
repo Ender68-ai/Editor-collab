@@ -27,37 +27,29 @@ Real-time collaborative level editing for Geometry Dash! Host a session, invite 
 4. Restart Geometry Dash.
 
 ### Using the Mod
+1. Open any level in the editor.
+2. Click the **Multiplayer** button (in the pause menu if you're hosting, or on the "my levels" page if you're joining).
+3. Host a room, find a public lobby, or type in your friend's code to join theirs.
 
-1. Open any level in the Geometry Dash level editor.
-2. Click the **Multiplayer** button in the editor pause menu if hosting, or on the "My Levels" page if joining.
-3. Click **Host** to create a session and share the room code, or click **Join** and enter your friend's room code, or join through the public room browser.
-4. Once connected, your changes will sync automatically!
+## Building from source
 
-## Build Instructions
-
-To build the mod from source, you will need the [Geode SDK and CLI](https://docs.geode-sdk.org/) installed.
+You'll need the [Geode SDK and CLI](https://docs.geode-sdk.org/).
 
 ```sh
-# Clone the repository
 git clone https://github.com/xXoanon/MultiplayerEdit.git
 cd MultiplayerEdit
-
-# Build the mod for the default platform
 geode build
 ```
 
-To build targeting specific platforms (e.g. Android or Windows cross-compilation on Linux):
+To build for specific platforms (like Android, or Windows on Linux):
 ```sh
-# Windows (on Linux)
 geode build --platform win
-
-# Android (64-bit)
 geode build --platform android64
 ```
 
-## Running the Signaling Server
+## Signaling Server
 
-The mod establishes direct Peer-to-Peer (P2P) connections between players using WebRTC. However, it requires a lightweight signaling server to exchange initial connection information to matchmake players. A public default signaling server is configured by default (`https://dewy-flea-9364.d050.deno.net`), but you can host your own.
+The mod uses WebRTC for P2P connections between players. To actually find each other though, it needs a signaling server. By default, it connects to a free public one I made (`https://dewy-flea-9364.d050.deno.net`), but you can host your own. 
 
 See the [server/README.md](server/README.md) file for setup and hosting instructions. You can update the **Signaling Server URL** setting in the mod settings in-game to connect to your custom server.
 
