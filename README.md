@@ -15,6 +15,8 @@ Real-time collaborative level editing for Geometry Dash! Host a session, invite 
 - **Session HUD & Player List:** Keep track of room details with a player list and status overlay showing the active session code.
 - **Join/Leave Notifications:** In-game notifications alert you when players enter or leave the room.
 
+## [Join the Official Discord Server!](https://discord.gg/mdsuxYu2YP)
+
 ## How to Use
 
 ### Installation
@@ -60,8 +62,6 @@ The mod establishes direct Peer-to-Peer (P2P) connections between players using 
 See the [server/README.md](server/README.md) file for setup and hosting instructions. You can update the **Signaling Server URL** setting in the mod settings in-game to connect to your custom server.
 
 > **Note**: It is not recommended to use the old NodeJS WebSocket relay server (version 0.3.0 and older). Those older versions are much buggier and less stable compared to the newer P2P WebRTC releases.
-
-## [Join the Official Discord Server!](https://discord.gg/mdsuxYu2YP)
 
 ## Support Development
 
