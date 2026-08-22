@@ -3,6 +3,7 @@
 #include "RemoteActionHandler.hpp"
 
 #include <rtc/rtc.hpp>
+#include <rtc/websocket.hpp>
 #include <Geode/Geode.hpp>
 #include <Geode/utils/web.hpp>
 #include <thread>
@@ -121,15 +122,17 @@ namespace mpedit {
         if (m_dispatching) return;
         m_dispatching = true;
 
-        static auto lastHeartbeatTime = std::chrono::steady_clock::now();
-        auto now = std::chrono::steady_clock::now();
-        if (now - lastHeartbeatTime > std::chrono::seconds(10)) {
-            lastHeartbeatTime = now;
-            std::vector<uint8_t> heartbeatData = { static_cast<uint8_t>(proto::Opcode::Heartbeat) };
-            if (m_role == Role::Host) {
-                broadcast(heartbeatData, ChannelType::Unreliable);
-            } else if (m_role == Role::Client) {
-                sendTo(0, heartbeatData, ChannelType::Unreliable);
+        if (!m_isDedicated) {
+            static auto lastHeartbeatTime = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            if (now - lastHeartbeatTime > std::chrono::seconds(10)) {
+                lastHeartbeatTime = now;
+                std::vector<uint8_t> heartbeatData = { static_cast<uint8_t>(proto::Opcode::Heartbeat) };
+                if (m_role == Role::Host) {
+                    broadcast(heartbeatData, ChannelType::Unreliable);
+                } else if (m_role == Role::Client) {
+                    sendTo(0, heartbeatData, ChannelType::Unreliable);
+                }
             }
         }
 
@@ -195,6 +198,17 @@ namespace mpedit {
     }
 
     void P2PManager::sendTo(int playerId, std::vector<uint8_t> const& data, ChannelType channel) {
+        if (m_isDedicated) {
+            if (m_webSocket && m_webSocket->readyState() == rtc::WebSocket::State::Open) {
+                try {
+                    m_webSocket->send(reinterpret_cast<const std::byte*>(data.data()), data.size());
+                } catch (std::exception const& e) {
+                    log::warn("P2PManager: WebSocket send failed: {}", e.what());
+                }
+            }
+            return;
+        }
+
         std::lock_guard lock(m_peersMutex);
         auto it = m_peers.find(playerId);
         if (it == m_peers.end()) return;
@@ -276,7 +290,8 @@ namespace mpedit {
             auto url = getSignalingUrl() + "/rooms/" + m_roomCode + "/ban";
             auto req = geode::utils::web::WebRequest();
             req.header("Content-Type", "application/json");
-            auto body = matjson::makeObject({{"playerName", playerName}});
+            auto body = matjson::makeObject({{"playerName", playerName},
+            {"iconStr", fmt::format("{}:{}:{}:{}:{}", GameManager::sharedState()->getPlayerFrame(), GameManager::sharedState()->getPlayerColor(), GameManager::sharedState()->getPlayerColor2(), GameManager::sharedState()->getPlayerGlow() ? 1 : 0, GameManager::sharedState()->getPlayerGlowColor())}});
             req.bodyJSON(body);
             async::spawn(req.send("POST", url));
         }
@@ -426,13 +441,19 @@ namespace mpedit {
         );
     }
 
-    void P2PManager::fetchRooms(FetchRoomsCb cb) {
-        auto url = getSignalingUrl() + "/rooms";
+    void P2PManager::fetchRooms(FetchRoomsCb cb, std::string const& customUrl) {
+        auto url = customUrl.empty() ? getSignalingUrl() + "/rooms" : customUrl + "/rooms";
+
+        if (!customUrl.empty()) {
+            if (url.starts_with("ws://")) url.replace(0, 5, "http://");
+            else if (url.starts_with("wss://")) url.replace(0, 6, "https://");
+        }
+        
         auto req = geode::utils::web::WebRequest();
         
         m_signalingListener.spawn(
             req.get(url),
-            [cb](geode::utils::web::WebResponse res) {
+            [cb, customUrl](geode::utils::web::WebResponse res) {
                 std::vector<RoomInfo> rooms;
                 if (res.ok()) {
                     auto json = res.json().unwrapOr(matjson::Value());
@@ -448,6 +469,7 @@ namespace mpedit {
                             info.isPrivate = roomJson.get<bool>("isPrivate").unwrapOr(false);
                             info.hasPassword = roomJson.get<bool>("hasPassword").unwrapOr(false);
                             info.version = roomJson.get<std::string>("version").unwrapOr("Unknown");
+                            info.serverUrl = customUrl;
                             rooms.push_back(info);
                         }
                     }
@@ -460,6 +482,7 @@ namespace mpedit {
 
 
     void P2PManager::startSignalPolling(std::string const& code, std::string const& role, int playerId) {
+        extendFastPoll();
         m_signalingActive.store(true);
         log::info("P2PManager: Starting signaling long poll (role={}, playerId={})", role, playerId);
         pollSignalOnce(code, role, playerId);
@@ -468,7 +491,12 @@ namespace mpedit {
     void P2PManager::pollSignalOnce(std::string const& code, std::string const& role, int playerId) {
         if (!m_signalingActive.load()) return;
 
-        auto url = getSignalingUrl() + "/rooms/" + code + "/signal?role=" + role + "&playerId=" + std::to_string(playerId);
+        float timeoutSec = 5.0f;
+        if (std::chrono::steady_clock::now() < m_fastPollEndTime) {
+            timeoutSec = 0.0f;
+        }
+
+        auto url = getSignalingUrl() + "/rooms/" + code + "/signal?role=" + role + "&playerId=" + std::to_string(playerId) + "&timeout=" + std::to_string(static_cast<int>(timeoutSec * 1000));
 
         auto req = web::WebRequest();
         req.timeout(std::chrono::seconds(30));
@@ -486,10 +514,24 @@ namespace mpedit {
                 }
 
                 if (m_signalingActive.load()) {
-                    pollSignalOnce(code, role, playerId);
+                    float delay = 10.0f;
+                    if (std::chrono::steady_clock::now() < m_fastPollEndTime) {
+                        delay = 0.5f;
+                    }
+                    
+                    std::thread([this, code, role, playerId, delay]() {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(delay * 1000)));
+                        geode::queueInMainThread([this, code, role, playerId]() {
+                            pollSignalOnce(code, role, playerId);
+                        });
+                    }).detach();
                 }
             }
         );
+    }
+
+    void P2PManager::extendFastPoll() {
+        m_fastPollEndTime = std::chrono::steady_clock::now() + std::chrono::seconds(15);
     }
 
     void P2PManager::stopSignalPolling() {
@@ -498,6 +540,7 @@ namespace mpedit {
     }
 
     void P2PManager::sendSignalingMessage(std::string const& roomCode, matjson::Value const& msg) {
+        extendFastPoll();
         auto url = getSignalingUrl() + "/rooms/" + roomCode + "/signal";
         auto req = web::WebRequest();
         req.header("Content-Type", "application/json");
@@ -507,6 +550,7 @@ namespace mpedit {
 
     void P2PManager::handleSignalingMessages(matjson::Value const& messages) {
         if (!messages.isArray()) return;
+        if (messages.size() > 0) extendFastPoll();
 
         for (size_t i = 0; i < messages.size(); i++) {
             auto msgOpt = messages.get(i);
@@ -518,6 +562,7 @@ namespace mpedit {
             if (type == "client_joined") {
                 int clientId = msg.get<int>("playerId").unwrapOr(-1);
                 auto clientName = msg.get<std::string>("playerName").unwrapOr("Player " + std::to_string(clientId));
+                auto iconStr = msg.get<std::string>("iconStr").unwrapOr("");
                 if (clientId >= 0) {
                     log::info("P2PManager: Client {} ({}) connecting via signal poll", clientId, clientName);
                     
@@ -536,7 +581,7 @@ namespace mpedit {
                         sendSignalingMessage(m_roomCode, errBody);
                     } else {
                         m_nextPlayerId = std::max(m_nextPlayerId, clientId + 1);
-                        createHostPeer(clientId, clientName);
+                        createHostPeer(clientId, clientName, iconStr);
                     }
                 }
             } else if (type == "answer") {
@@ -587,6 +632,12 @@ namespace mpedit {
                             it->second.pendingCandidates.clear();
 
                             it->second.pc->setLocalDescription();
+                            
+                            if (m_role == Role::Client) {
+                                queueInMainThread([this]() {
+                                    for (auto& cb : m_onStatus) cb("Host found! Synchronizing...");
+                                });
+                            }
                         } else {
                             log::warn("P2PManager: Ignoring duplicate offer (state={})", (int)state);
                         }
@@ -602,12 +653,21 @@ namespace mpedit {
                     std::lock_guard lock(m_peersMutex);
                     auto it = m_peers.find(fromId);
                     if (it != m_peers.end() && it->second.pc) {
+                        it->second.remoteIceCount++;
                         if (it->second.pc->remoteDescription().has_value()) {
                             rtc::Candidate rtcCand(cand, mid);
                             it->second.pc->addRemoteCandidate(rtcCand);
                         } else {
                             log::info("P2PManager: Remote description not set, buffering candidate from {}", fromId);
                             it->second.pendingCandidates.push_back({cand, mid});
+                        }
+                        
+                        if (m_role == Role::Client && m_state.load() == State::Connecting && fromId == 0) {
+                            queueInMainThread([this, localCount = it->second.localIceCount, remoteCount = it->second.remoteIceCount]() {
+                                for (auto& cb : m_onStatus) {
+                                    cb(fmt::format("Finding best connection route ({}/{})...", localCount, remoteCount));
+                                }
+                            });
                         }
                     }
                 }
@@ -647,7 +707,7 @@ namespace mpedit {
         if (m_signalingActive) return;
         m_signalingActive = true;
 
-        for (auto& cb : m_onStatus) cb("Connecting to signaling server...");
+        for (auto& cb : m_onStatus) cb("Connecting to lobby...");
 
         auto req = geode::utils::web::WebRequest();
         req.header("Content-Type", "application/json");
@@ -655,7 +715,8 @@ namespace mpedit {
         matjson::Value body = matjson::makeObject({
             {"action", "join"},
             {"roomCode", roomCode},
-            {"playerName", playerName}
+            {"playerName", playerName},
+            {"iconStr", fmt::format("{}:{}:{}:{}:{}", GameManager::sharedState()->getPlayerFrame(), GameManager::sharedState()->getPlayerColor(), GameManager::sharedState()->getPlayerColor2(), GameManager::sharedState()->getPlayerGlow() ? 1 : 0, GameManager::sharedState()->getPlayerGlowColor())}
         });
         if (password != "") {
             body.set("password", password);
@@ -688,7 +749,7 @@ namespace mpedit {
                         return;
                     }
 
-                    for (auto& cb : m_onStatus) cb("Establishing peer connection...");
+                    for (auto& cb : m_onStatus) cb("Waiting for Host...");
                     log::info("P2PManager: Joined room {} as player {}", roomCode, m_localPlayerId);
 
                     auto pc = std::make_shared<rtc::PeerConnection>(makeRtcConfig());
@@ -716,6 +777,9 @@ namespace mpedit {
 
                         dc->onOpen([this, isReliable]() {
                             log::info("P2PManager: {} channel to host opened", isReliable ? "Reliable" : "Unreliable");
+                            queueInMainThread([this]() {
+                                for (auto& cb : m_onStatus) cb("Opening game data streams...");
+                            });
                             checkPeerReady(0);
                         });
 
@@ -739,6 +803,17 @@ namespace mpedit {
                         body["mid"] = std::string(candidate.mid());
                         body["playerId"] = myId;
                         queueInMainThread([this, roomCode, body]() {
+                            {
+                                std::lock_guard lock(m_peersMutex);
+                                if (m_peers.find(0) != m_peers.end()) {
+                                    m_peers[0].localIceCount++;
+                                    if (m_state.load() == State::Connecting) {
+                                        for (auto& cb : m_onStatus) {
+                                            cb(fmt::format("Finding best connection route ({}/{})...", m_peers[0].localIceCount, m_peers[0].remoteIceCount));
+                                        }
+                                    }
+                                }
+                            }
                             sendSignalingMessage(roomCode, body);
                         });
                     });
@@ -798,8 +873,19 @@ namespace mpedit {
                             std::string stateStr;
                             switch (state) {
                                 case rtc::PeerConnection::State::New: stateStr = "New"; break;
-                                case rtc::PeerConnection::State::Connecting: stateStr = "Connecting (ICE)..."; break;
-                                case rtc::PeerConnection::State::Connected: stateStr = "Waiting for data channels..."; break;
+                                case rtc::PeerConnection::State::Connecting: {
+                                    int l = 0, r = 0;
+                                    {
+                                        std::lock_guard lock(m_peersMutex);
+                                        if (m_peers.find(0) != m_peers.end()) {
+                                            l = m_peers.at(0).localIceCount;
+                                            r = m_peers.at(0).remoteIceCount;
+                                        }
+                                    }
+                                    stateStr = fmt::format("Finding best connection route ({}/{})...", l, r);
+                                    break;
+                                }
+                                case rtc::PeerConnection::State::Connected: stateStr = "Route found! Securing connection..."; break;
                                 case rtc::PeerConnection::State::Disconnected: stateStr = "Disconnected"; break;
                                 case rtc::PeerConnection::State::Failed: stateStr = "Connection Failed"; break;
                                 case rtc::PeerConnection::State::Closed: stateStr = "Closed"; break;
@@ -852,10 +938,82 @@ namespace mpedit {
             }
         );
     }
+    void P2PManager::joinDedicatedServer(std::string const& url, std::string const& roomCode, std::string const& playerName, std::string const& password) {
+        {
+            std::lock_guard lock(m_stateMutex);
+            if (m_state.load() != State::Disconnected && m_state.load() != State::Error) {
+                return;
+            }
+            m_state.store(State::Connecting);
+            m_role = Role::Client;
+            m_roomCode = roomCode;
+            m_localPlayerName = playerName;
+            m_isDedicated = true;
+        }
+        for (auto& cb : m_onStatus) cb("Connecting to server...");
+
+        std::string fullUrl = url + "/" + roomCode;
+        if (!password.empty()) fullUrl += "?password=" + password;
+
+        rtc::WebSocketConfiguration wsConfig;
+        wsConfig.pingInterval = std::chrono::milliseconds(0);
+        m_webSocket = std::make_shared<rtc::WebSocket>(wsConfig);
+        
+        m_webSocket->onOpen([this]() {
+            queueInMainThread([this]() {
+                for (auto& cb : m_onStatus) cb("Connected! Handshaking...");
+                
+                m_state.store(State::Connected);
+
+                std::string iconStr = "";
+                if (auto gm = GameManager::sharedState()) {
+                    iconStr = fmt::format("{}:{}:{}:{}:{}", gm->getPlayerFrame(), gm->getPlayerColor(), gm->getPlayerColor2(), gm->getPlayerGlow() ? 1 : 0, gm->getPlayerGlowColor());
+                }
+                auto handshake = proto::serializePlayerJoined(0, m_localPlayerName, 0, iconStr);
+                try {
+                    m_webSocket->send(reinterpret_cast<const std::byte*>(handshake.data()), handshake.size());
+                } catch (std::exception const& e) {
+                    log::warn("P2PManager: Handshake failed: {}", e.what());
+                }
+            });
+        });
+
+        m_webSocket->onMessage([this](auto data) {
+            if (auto* binaryMsg = std::get_if<rtc::binary>(&data)) {
+                queueInMainThread([this, data = *binaryMsg]() {
+                    onPeerMessage(0, reinterpret_cast<const uint8_t*>(data.data()), data.size());
+                });
+            }
+        });
+
+        m_webSocket->onClosed([this]() {
+            queueInMainThread([this]() {
+                log::info("P2PManager: WebSocket closed");
+                onPeerDisconnected(0, true);
+            });
+        });
+
+        m_webSocket->onError([this](std::string const& error) {
+            queueInMainThread([this, error]() {
+                log::error("P2PManager: WebSocket error: {}", error);
+                std::vector<ErrorCb> callbacks;
+                std::string err;
+                {
+                    std::lock_guard lock(m_stateMutex);
+                    m_error = "WebSocket Error: " + error;
+                    m_state.store(State::Error);
+                    callbacks = m_onError;
+                    err = m_error;
+                }
+                for (auto& cb : callbacks) cb(err);
+            });
+        });
+
+        m_webSocket->open(fullUrl);
+    }
 
 
-
-    void P2PManager::createHostPeer(int clientPlayerId, std::string const& clientName) {
+    void P2PManager::createHostPeer(int clientPlayerId, std::string const& clientName, std::string const& iconStr) {
         auto pc = std::make_shared<rtc::PeerConnection>(makeRtcConfig());
 
         auto reliable = pc->createDataChannel("reliable");
@@ -871,6 +1029,7 @@ namespace mpedit {
         peer.playerId = clientPlayerId;
         peer.playerName = clientName;
         peer.colorIndex = clientPlayerId % 6;
+        peer.iconStr = iconStr;
 
         auto setupChannelCallbacks = [this, clientPlayerId](std::shared_ptr<rtc::DataChannel> dc, bool isReliable) {
             dc->onOpen([this, clientPlayerId, isReliable]() {
@@ -986,6 +1145,7 @@ namespace mpedit {
         int pid = -1;
         std::string name;
         int colorIdx = 0;
+        std::string iconStr;
         std::vector<PendingMessage> pending;
 
         {
@@ -1002,6 +1162,7 @@ namespace mpedit {
                 pid = peer.playerId;
                 name = peer.playerName;
                 colorIdx = peer.colorIndex;
+                iconStr = peer.iconStr;
                 becameReady = true;
 
                 pending = std::move(peer.pendingMessages);
@@ -1022,7 +1183,7 @@ namespace mpedit {
             stopSignalPolling();
         }
 
-        queueInMainThread([this, pid, name, colorIdx]() {
+        queueInMainThread([this, pid, name, colorIdx, iconStr]() {
             if (m_role == Role::Client && pid == 0) {
                 auto roomCode = getRoomCode();
                 for (auto& cb : m_onSessionStarted) {
@@ -1035,7 +1196,7 @@ namespace mpedit {
             }
 
             if (m_role == Role::Host) {
-                auto msg = proto::serializePlayerJoined(pid, name, colorIdx);
+                auto msg = proto::serializePlayerJoined(pid, name, colorIdx, iconStr);
                 broadcast(msg, ChannelType::Reliable, pid);
                 
                 std::vector<std::vector<uint8_t>> existingPeerMsgs;
@@ -1044,7 +1205,7 @@ namespace mpedit {
                     for (auto& [existingId, peer] : m_peers) {
                         if (existingId != pid && peer.ready) {
                             existingPeerMsgs.push_back(
-                                proto::serializePlayerJoined(existingId, peer.playerName, peer.colorIndex)
+                                proto::serializePlayerJoined(existingId, peer.playerName, peer.colorIndex, peer.iconStr)
                             );
                         }
                     }
@@ -1054,7 +1215,11 @@ namespace mpedit {
                     sendTo(pid, peerMsg, ChannelType::Reliable);
                 }
                 
-                auto hostMsg = proto::serializePlayerJoined(0, m_localPlayerName, 0);
+                std::string hostIconStr = "";
+                if (auto gm = GameManager::sharedState()) {
+                    hostIconStr = fmt::format("{}:{}:{}:{}:{}", gm->getPlayerFrame(), gm->getPlayerColor(), gm->getPlayerColor2(), gm->getPlayerGlow() ? 1 : 0, gm->getPlayerGlowColor());
+                }
+                auto hostMsg = proto::serializePlayerJoined(0, m_localPlayerName, 0, hostIconStr);
                 sendTo(pid, hostMsg, ChannelType::Reliable);
             }
         });
@@ -1094,6 +1259,16 @@ namespace mpedit {
             m_localPlayerId = -1;
             m_localPlayerName.clear();
             m_error.clear();
+            
+            if (m_webSocket) {
+                auto ws = m_webSocket;
+                m_webSocket = nullptr;
+                std::thread([ws]() {
+                    std::this_thread::sleep_for(std::chrono::seconds(2));
+                    ws->close();
+                }).detach();
+            }
+            m_isDedicated = false;
         }
 
         m_state.store(State::Disconnected);

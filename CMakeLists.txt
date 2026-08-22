@@ -76,7 +76,7 @@ FetchContent_Declare(
 
 # Configure libdatachannel settings
 set(NO_MEDIA ON CACHE BOOL "" FORCE)
-set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
+set(NO_WEBSOCKET OFF CACHE BOOL "" FORCE)
 set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
 set(NO_TESTS ON CACHE BOOL "" FORCE)
 
@@ -111,6 +111,23 @@ if(NOT libdatachannel_POPULATED)
         endif()
     endforeach()
     
+    set(SCTP_CPP "${libdatachannel_SOURCE_DIR}/src/impl/sctptransport.cpp")
+    if(EXISTS "${SCTP_CPP}")
+        file(READ "${SCTP_CPP}" SCTP_CONTENTS)
+        string(REPLACE "throw std::runtime_error(\"Sending failed, errno=\" + std::to_string(errno));" "return false;" SCTP_CONTENTS "${SCTP_CONTENTS}")
+        file(WRITE "${SCTP_CPP}" "${SCTP_CONTENTS}")
+    endif()
+
+    set(DC_CPP "${libdatachannel_SOURCE_DIR}/src/impl/datachannel.cpp")
+    if(EXISTS "${DC_CPP}")
+        file(READ "${DC_CPP}" DC_CONTENTS)
+        string(REPLACE "throw std::runtime_error(\"DataChannel is closed\");" "return false;" DC_CONTENTS "${DC_CONTENTS}")
+        string(REPLACE "throw std::runtime_error(\"DataChannel not open\");" "return false;" DC_CONTENTS "${DC_CONTENTS}")
+        string(REPLACE "throw std::logic_error(\"DataChannel has no stream assigned\");" "return false;" DC_CONTENTS "${DC_CONTENTS}")
+        string(REPLACE "void IncomingDataChannel::processOpenMessage(message_ptr message) {\n\tstd::unique_lock lock(mMutex);\n\tauto transport = mSctpTransport.lock();\n\tif (!transport)\n\t\tthrow std::logic_error(\"DataChannel has no transport\");\n\n\tif (!mStream.has_value())\n\t\treturn false;" "void IncomingDataChannel::processOpenMessage(message_ptr message) {\n\tstd::unique_lock lock(mMutex);\n\tauto transport = mSctpTransport.lock();\n\tif (!transport)\n\t\tthrow std::logic_error(\"DataChannel has no transport\");\n\n\tif (!mStream.has_value())\n\t\treturn;" DC_CONTENTS "${DC_CONTENTS}")
+        file(WRITE "${DC_CPP}" "${DC_CONTENTS}")
+    endif()
+
     add_subdirectory(${libdatachannel_SOURCE_DIR} ${libdatachannel_BINARY_DIR})
 endif()
 

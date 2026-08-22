@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cocos2d.h>
+#include <cocos-ext.h>
 #include <unordered_map>
 #include "../SessionManager.hpp"
 
@@ -17,6 +18,8 @@ namespace mpedit {
             SimplePlayer* playtestIcon = nullptr;
             SimplePlayer* playtestIcon2 = nullptr;
             cocos2d::CCSprite* lockIcon = nullptr;
+            cocos2d::extension::CCScale9Sprite* chatBubble = nullptr;
+            cocos2d::CCLabelBMFont* chatLabel = nullptr;
             std::string lastStatus;
             float targetX = 0.f;
             float targetY = 0.f;
@@ -31,9 +34,12 @@ namespace mpedit {
         void update(float dt) override;
 
     public:
+        ~CursorNode();
         static CursorNode* create();
         
         static cocos2d::ccColor3B getColorForIndex(int index);
+
+        void showChatBubble(int playerId, std::string const& message);
     };
 
 } 

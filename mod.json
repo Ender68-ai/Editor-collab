@@ -8,7 +8,7 @@
     },
     "id": "d050.multiplayeredit",
     "name": "Multiplayer Edit",
-    "version": "v0.5.4",
+    "version": "v0.6.0",
     "developer": "d050",
     "description": "Collaborate with friends in real-time level editing! Host a session and build together.",
     "dependencies": {
@@ -64,6 +64,12 @@
             "type": "bool",
             "name": "Show Notifications",
             "description": "Show notifications when players join/leave.",
+            "default": true
+        },
+        "check-updates": {
+            "type": "bool",
+            "name": "Check for Updates",
+            "description": "Automatically check for newer versions when opening the Multiplayer menu.",
             "default": true
         }
     }

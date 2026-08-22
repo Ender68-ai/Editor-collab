@@ -21,6 +21,7 @@ namespace mpedit::proto {
         SyncLevelStart    = 0x10,
         SyncLevelChunk    = 0x11,
         SyncLevelEnd      = 0x12,
+        RequestSnapshot   = 0x13,
 
         UpdateSettings    = 0x20,
         UpdateColorChannel = 0x21,
@@ -35,8 +36,8 @@ namespace mpedit::proto {
         BanPlayer         = 0x37,
 
         CursorUpdate      = 0x40,
-
         MoveBatch         = 0x41,
+        ChatMessage       = 0x42,
 
         Heartbeat         = 0x50,
 
@@ -264,6 +265,8 @@ namespace mpedit::proto {
     std::vector<uint8_t> serializeUpdateColorChannel(
         ActionSerializer::ColorChannelData const& data);
 
+    std::vector<uint8_t> serializeChatMessage(std::string const& message);
+
     std::vector<uint8_t> serializeSyncLevelStart(
         uint32_t totalChunks, uint32_t totalObjects,
         ActionSerializer::LevelSettingsData const& settings);
@@ -275,8 +278,10 @@ namespace mpedit::proto {
     std::vector<uint8_t> serializeSyncLevelEnd(
         std::vector<ActionSerializer::LockData> const& locks);
 
+    std::vector<uint8_t> serializeRequestSnapshot();
+
     std::vector<uint8_t> serializePlayerJoined(
-        int playerId, std::string const& name, int colorIndex);
+        int playerId, std::string const& name, int colorIndex, std::string const& iconStr = "");
     std::vector<uint8_t> serializePlayerLeft(int playerId);
     std::vector<uint8_t> serializeError(std::string const& message);
 
@@ -284,12 +289,14 @@ namespace mpedit::proto {
         int id;
         std::string name;
         int colorIndex;
+        std::string iconStr;
     };
     struct RoomInfoMsg {
+        int localPlayerId;
         std::vector<RoomInfoPlayer> players;
     };
 
-    std::vector<uint8_t> serializeRoomInfo(std::vector<RoomInfoPlayer> const& players);
+    std::vector<uint8_t> serializeRoomInfo(int localPlayerId, std::vector<RoomInfoPlayer> const& players);
     RoomInfoMsg deserializeRoomInfo(Reader& r);
 
 
@@ -363,6 +370,7 @@ namespace mpedit::proto {
         int playerId;
         std::string name;
         int colorIndex;
+        std::string iconStr;
     };
     PlayerJoinedMsg deserializePlayerJoined(Reader& r);
 
@@ -385,5 +393,10 @@ namespace mpedit::proto {
         ActionSerializer::ColorChannelData data;
     };
     UpdateColorChannelMsg deserializeUpdateColorChannel(Reader& r);
+
+    struct ChatMessageMsg {
+        std::string message;
+    };
+    ChatMessageMsg deserializeChatMessage(Reader& r);
 
 }

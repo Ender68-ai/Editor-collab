@@ -16,6 +16,7 @@
 #include "RemoteActionHandler.hpp"
 #include "ui/menu/MultiplayerMenuPopup.hpp"
 #include "ui/menu/CreateRoomPopup.hpp"
+#include "ui/QuickChatPopup.hpp"
 
 #include "ui/SessionStatusNode.hpp"
 #include "ui/CursorNode.hpp"
@@ -49,7 +50,7 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
         if (!EditorPauseLayer::init(editor)) return false;
 
         auto* btnSprite = ButtonSprite::create(
-            "Multiplayer Edit", 90, true, "bigFont.fnt", "GJ_button_01.png", 30.f, 0.45f
+            "Multiplayer Edit", 90, true, "goldFont.fnt", "GJ_button_01.png", 30.f, 0.45f
         );
         auto* btn = CCMenuItemSpriteExtra::create(
             btnSprite,
@@ -58,8 +59,28 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
         );
         btn->setID("multiplayer-button"_spr);
 
-        CCMenu* targetMenu = typeinfo_cast<CCMenu*>(this->getChildByID("center-button-menu"));
+        CCMenu* targetMenu = typeinfo_cast<CCMenu*>(this->getChildByIDRecursive("resume-menu"));
+        if (!targetMenu) {
+            targetMenu = typeinfo_cast<CCMenu*>(this->getChildByIDRecursive("center-button-menu"));
+        }
         
+        auto& session = SessionManager::get();
+
+        if (session.isInSession() && session.getRole() == SessionManager::Role::Client && P2PManager::get().isDedicatedServer()) {
+            auto* saveCopySprite = ButtonSprite::create(
+                "Save Copy", 90, true, "goldFont.fnt", "GJ_button_01.png", 30.f, 0.45f
+            );
+            auto* saveCopyBtn = CCMenuItemSpriteExtra::create(
+                saveCopySprite,
+                this,
+                menu_selector(MPEditorPauseLayer::onSaveLocal)
+            );
+            saveCopyBtn->setID("save-copy-button"_spr);
+            if (targetMenu) {
+                targetMenu->addChild(saveCopyBtn);
+            }
+        }
+
         if (targetMenu) {
             targetMenu->addChild(btn);
             targetMenu->updateLayout();
@@ -74,7 +95,6 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
             this->addChild(fallbackMenu, 10);
         }
 
-        auto& session = SessionManager::get();
         if (session.isInSession()) {
             auto disableBtn = [this](const char* id) {
                 if (auto* btn = typeinfo_cast<CCMenuItemSpriteExtra*>(this->getChildByIDRecursive(id))) {
@@ -97,13 +117,32 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
             if (session.getRole() == SessionManager::Role::Host) {
                 disableBtn("save-and-play-button");
             } else if (session.getRole() == SessionManager::Role::Client) {
-                disableBtn("save-button");
+                if (!P2PManager::get().isDedicatedServer()) {
+                    disableBtn("save-button");
+                    disableBtn("save-and-exit-button");
+                }
                 disableBtn("save-and-play-button");
-                disableBtn("save-and-exit-button");
             }
         }
 
         return true;
+    }
+
+    void onSaveLocal(CCObject* sender) {
+        // First, call original saveLevel to generate the level string properly
+        EditorPauseLayer::saveLevel();
+        auto* editor = LevelEditorLayer::get();
+        if (editor && editor->m_level) {
+            auto* newLevel = GameLevelManager::sharedState()->createNewLevel();
+            if (newLevel) {
+                newLevel->m_levelName = editor->m_level->m_levelName + " local";
+                newLevel->m_levelString = editor->m_level->m_levelString;
+                newLevel->m_audioTrack = editor->m_level->m_audioTrack;
+                newLevel->m_songID = editor->m_level->m_songID;
+                newLevel->m_levelLength = editor->m_level->m_levelLength;
+                Notification::create("Saved local copy!", cocos2d::CCSprite::createWithSpriteFrameName("GJ_completesIcon_001.png"))->show();
+            }
+        }
     }
 
     void onMultiplayer(CCObject*) {
@@ -116,7 +155,26 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
 
     void onSave(CCObject* sender) {
         if (SessionManager::get().isInSession() && SessionManager::get().getRole() == SessionManager::Role::Client) {
-            Notification::create("Guests cannot save levels", NotificationIcon::Warning)->show();
+            if (!P2PManager::get().isDedicatedServer()) {
+                Notification::create("Guests cannot save levels", NotificationIcon::Warning)->show();
+                return;
+            }
+            if (auto* btn = typeinfo_cast<CCMenuItemSpriteExtra*>(sender)) {
+                btn->setEnabled(false);
+            }
+            auto* loadingCircle = LoadingCircle::create();
+            loadingCircle->setParentLayer(this);
+            loadingCircle->show();
+
+            this->retain();
+            RemoteActionHandler::get().sendSnapshotToServer([this, sender, loadingCircle]() {
+                loadingCircle->fadeAndRemove();
+                Notification::create("Saved to Server!", cocos2d::CCSprite::createWithSpriteFrameName("GJ_completesIcon_001.png"))->show();
+                if (auto* btn = typeinfo_cast<CCMenuItemSpriteExtra*>(sender)) {
+                    btn->setEnabled(true);
+                }
+                this->release();
+            });
             return;
         }
         EditorPauseLayer::onSave(sender);
@@ -134,7 +192,26 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
         auto& session = SessionManager::get();
         if (session.isInSession()) {
             if (session.getRole() == SessionManager::Role::Client) {
-                Notification::create("Guests cannot save levels", NotificationIcon::Warning)->show();
+                if (!P2PManager::get().isDedicatedServer()) {
+                    Notification::create("Guests cannot save levels", NotificationIcon::Warning)->show();
+                    return;
+                }
+                if (auto* btn = typeinfo_cast<CCMenuItemSpriteExtra*>(sender)) {
+                    btn->setEnabled(false);
+                }
+                auto* loadingCircle = LoadingCircle::create();
+                loadingCircle->setParentLayer(this);
+                loadingCircle->show();
+
+                // Keep this layer alive in case of rapid clicks, though loading circle blocks touches
+                this->retain(); 
+                RemoteActionHandler::get().sendSnapshotToServer([this, sender, loadingCircle]() {
+                    loadingCircle->fadeAndRemove();
+                    Notification::create("Saved to Server!", cocos2d::CCSprite::createWithSpriteFrameName("GJ_completesIcon_001.png"))->show();
+                    this->m_saved = true;
+                    this->onExitEditor(sender);
+                    this->release();
+                });
                 return;
             }
             session.leaveSession();
@@ -159,7 +236,7 @@ class $modify(MPLevelBrowserLayer, LevelBrowserLayer) {
         if (object->m_searchType != SearchType::MyLevels) return true;
 
         auto* btnSprite = ButtonSprite::create(
-            "Multiplayer Edit", 90, true, "bigFont.fnt", "GJ_button_01.png", 30.f, 0.45f
+            "Multiplayer Edit", 90, true, "goldFont.fnt", "GJ_button_01.png", 30.f, 0.45f
         );
         auto* btn = CCMenuItemSpriteExtra::create(
             btnSprite,
@@ -168,16 +245,18 @@ class $modify(MPLevelBrowserLayer, LevelBrowserLayer) {
         );
         btn->setID("multiplayer-button"_spr);
 
-        auto* centerMenu = CCMenu::create();
-        centerMenu->setID("multiplayer-menu"_spr);
-        
-        auto winSize = CCDirector::sharedDirector()->getWinSize();
-        centerMenu->setPosition({winSize.width / 2.f, 35.f});
-        
-        btn->setPosition({0, 0});
-        centerMenu->addChild(btn);
-        
-        this->addChild(centerMenu, 10);
+        if (auto* targetMenu = typeinfo_cast<CCMenu*>(this->getChildByIDRecursive("new-item-menu"))) {
+            targetMenu->addChild(btn);
+            targetMenu->updateLayout();
+        } else {
+            auto* centerMenu = CCMenu::create();
+            centerMenu->setID("multiplayer-menu"_spr);
+            auto winSize = CCDirector::sharedDirector()->getWinSize();
+            centerMenu->setPosition({winSize.width / 2.f, 35.f});
+            btn->setPosition({0, 0});
+            centerMenu->addChild(btn);
+            this->addChild(centerMenu, 10);
+        }
 
         return true;
     }
@@ -189,7 +268,7 @@ class $modify(MPLevelBrowserLayer, LevelBrowserLayer) {
 
 
 namespace {
-    void sendChunkedSync(LevelEditorLayer* editor, int targetPlayerId) {
+    void sendChunkedSync(LevelEditorLayer* editor, int targetPlayerId, std::function<void()> onComplete = nullptr) {
         auto& handler = RemoteActionHandler::get();
 
         std::string fullObjectsString;
@@ -274,6 +353,7 @@ namespace {
             settings.audioTrack = editor->m_level->m_audioTrack;
             settings.songID = editor->m_level->m_songID;
             settings.levelLength = editor->m_level->m_levelLength;
+            settings.levelName = editor->m_level->m_levelName;
         }
 
         uint32_t totalChunks = static_cast<uint32_t>(chunks.size());
@@ -303,7 +383,7 @@ namespace {
         auto sharedLocks = std::make_shared<std::vector<ActionSerializer::LockData>>(std::move(locks));
 
         auto* senderNode = UpdateHelperNode::create(
-            [targetPlayerId, totalChunks, serializedChunks, nextChunkIndex, sharedLocks](float dt) {
+            [targetPlayerId, totalChunks, serializedChunks, nextChunkIndex, sharedLocks, onComplete](float dt) {
                 auto& net = P2PManager::get();
 
                 constexpr size_t BUFFER_THRESHOLD = 256 * 1024;
@@ -318,17 +398,23 @@ namespace {
                     auto endMsg = proto::serializeSyncLevelEnd(*sharedLocks);
                     net.sendTo(targetPlayerId, endMsg, ChannelType::Reliable);
 
-                    if (auto* editor = LevelEditorLayer::get()) {
-                        if (auto* node = editor->getChildByTag(9991 + targetPlayerId)) {
+                    if (auto* notifNode = cocos2d::CCDirector::sharedDirector()->getNotificationNode()) {
+                        if (auto* node = notifNode->getChildByTag(9991 + targetPlayerId)) {
                             node->removeFromParentAndCleanup(true);
                         }
                     }
+                    if (onComplete) onComplete();
                 }
             },
             0.01f
         );
         senderNode->setTag(9991 + targetPlayerId);
-        editor->addChild(senderNode);
+        
+        if (auto* notifNode = cocos2d::CCDirector::sharedDirector()->getNotificationNode()) {
+            notifNode->addChild(senderNode);
+        } else {
+            editor->addChild(senderNode);
+        }
     }
 
     void registerObjectsWithUuids(LevelEditorLayer* editor,
@@ -877,6 +963,11 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                 
                 auto data = proto::serializeCursorUpdate(levelPos.x, levelPos.y, statusStr);
                 P2PManager::get().send(std::move(data), ChannelType::Unreliable);
+                
+                auto& session = SessionManager::get();
+                if (session.isInSession()) {
+                    session.updatePlayerCursor(session.getLocalPlayerId(), levelPos.x, levelPos.y, statusStr);
+                }
             }
         }
     }
@@ -1056,6 +1147,17 @@ class $modify(MPEditorUI, EditorUI) {
             s_lastTouchPos = touch->getLocation();
             s_isTouching = true;
         }
+    }
+
+    void keyDown(cocos2d::enumKeyCodes key, double timestamp) {
+        if (key == cocos2d::enumKeyCodes::KEY_Slash) {
+            auto& session = SessionManager::get();
+            if (session.isInSession()) {
+                QuickChatPopup::create()->show();
+                return;
+            }
+        }
+        EditorUI::keyDown(key, timestamp);
     }
 
     void ccTouchEnded(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) {
@@ -2018,3 +2120,13 @@ class $modify(MPColorSelectLiveOverlay, ColorSelectLiveOverlay) {
         }
     }
 };
+
+namespace mpedit {
+    void RemoteActionHandler::sendSnapshotToServer(std::function<void()> onComplete) {
+        if (auto* layer = LevelEditorLayer::get()) {
+            ::sendChunkedSync(layer, 0, onComplete);
+        } else if (onComplete) {
+            onComplete();
+        }
+    }
+}

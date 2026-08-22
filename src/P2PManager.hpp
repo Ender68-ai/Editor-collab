@@ -11,11 +11,13 @@
 #include <vector>
 #include <memory>
 #include <atomic>
+#include <chrono>
 
 namespace rtc {
     class PeerConnection;
     class DataChannel;
     struct Configuration;
+    class WebSocket;
 }
 
 namespace mpedit {
@@ -70,23 +72,34 @@ namespace mpedit {
             std::string hostName;
             std::string roomName;
             std::string description;
-            int playerCount = 0;
-            int playerLimit = 100;
-            bool isPrivate = false;
-            bool hasPassword = false;
-            std::string version = "";
+            int playerCount;
+            int playerLimit;
+            bool isPrivate;
+            bool hasPassword;
+            std::string version;
+            std::string serverUrl;
         };
 
         using FetchRoomsCb = std::function<void(std::vector<RoomInfo> const&)>;
-        void fetchRooms(FetchRoomsCb cb);
+        void fetchRooms(FetchRoomsCb cb, std::string const& customUrl = "");
 
         void hostSession(std::string const& playerName, RoomSettings const& settings = RoomSettings());
         void joinSession(std::string const& roomCode, std::string const& playerName, std::string const& password = "");
+        void joinDedicatedServer(std::string const& url, std::string const& roomCode, std::string const& playerName, std::string const& password = "");
         void leaveSession();
 
 
         State getState() const;
         Role getRole() const;
+        void triggerSessionStarted(int localPlayerId) {
+            m_state.store(State::Connected);
+            m_localPlayerId = localPlayerId;
+            auto roomCode = getRoomCode();
+            for (auto& cb : m_onSessionStarted) {
+                cb(roomCode, localPlayerId);
+            }
+        }
+        bool isDedicatedServer() const { return m_isDedicated; }
         bool isConnected() const;
         std::string getRoomCode() const;
         int getLocalPlayerId() const;
@@ -152,13 +165,16 @@ namespace mpedit {
             int playerId = -1;
             std::string playerName;
             int colorIndex = 0;
+            std::string iconStr;
             bool ready = false;
             std::vector<PendingMessage> pendingMessages;
             std::vector<PendingCandidate> pendingCandidates;
+            int localIceCount = 0;
+            int remoteIceCount = 0;
         };
 
         rtc::Configuration makeRtcConfig();
-        void createHostPeer(int clientPlayerId, std::string const& clientName);
+        void createHostPeer(int clientPlayerId, std::string const& clientName, std::string const& iconStr = "");
 
         void signalingCreateRoom(std::string const& playerName, RoomSettings const& settings);
         void signalingJoinRoom(std::string const& roomCode, std::string const& playerName, std::string const& password);
@@ -213,6 +229,11 @@ namespace mpedit {
         geode::async::TaskHolder<geode::utils::web::WebResponse> m_signalPollListener;
         std::atomic<bool> m_signalingActive{false};
         std::string m_signalingRoomId;
+        std::chrono::time_point<std::chrono::steady_clock> m_fastPollEndTime;
+        void extendFastPoll();
+
+        bool m_isDedicated = false;
+        std::shared_ptr<rtc::WebSocket> m_webSocket;
 
 
     };

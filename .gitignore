@@ -21,8 +21,11 @@ Thumbs.db
 *.dylib
 *.geode
 
-server/node_modules/
-server/.env
+servers/signaling/node_modules/
+servers/signaling/.env
+servers/dedicated/node_modules/
+servers/dedicated/saves/
+servers/dedicated/levels/
 
 geode docs/
 

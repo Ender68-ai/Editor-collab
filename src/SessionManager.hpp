@@ -10,6 +10,7 @@ namespace mpedit {
         int id = -1;
         std::string name;
         int colorIndex = 0;
+        std::string iconStr;
         float cursorX = 0.f;
         float cursorY = 0.f;
         std::string status;
@@ -37,6 +38,7 @@ namespace mpedit {
 
         void hostSession(std::string const& playerName, RoomSettings const& settings = RoomSettings());
         void joinSession(std::string const& roomCode, std::string const& playerName, std::string const& password = "");
+        void joinDedicatedServer(std::string const& url, std::string const& roomCode, std::string const& password = "");
         void leaveSession();
 
         bool isInSession() const;
@@ -45,6 +47,17 @@ namespace mpedit {
         int getLocalPlayerId() const;
         std::string getLocalPlayerName() const;
         bool isLocalPlayerViewOnly() const;
+        bool isDedicatedServer() const;
+
+        struct ChatMessage {
+            int playerId;
+            std::string senderName;
+            std::string message;
+        };
+
+        void sendChatMessage(std::string const& message);
+        void onChatMessageReceived(int playerId, std::string const& message);
+        std::vector<ChatMessage> const& getChatHistory() const;
 
         void setPlayerViewOnly(int id, bool viewOnly);
         std::vector<PlayerInfo> const& getPlayers() const;
@@ -55,6 +68,7 @@ namespace mpedit {
         using PlayerCallback = std::function<void(PlayerInfo const&)>;
         using ErrorCallback = std::function<void(std::string const&)>;
         using StatusCallback = std::function<void(std::string const&)>;
+        using ChatCallback = std::function<void(ChatMessage const&)>;
 
         void updateStatus(std::string const& status);
 
@@ -64,6 +78,7 @@ namespace mpedit {
         void onPlayerLeft(void* id, PlayerCallback cb);
         void onError(void* id, ErrorCallback cb);
         void onStatus(void* id, StatusCallback cb);
+        void onChatMessage(void* id, ChatCallback cb);
         void removeListener(void* id);
         void clearCallbacks();
 
@@ -89,6 +104,9 @@ namespace mpedit {
         std::map<void*, PlayerCallback> m_onPlayerLeft;
         std::map<void*, ErrorCallback> m_onError;
         std::map<void*, StatusCallback> m_onStatus;
+        std::map<void*, ChatCallback> m_onChatMessage;
+
+        std::vector<ChatMessage> m_chatHistory;
     };
 
 }

@@ -23,6 +23,8 @@ namespace mpedit {
         cocos2d::CCNode* m_browserUiNode = nullptr;
         std::string m_lastJoinCode;
         bool m_isConnecting = false;
+        geode::async::TaskHolder<geode::utils::web::WebResponse> m_updateTask;
+
 
         bool init() override;
 
@@ -34,10 +36,12 @@ namespace mpedit {
         void onRefresh(cocos2d::CCObject*);
         void onHostForm(cocos2d::CCObject*);
         void onLeave(cocos2d::CCObject*);
+        void onChat(cocos2d::CCObject*);
         void onDiscord(cocos2d::CCObject*);
         void onPatreon(cocos2d::CCObject*);
         void onCopyCode(cocos2d::CCObject*);
         void onJoinByCode(cocos2d::CCObject*);
+        void onDedicatedServers(cocos2d::CCObject*);
 
         void fetchRooms();
         void populateRooms(std::vector<P2PManager::RoomInfo> const& rooms);

@@ -3,47 +3,6 @@ const kv = await Deno.openKv();
 const ROOM_TTL = 2 * 60 * 60 * 1000;
 const CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
-const sigRooms = new Map();
-
-function getSigRoom(code) {
-    if (!sigRooms.has(code)) {
-        sigRooms.set(code, { hostResolver: null, clientResolvers: new Map() });
-    }
-    return sigRooms.get(code);
-}
-
-function cleanupSigRoom(code) {
-    const room = sigRooms.get(code);
-    if (!room) return;
-    if (!room.hostResolver && room.clientResolvers.size === 0) {
-        sigRooms.delete(code);
-    }
-}
-
-const bc = new BroadcastChannel("signaling_wake");
-bc.onmessage = (e) => {
-    const { roomCode, target } = e.data;
-    const room = sigRooms.get(roomCode);
-    if (!room) return;
-
-    if (target === "host" && room.hostResolver) {
-        room.hostResolver();
-    } else if (typeof target === "number" && room.clientResolvers.has(target)) {
-        room.clientResolvers.get(target)();
-    }
-};
-
-function wakeLocalAndBroadcast(code, target) {
-    const room = sigRooms.get(code);
-    if (room) {
-        if (target === "host" && room.hostResolver) {
-            room.hostResolver();
-        } else if (typeof target === "number" && room.clientResolvers.has(target)) {
-            room.clientResolvers.get(target)();
-        }
-    }
-    bc.postMessage({ roomCode: code, target });
-}
 
 async function enqueueKv(code, queueName, msg) {
 
@@ -191,7 +150,7 @@ Deno.serve(async (req) => {
 
     if (parts.length === 2 && req.method === "DELETE") {
         await kv.delete(["rooms", code]);
-        wakeLocalAndBroadcast(code, "host");
+        new BroadcastChannel("signaling_wake_" + code).postMessage({ target: "host" });
 
         return json({ ok: true });
     }
@@ -236,7 +195,7 @@ Deno.serve(async (req) => {
 
         const joinMsg = { type: "client_joined", playerId, playerName };
         await enqueueKv(code, "hostQueue", joinMsg);
-        wakeLocalAndBroadcast(code, "host");
+        new BroadcastChannel("signaling_wake_" + code).postMessage({ target: "host" });
 
         return json({ playerId, hostName });
     }
@@ -300,7 +259,6 @@ Deno.serve(async (req) => {
         const playerId = Number(url.searchParams.get("playerId") || "0");
         const queueName = role === "host" ? "hostQueue" : `clientQueue_${playerId}`;
         const target = role === "host" ? "host" : playerId;
-        const room = getSigRoom(code);
 
         if (role === "host") {
 
@@ -329,6 +287,9 @@ Deno.serve(async (req) => {
         const initialMsgs = await dequeueKv(code, queueName);
         if (initialMsgs.length > 0) return json(initialMsgs);
 
+        const timeoutParam = Number(url.searchParams.get("timeout") || "0");
+        if (timeoutParam <= 0) return json([]);
+
         return new Promise((resolve) => {
             let isResolved = false;
 
@@ -337,27 +298,26 @@ Deno.serve(async (req) => {
                 isResolved = true;
                 clearTimeout(timer);
 
-                if (role === "host") room.hostResolver = null;
-                else room.clientResolvers.delete(playerId);
-                cleanupSigRoom(code);
-
                 const msgs = overrideMsgs || await dequeueKv(code, queueName);
                 resolve(json(msgs));
             };
 
-            if (role === "host") room.hostResolver = complete;
-            else room.clientResolvers.set(playerId, complete);
+            // Using BroadcastChannel to wake up local isolate resolvers
+            const bc = new BroadcastChannel("signaling_wake_" + code);
 
             const timer = setTimeout(() => {
                 if (isResolved) return;
                 isResolved = true;
-
-                if (role === "host") room.hostResolver = null;
-                else room.clientResolvers.delete(playerId);
-                cleanupSigRoom(code);
-
+                bc.close();
                 resolve(json([]));
-            }, 25000);
+            }, timeoutParam);
+
+            bc.onmessage = async (e) => {
+                if (e.data.target === target) {
+                    bc.close();
+                    await complete();
+                }
+            };
         });
     }
 
@@ -376,7 +336,7 @@ Deno.serve(async (req) => {
 
         if (targetQueue) {
             await enqueueKv(code, targetQueue, msg);
-            wakeLocalAndBroadcast(code, targetWake);
+            new BroadcastChannel("signaling_wake_" + code).postMessage({ target: targetWake });
         }
 
         return json({ ok: true });

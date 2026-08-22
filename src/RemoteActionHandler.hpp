@@ -84,6 +84,7 @@ namespace mpedit {
         void loadSongInfoFinished(SongInfoObject* object) override {}
         void loadSongInfoFailed(int id, GJSongError errorType) override {}
 
+        void sendSnapshotToServer(std::function<void()> onComplete = nullptr);
         std::unordered_map<GameObject*, std::string>& getTrackedSelections() { return m_preSelectSaveStrings; }
 
     private:
@@ -93,7 +94,9 @@ namespace mpedit {
         RemoteActionHandler(RemoteActionHandler const&) = delete;
         RemoteActionHandler& operator=(RemoteActionHandler const&) = delete;
 
+        int getLocalPlayerId() const;
         LevelEditorLayer* getEditorLayer() const;
+        void updateStatusNode();
 
         void applyLevelSettings(LevelEditorLayer* editor, ActionSerializer::LevelSettingsData const& settings);
 

@@ -3,6 +3,7 @@
 #include "BinaryProtocol.hpp"
 #include "SessionManager.hpp"
 #include "MessageBatcher.hpp"
+#include "ui/menu/MultiplayerMenuPopup.hpp"
 #include <Geode/Geode.hpp>
 #include <Geode/utils/file.hpp>
 #include <random>
@@ -109,6 +110,15 @@ namespace mpedit {
             handleRemoteMoveObjects(playerId, msg.moves);
         });
 
+        net.on(proto::Opcode::ChatMessage, [](int playerId, proto::Reader& reader) {
+            auto msg = proto::deserializeChatMessage(reader);
+            if (reader.hasError()) {
+                log::error("RemoteActionHandler: Error deserializing ChatMessage");
+                return;
+            }
+            SessionManager::get().onChatMessageReceived(playerId, msg.message);
+        });
+
         net.on(proto::Opcode::TransformObjects, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
             auto msg = proto::deserializeTransformObjects(reader);
@@ -207,6 +217,11 @@ namespace mpedit {
                 log::info("RemoteActionHandler: SyncLevelChunk received: {}/{}",
                     msg.chunkIndex + 1, m_chunkedSync.totalChunks);
             }
+        });
+
+        net.on(proto::Opcode::RequestSnapshot, [this](int playerId, proto::Reader& reader) {
+            log::info("RemoteActionHandler: Received RequestSnapshot from server");
+            this->sendSnapshotToServer();
         });
 
         net.on(proto::Opcode::HostMigration, [this](int playerId, proto::Reader& reader) {
@@ -319,14 +334,18 @@ namespace mpedit {
             std::string objectsString = "";
             if (!compressedString.empty()) {
                 geode::ByteVector bytes(compressedString.begin(), compressedString.end());
-                if (auto unzip = geode::utils::file::Unzip::create(bytes)) {
-                    if (auto extracted = unzip.unwrap().extract("level.txt")) {
-                        objectsString = std::string(extracted.unwrap().begin(), extracted.unwrap().end());
+                if (bytes.size() >= 4 && bytes[0] == 'P' && bytes[1] == 'K' && bytes[2] == 0x03 && bytes[3] == 0x04) {
+                    if (auto unzip = geode::utils::file::Unzip::create(bytes)) {
+                        if (auto extracted = unzip.unwrap().extract("level.txt")) {
+                            objectsString = std::string(extracted.unwrap().begin(), extracted.unwrap().end());
+                        } else {
+                            log::error("RemoteActionHandler: Failed to extract level.txt from sync payload");
+                        }
                     } else {
-                        log::error("RemoteActionHandler: Failed to extract level.txt from sync payload");
+                        log::error("RemoteActionHandler: Failed to create unzipper for sync payload");
                     }
                 } else {
-                    log::error("RemoteActionHandler: Failed to create unzipper for sync payload");
+                    objectsString = compressedString;
                 }
             }
             
@@ -958,7 +977,7 @@ namespace mpedit {
             };
 
             auto* level = GJGameLevel::create();
-            level->m_levelName = "Multiplayer Session";
+            level->m_levelName = settings.levelName.empty() ? "Multiplayer Session" : settings.levelName;
             level->m_levelType = GJLevelType::Editor;
             level->m_levelString = levelString;
             level->m_audioTrack = settings.audioTrack;
@@ -971,6 +990,11 @@ namespace mpedit {
                 m_pendingSync.reset();
                 return;
             }
+
+            if (MultiplayerMenuPopup::s_instance) {
+                MultiplayerMenuPopup::s_instance->forceClose();
+            }
+
             cocos2d::CCDirector::sharedDirector()->pushScene(scene);
 
             log::info("RemoteActionHandler: Pushed editor scene; pending sync will apply in init() (hasPending={})",

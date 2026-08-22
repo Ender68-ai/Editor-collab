@@ -66,6 +66,21 @@ namespace mpedit {
         log::info("SessionManager: Joining room '{}' as '{}'", roomCode, actualName);
     }
 
+    void SessionManager::joinDedicatedServer(std::string const& url, std::string const& roomCode, std::string const& password) {
+        if (isInSession()) return;
+        std::string actualName = Mod::get()->getSettingValue<std::string>("player-name");
+        if (actualName == "Player" || actualName.empty()) {
+            actualName = GJAccountManager::sharedState()->m_username;
+            if (actualName.empty()) actualName = "Player";
+        }
+        m_localPlayerName = actualName;
+        m_roomCode = roomCode;
+        m_role = Role::Client;
+        setupNetworkHandlers();
+        P2PManager::get().joinDedicatedServer(url, roomCode, actualName, password);
+        log::info("SessionManager: Joining dedicated server '{}' room '{}'", url, roomCode);
+    }
+
     void SessionManager::leaveSession() {
         if (!isInSession()) return;
 
@@ -78,6 +93,7 @@ namespace mpedit {
         m_roomCode.clear();
         m_localPlayerId = -1;
         m_players.clear();
+        m_chatHistory.clear();
 
         for (auto& [id, cb] : sessionEndedCallbacks) {
             cb();
@@ -111,6 +127,38 @@ namespace mpedit {
             return p->isViewOnly;
         }
         return false;
+    }
+
+    void SessionManager::sendChatMessage(std::string const& message) {
+        if (!isInSession()) return;
+        auto msg = proto::serializeChatMessage(message);
+        if (m_role == Role::Host) {
+            P2PManager::get().broadcast(msg, ChannelType::Reliable);
+            onChatMessageReceived(m_localPlayerId, message);
+        } else {
+            P2PManager::get().sendTo(0, msg, ChannelType::Reliable);
+            if (P2PManager::get().isDedicatedServer()) {
+                onChatMessageReceived(m_localPlayerId, message);
+            }
+        }
+    }
+
+    void SessionManager::onChatMessageReceived(int playerId, std::string const& message) {
+        std::string senderName = "Unknown";
+        if (auto p = getPlayer(playerId)) senderName = p->name;
+        ChatMessage chatMsg{playerId, senderName, message};
+        m_chatHistory.push_back(chatMsg);
+        if (m_chatHistory.size() > 50) m_chatHistory.erase(m_chatHistory.begin());
+        auto callbacks = m_onChatMessage;
+        for (auto& [id, cb] : callbacks) cb(chatMsg);
+    }
+
+    std::vector<SessionManager::ChatMessage> const& SessionManager::getChatHistory() const {
+        return m_chatHistory;
+    }
+
+    void SessionManager::onChatMessage(void* id, ChatCallback cb) {
+        m_onChatMessage[id] = std::move(cb);
     }
 
     void SessionManager::setPlayerViewOnly(int id, bool viewOnly) {
@@ -182,6 +230,7 @@ namespace mpedit {
         m_onPlayerLeft.erase(id);
         m_onError.erase(id);
         m_onStatus.erase(id);
+        m_onChatMessage.erase(id);
     }
 
     void SessionManager::clearCallbacks() {
@@ -191,6 +240,7 @@ namespace mpedit {
         m_onPlayerLeft.clear();
         m_onError.clear();
         m_onStatus.clear();
+        m_onChatMessage.clear();
     }
 
     void SessionManager::setupNetworkHandlers() {
@@ -203,10 +253,14 @@ namespace mpedit {
             m_role = (localPlayerId == 0) ? Role::Host : Role::Client;
 
             m_players.clear();
+        m_chatHistory.clear();
             PlayerInfo self;
             self.id = localPlayerId;
             self.name = m_localPlayerName;
             self.colorIndex = (localPlayerId == 0) ? 0 : (localPlayerId % 6);
+            if (auto gm = GameManager::sharedState()) {
+                self.iconStr = fmt::format("{}:{}:{}:{}:{}", gm->getPlayerFrame(), gm->getPlayerColor(), gm->getPlayerColor2(), gm->getPlayerGlow() ? 1 : 0, gm->getPlayerGlowColor());
+            }
             m_players.push_back(self);
 
             auto callbacks = m_onSessionStarted;
@@ -240,6 +294,7 @@ namespace mpedit {
                 if (p.id == msg.playerId) {
                     p.name = msg.name;
                     p.colorIndex = msg.colorIndex;
+                    p.iconStr = msg.iconStr;
                     return;
                 }
             }
@@ -248,6 +303,7 @@ namespace mpedit {
             info.id = msg.playerId;
             info.name = msg.name;
             info.colorIndex = msg.colorIndex;
+            info.iconStr = msg.iconStr;
             m_players.push_back(info);
 
             auto callbacks = m_onPlayerJoined;
@@ -334,6 +390,11 @@ namespace mpedit {
             }
         });
 
+        net.on(proto::Opcode::ChatMessage, [this](int playerId, proto::Reader& reader) {
+            auto msg = proto::deserializeChatMessage(reader);
+            onChatMessageReceived(playerId, msg.message);
+        });
+
         net.on(proto::Opcode::CursorUpdate, [this](int playerId, proto::Reader& reader) {
             auto msg = proto::deserializeCursorUpdate(reader);
             updatePlayerCursor(playerId, msg.x, msg.y, msg.status);
@@ -341,7 +402,15 @@ namespace mpedit {
 
         net.on(proto::Opcode::RoomInfo, [this](int playerId, proto::Reader& reader) {
             auto msg = proto::deserializeRoomInfo(reader);
+            if (P2PManager::get().isDedicatedServer()) {
+                m_localPlayerId = msg.localPlayerId;
+                P2PManager::get().triggerSessionStarted(msg.localPlayerId);
+            }
+            
             PlayerInfo self;
+            self.id = m_localPlayerId;
+            self.name = m_localPlayerName;
+            self.colorIndex = 0;
             for (auto const& p : m_players) {
                 if (p.id == m_localPlayerId) {
                     self = p;
@@ -349,10 +418,15 @@ namespace mpedit {
                 }
             }
             m_players.clear();
+        m_chatHistory.clear();
             m_players.push_back(self);
 
             for (auto const& p : msg.players) {
-                if (p.id == m_localPlayerId) continue;
+                if (p.id == m_localPlayerId) {
+                    m_players[0].colorIndex = p.colorIndex;
+                    m_players[0].iconStr = p.iconStr;
+                    continue;
+                }
                 
                 bool exists = false;
                 for (auto& existing : m_players) {
@@ -367,6 +441,7 @@ namespace mpedit {
                     info.id = p.id;
                     info.name = p.name;
                     info.colorIndex = p.colorIndex;
+                    info.iconStr = p.iconStr;
                     m_players.push_back(info);
                 }
             }

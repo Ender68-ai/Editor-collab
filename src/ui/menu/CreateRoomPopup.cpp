@@ -112,6 +112,9 @@ namespace mpedit {
         
         SessionManager::get().hostSession(Mod::get()->getSettingValue<std::string>("player-name"), settings);
         
+        this->setKeyboardEnabled(false);
+        this->setTouchEnabled(false);
+        this->removeFromParentAndCleanup(true);
         if (m_parentPopup) {
             m_parentPopup->onConnecting();
         } else {
@@ -119,7 +122,6 @@ namespace mpedit {
             popup->show();
             popup->onConnecting();
         }
-        this->onClose(nullptr);
     }
 
 }
