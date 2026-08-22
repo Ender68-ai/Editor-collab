@@ -507,6 +507,7 @@ namespace mpedit {
                 if (it->second.playtestIcon2) it->second.playtestIcon2->removeFromParent();
                 if (it->second.chatBubble) it->second.chatBubble->removeFromParent();
                 if (it->second.chatLabel) it->second.chatLabel->removeFromParent();
+                if (it->second.lockIcon) it->second.lockIcon->removeFromParent();
 
                 it = m_cursors.erase(it);
             } else {

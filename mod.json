@@ -48,7 +48,8 @@
             "type": "string",
             "name": "Player Name",
             "description": "Your display name in multiplayer sessions. Leave empty to automatically use your username.",
-            "default": ""
+            "default": "",
+            "max-length": 15
         },
         "display-section": {
             "type": "title",

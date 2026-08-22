@@ -10,6 +10,7 @@
 - Added a check to tell you if you're on an outdated version of the mod.
 - Added an option to make the default setting of the room to be view-only to prevent trolling.
 - Added notification telling you when someone joins or leaves the session.
+- Limited setting the player name in the mod settings to only 15 characters.
 - Fixed the Multiplayer Edit button in the editor overlapping with other UI elements (and also made the text golden lol).
 - Fixed crash that happens on android when guests leave or get kicked.
 - Fixed issue where after hosting, the multiplayer editor pop up becomes unresponsive until you press esc and reopen it again.

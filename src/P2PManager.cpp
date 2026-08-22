@@ -300,6 +300,8 @@ namespace mpedit {
     }
 
     void P2PManager::onPeerDisconnected(int playerId, bool unexpected) {
+        dispatchMessages();
+        
         {
             std::lock_guard lock(m_peersMutex);
             auto it = m_peers.find(playerId);
