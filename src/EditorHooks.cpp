@@ -135,7 +135,7 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
         if (editor && editor->m_level) {
             auto* newLevel = GameLevelManager::sharedState()->createNewLevel();
             if (newLevel) {
-                newLevel->m_levelName = editor->m_level->m_levelName + " local";
+                newLevel->m_levelName = std::string(editor->m_level->m_levelName) + " local";
                 newLevel->m_levelString = editor->m_level->m_levelString;
                 newLevel->m_audioTrack = editor->m_level->m_audioTrack;
                 newLevel->m_songID = editor->m_level->m_songID;
