@@ -526,7 +526,7 @@ namespace mpedit {
                 }
 
                 if (m_signalingActive.load()) {
-                    float delay = 10.0f;
+                    float delay = 20.0f;
                     if (std::chrono::steady_clock::now() < m_fastPollEndTime) {
                         delay = 0.5f;
                     }
