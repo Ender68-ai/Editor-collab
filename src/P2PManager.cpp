@@ -978,6 +978,7 @@ namespace mpedit {
         rtc::WebSocketConfiguration wsConfig;
         wsConfig.pingInterval = std::chrono::milliseconds(0);
         wsConfig.maxMessageSize = 250 * 1024 * 1024;
+        wsConfig.disableTlsVerification = true;
         m_webSocket = std::make_shared<rtc::WebSocket>(wsConfig);
         
         m_webSocket->onOpen([this]() {
