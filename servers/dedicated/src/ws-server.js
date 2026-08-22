@@ -28,6 +28,8 @@ class WSServer {
             });
         });
         this.wss.on('connection', (ws, request, room) => {
+            const url = new URL(request.url, `http://${request.headers.host}`);
+            ws._providedPassword = url.searchParams.get('password') || '';
             this._handleConnection(ws, request, room);
         });
     }
@@ -77,13 +79,16 @@ class WSServer {
             }
             room.handleMessage(playerId, message);
         });
-        ws.on('close', (code, reason) => { console.log(`  [${room.code}] Player ${playerId} socket closed with code ${code}, reason: ${reason}`);
+        ws.on('close', (code, reason) => { 
+            if (playerId === -1) {
+                console.log(`  \x1b[33m[DISCONNECT]\x1b[0m Unauthenticated socket closed (Code: ${code})`);
+            }
             if (playerId !== -1) {
                 room.removePlayer(playerId);
             }
         });
         ws.on('error', (err) => {
-            console.error(`  [${room.code}] Connection error for player ${playerId}:`, err.message);
+            console.error(`  \x1b[31m[ERROR]\x1b[0m Connection error for player ${playerId}:`, err.message);
         });
     }
 }

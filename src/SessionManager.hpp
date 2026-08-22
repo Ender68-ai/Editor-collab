@@ -82,6 +82,7 @@ namespace mpedit {
         void onChatMessage(void* id, ChatCallback cb);
         void removeListener(void* id);
         void clearCallbacks();
+        void dispatchError(std::string const& error);
 
     private:
         SessionManager() = default;

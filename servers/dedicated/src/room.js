@@ -54,7 +54,11 @@ class Room {
             ws.close(1008, 'Banned');
             return null;
         }
-        if (this.password && !ws._authed) {
+        if (this.password && ws._providedPassword !== this.password) {
+            const errBuf = proto.serializeError('invalid password');
+            ws.send(errBuf);
+            ws.close(1008, 'invalid password');
+            return null;
         }
         if (this.maxPlayers > 0 && this.players.size >= this.maxPlayers) {
             const errBuf = proto.serializeError('Room is full');
@@ -65,7 +69,7 @@ class Room {
         const playerId = this.nextPlayerId++;
         const player = { id: playerId, name, colorIndex, iconStr, ws, isViewOnly: !!this.settings.defaultViewOnly };
         this.players.set(playerId, player);
-        console.log(`  [${this.code}] ${name} joined (id: ${playerId}, ${this.players.size} players)`);
+        console.log(`  \x1b[32m[JOIN]\x1b[0m ${name} (id: ${playerId}) | Total players: ${this.players.size}`);
         const joinMsg = proto.serializePlayerJoined(playerId, name, colorIndex, iconStr);
         this._broadcastExcept(joinMsg, playerId);
         const roomPlayers = [];
@@ -94,7 +98,7 @@ class Room {
         const player = this.players.get(playerId);
         if (!player) return;
         this.players.delete(playerId);
-        console.log(`  [${this.code}] ${player.name} left (${this.players.size} players)`);
+        console.log(`  \x1b[31m[LEAVE]\x1b[0m ${player.name} (id: ${playerId}) | Total players: ${this.players.size}`);
         for (const [uuid, lock] of this.locks) {
             if (lock.playerId === playerId) {
                 this.locks.delete(uuid);

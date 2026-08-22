@@ -243,6 +243,11 @@ namespace mpedit {
         m_onChatMessage.clear();
     }
 
+    void SessionManager::dispatchError(std::string const& error) {
+        auto callbacks = m_onError;
+        for (auto& [id, cb] : callbacks) cb(error);
+    }
+
     void SessionManager::setupNetworkHandlers() {
         auto& net = P2PManager::get();
         RemoteActionHandler::get().setupHandlers();
@@ -287,8 +292,21 @@ namespace mpedit {
             auto callbacks = m_onPlayerJoined;
             for (auto& [id, cb] : callbacks) cb(info);
             
+            geode::queueInMainThread([name] {
+                geode::Notification::create(name + " joined", cocos2d::CCSprite::createWithSpriteFrameName("GJ_completesIcon_001.png"))->show();
+            });
+            
             if (m_role == Role::Host && m_defaultViewOnly) {
                 setPlayerViewOnly(playerId, true);
+                
+                std::vector<uint8_t> data;
+                data.push_back(static_cast<uint8_t>(proto::Opcode::SetViewOnly));
+                proto::Writer writer;
+                writer.writeU32(playerId);
+                writer.writeBool(true);
+                auto p = writer.data();
+                data.insert(data.end(), p.begin(), p.end());
+                P2PManager::get().send(data, ChannelType::Reliable);
             }
         });
 
@@ -314,6 +332,10 @@ namespace mpedit {
 
             auto callbacks = m_onPlayerJoined;
             for (auto& [id, cb] : callbacks) cb(info);
+
+            geode::queueInMainThread([msg] {
+                geode::Notification::create(msg.name + " joined", cocos2d::CCSprite::createWithSpriteFrameName("GJ_completesIcon_001.png"))->show();
+            });
         });
 
         net.on(proto::Opcode::PlayerLeft, [this](int fromPlayerId, proto::Reader& reader) {
@@ -329,6 +351,10 @@ namespace mpedit {
             if (!leftPlayer.name.empty()) {
                 auto callbacks = m_onPlayerLeft;
                 for (auto& [id, cb] : callbacks) cb(leftPlayer);
+
+                geode::queueInMainThread([leftPlayer] {
+                    geode::Notification::create(leftPlayer.name + " left", cocos2d::CCSprite::createWithSpriteFrameName("GJ_deleteIcon_001.png"))->show();
+                });
             }
         });
 
@@ -345,6 +371,12 @@ namespace mpedit {
 
             auto callbacks = m_onPlayerLeft;
             for (auto& [id, cb] : callbacks) cb(leftPlayer);
+
+            if (!leftPlayer.name.empty()) {
+                geode::queueInMainThread([leftPlayer] {
+                    geode::Notification::create(leftPlayer.name + " left", cocos2d::CCSprite::createWithSpriteFrameName("GJ_deleteIcon_001.png"))->show();
+                });
+            }
         });
 
         net.onError([this](std::string const& error) {

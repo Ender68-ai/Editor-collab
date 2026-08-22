@@ -299,9 +299,10 @@ namespace mpedit {
             
             if (info.isViewOnly) {
                 auto viewOnlyLabel = CCLabelBMFont::create("[View Only]", "chatFont.fnt");
+                viewOnlyLabel->setAnchorPoint({0, 0.5f});
                 viewOnlyLabel->setScale(0.35f);
                 viewOnlyLabel->setColor({255, 200, 100});
-                viewOnlyLabel->setPosition({width - 80.f, 15.f});
+                viewOnlyLabel->setPosition({name->getPositionX() + name->getScaledContentSize().width + 10.f, 15.f});
                 this->addChild(viewOnlyLabel);
             }
             
@@ -491,6 +492,8 @@ namespace mpedit {
                 if (error.find("invalid password") != std::string::npos && !m_lastJoinCode.empty()) {
                     P2PManager::RoomInfo fakeRoom;
                     fakeRoom.roomCode = m_lastJoinCode;
+                    fakeRoom.serverUrl = m_lastServerUrl;
+                    fakeRoom.hasPassword = true;
                     this->promptPassword(fakeRoom);
                 } else {
                     FLAlertLayer::create("Error", error, "OK")->show();
@@ -941,6 +944,7 @@ namespace mpedit {
 
     void MultiplayerMenuPopup::onJoinRoom(P2PManager::RoomInfo const& room) {
         m_lastJoinCode = room.roomCode;
+        m_lastServerUrl = room.serverUrl;
         if (room.hasPassword) {
             promptPassword(room);
         } else {

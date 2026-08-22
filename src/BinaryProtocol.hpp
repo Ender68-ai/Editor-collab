@@ -35,6 +35,7 @@ namespace mpedit::proto {
         SetViewOnly       = 0x35,
         KickPlayer        = 0x36,
         BanPlayer         = 0x37,
+        ServerMessage     = 0x38,
 
         CursorUpdate      = 0x40,
         MoveBatch         = 0x41,
@@ -387,6 +388,11 @@ namespace mpedit::proto {
         std::string message;
     };
     ErrorMsg deserializeError(Reader& r);
+
+    struct ServerMessageMsg {
+        std::string message;
+    };
+    ServerMessageMsg deserializeServerMessage(Reader& r);
 
     struct UpdateSettingsMsg {
         ActionSerializer::LevelSettingsData settings;

@@ -490,6 +490,12 @@ namespace mpedit::proto {
         return msg;
     }
 
+    ServerMessageMsg deserializeServerMessage(Reader& r) {
+        ServerMessageMsg msg;
+        msg.message = r.readString();
+        return msg;
+    }
+
     UpdateSettingsMsg deserializeUpdateSettings(Reader& r) {
         UpdateSettingsMsg msg;
         msg.settings = readSettingsData(r);

@@ -60,6 +60,7 @@ This gives you a URL like `https://my-server.loca.lt`. Use it to connect in-game
 Use these commands in the server terminal:
 
 * `/rooms` - List active rooms and player counts
+* `/message <text>` - Broadcast a notification message to all connected players
 * `/save` - Force a manual save to `[LevelName]_save.gmd`
 * `/export` - Export the current level to `[LevelName]_export.gmd` in the `levels/` folder
 * `/kick <playerId or Name>` - Kick a player from the server

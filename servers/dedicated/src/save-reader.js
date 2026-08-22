@@ -46,7 +46,7 @@ function decryptSaveFile(filePath) {
         try {
             return zlib.inflateSync(compressed).toString('utf-8');
         } catch (e2) {
-            throw new Error('Failed to decompress save file — might be corrupted');
+            throw new Error('Failed to decompress save file - might be corrupted');
         }
     }
 }

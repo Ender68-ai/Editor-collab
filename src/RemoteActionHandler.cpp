@@ -237,6 +237,23 @@ namespace mpedit {
             }
         });
 
+        net.on(proto::Opcode::Error, [](int playerId, proto::Reader& reader) {
+            auto msg = proto::deserializeError(reader);
+            if (reader.hasError()) return;
+            geode::queueInMainThread([msg] {
+                SessionManager::get().dispatchError(msg.message);
+                SessionManager::get().leaveSession();
+            });
+        });
+
+        net.on(proto::Opcode::ServerMessage, [](int playerId, proto::Reader& reader) {
+            auto msg = proto::deserializeServerMessage(reader);
+            if (reader.hasError()) return;
+            geode::queueInMainThread([msg] {
+                geode::Notification::create("Server says: " + msg.message, geode::NotificationIcon::Info)->show();
+            });
+        });
+
         net.on(proto::Opcode::KickPlayer, [](int playerId, proto::Reader& reader) {
             uint32_t targetId = reader.readU32();
             if (reader.hasError()) return;

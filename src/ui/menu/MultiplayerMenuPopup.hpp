@@ -22,6 +22,7 @@ namespace mpedit {
         geode::TextInput* m_codeInput = nullptr;
         cocos2d::CCNode* m_browserUiNode = nullptr;
         std::string m_lastJoinCode;
+        std::string m_lastServerUrl;
         bool m_isConnecting = false;
         geode::async::TaskHolder<geode::utils::web::WebResponse> m_updateTask;
 

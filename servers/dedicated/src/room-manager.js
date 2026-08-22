@@ -74,9 +74,9 @@ class RoomManager {
         try {
             const levelsDir = path.join(process.cwd(), 'levels');
             const outFile = saveReader.exportToGmd(room, levelsDir, suffix);
-            console.log(`  [${room.code}] Saved to ${path.basename(outFile)}`);
+            console.log(`  \x1b[35m[SAVE]\x1b[0m Saved level to ${path.basename(outFile)}`);
         } catch (e) {
-            console.error(`  [${room.code}] Failed to save:`, e.message);
+            console.error(`  \x1b[31m[ERROR]\x1b[0m Failed to save level:`, e.message);
         }
     }
     async _updateSignalingServer() {
@@ -87,7 +87,7 @@ class RoomManager {
                     hostName: "Dedicated Server",
                     playerName: "Dedicated Server",
                     roomName: room.levelName,
-                    description: `Join at ws://<YOUR_IP>:${this.port}/${room.code}`,
+                    description: `Join at ws://<YOUR_IP>:${this.port}`,
                     playerLimit: room.maxPlayers,
                     isPrivate: false,
                     hasPassword: !!room.password,
