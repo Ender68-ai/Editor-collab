@@ -621,7 +621,7 @@ namespace mpedit {
         
         std::string customUrl = "";
         if (m_codeInput) {
-            std::string code = m_codeInput->getString();
+            std::string code = geode::utils::string::trim(m_codeInput->getString());
             if (code.starts_with("ws://") || code.starts_with("wss://") || code.starts_with("http://") || code.starts_with("https://")) {
                 customUrl = code;
                 if (customUrl.back() == '/') customUrl.pop_back();
@@ -669,7 +669,7 @@ namespace mpedit {
 
     void MultiplayerMenuPopup::onJoinByCode(cocos2d::CCObject*) {
         if (!m_codeInput) return;
-        std::string code = m_codeInput->getString();
+        std::string code = geode::utils::string::trim(m_codeInput->getString());
         if (code.empty()) {
             geode::Notification::create("Please enter a room code or server URL", geode::NotificationIcon::Warning)->show();
             return;

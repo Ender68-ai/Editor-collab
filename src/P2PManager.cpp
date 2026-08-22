@@ -446,19 +446,23 @@ namespace mpedit {
     }
 
     void P2PManager::fetchRooms(FetchRoomsCb cb, std::string const& customUrl) {
-        auto url = customUrl.empty() ? getSignalingUrl() + "/rooms" : customUrl + "/rooms";
+        std::string cleanUrl = geode::utils::string::trim(customUrl);
+        if (!cleanUrl.empty() && cleanUrl.back() == '/') cleanUrl.pop_back();
 
-        if (!customUrl.empty()) {
+        auto url = cleanUrl.empty() ? getSignalingUrl() + "/rooms" : cleanUrl + "/rooms";
+
+        if (!cleanUrl.empty()) {
             if (url.starts_with("ws://")) url.replace(0, 5, "http://");
             else if (url.starts_with("wss://")) url.replace(0, 6, "https://");
         }
         
         auto req = geode::utils::web::WebRequest();
         req.header("ngrok-skip-browser-warning", "1");
+        req.header("Bypass-Tunnel-Reminder", "true");
         
         m_signalingListener.spawn(
             req.get(url),
-            [cb, customUrl](geode::utils::web::WebResponse res) {
+            [cb, cleanUrl](geode::utils::web::WebResponse res) {
                 std::vector<RoomInfo> rooms;
                 if (res.ok()) {
                     auto json = res.json().unwrapOr(matjson::Value());
@@ -474,7 +478,7 @@ namespace mpedit {
                             info.isPrivate = roomJson.get<bool>("isPrivate").unwrapOr(false);
                             info.hasPassword = roomJson.get<bool>("hasPassword").unwrapOr(false);
                             info.version = roomJson.get<std::string>("version").unwrapOr("Unknown");
-                            info.serverUrl = customUrl;
+                            info.serverUrl = cleanUrl;
                             rooms.push_back(info);
                         }
                     }
@@ -960,10 +964,11 @@ namespace mpedit {
         }
         for (auto& cb : m_onStatus) cb("Connecting to server...");
 
-        std::string finalUrl = url;
+        std::string finalUrl = geode::utils::string::trim(url);
         if (finalUrl.starts_with("ws://") && (finalUrl.find("ngrok.io") != std::string::npos || finalUrl.find("ngrok.app") != std::string::npos || finalUrl.find("ngrok-free.app") != std::string::npos)) {
             finalUrl.replace(0, 5, "wss://");
         }
+        if (!finalUrl.empty() && finalUrl.back() == '/') finalUrl.pop_back();
 
         std::string fullUrl = finalUrl + "/" + roomCode;
         if (!password.empty()) fullUrl += "?password=" + password;

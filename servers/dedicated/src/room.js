@@ -34,6 +34,8 @@ class Room {
         this.dirty = false;
         this.snapshotPending = false;
         this.snapshotState = null; 
+        this.history = [];
+        this.snapshotRequestedAt = 0;
         this.lockDecayInterval = setInterval(() => this._decayLocks(), 1000);
     }
     destroy() {
@@ -118,15 +120,18 @@ class Room {
         switch (opcode) {
             case proto.Opcode.PlaceObjects:
                 this._onPlaceObjects(playerId, data);
+                this.history.push({ playerId, data });
                 break;
             case proto.Opcode.DeleteObjects:
                 this._onDeleteObjects(playerId, data);
+                this.history.push({ playerId, data });
                 break;
             case proto.Opcode.MoveObjects:
             case proto.Opcode.TransformObjects:
             case proto.Opcode.UpdateObjects:
             case proto.Opcode.ReconcileObjects:
                 this._relayFrom(playerId, data);
+                this.history.push({ playerId, data });
                 this.dirty = true;
                 break;
             case proto.Opcode.LockObjects:
@@ -134,9 +139,11 @@ class Room {
                 break;
             case proto.Opcode.UpdateSettings:
                 this._onUpdateSettings(playerId, data);
+                this.history.push({ playerId, data });
                 break;
             case proto.Opcode.UpdateColorChannel:
                 this._onUpdateColorChannel(playerId, data);
+                this.history.push({ playerId, data });
                 break;
             case proto.Opcode.KickPlayer:
                 this._onKickPlayer(playerId, data);
@@ -253,6 +260,13 @@ class Room {
             ws.send(proto.serializeSyncLocksChunk(locks.slice(i, i + 1000)));
         }
         ws.send(proto.serializeSyncLevelEnd());
+        if (this.history && this.history.length > 0) {
+            console.log(`  [${this.code}] Replaying ${this.history.length} historical actions to new player (empty level)`);
+            for (const msg of this.history) {
+                const wrapped = proto.serializeRelay(msg.playerId, msg.data);
+                ws.send(wrapped);
+            }
+        }
             return;
         }
         const chunks = [];
@@ -286,6 +300,14 @@ class Room {
             ws.send(proto.serializeSyncLocksChunk(locks.slice(i, i + 1000)));
         }
         ws.send(proto.serializeSyncLevelEnd());
+        
+        if (this.history && this.history.length > 0) {
+            console.log(`  [${this.code}] Replaying ${this.history.length} historical actions to new player`);
+            for (const msg of this.history) {
+                const wrapped = proto.serializeRelay(msg.playerId, msg.data);
+                ws.send(wrapped);
+            }
+        }
     }
     _getLocksArray() {
         const locks = [];
@@ -310,6 +332,7 @@ class Room {
         }
         if (!target) return;
         this.snapshotPending = true;
+        this.snapshotRequestedAt = this.history.length;
         this.locks.clear();
         this.snapshotState = {
             fromPlayerId: target.id,
@@ -385,6 +408,12 @@ class Room {
             this.dirty = false;
             this.snapshotPending = false;
             this.snapshotState = null;
+            if (this.snapshotRequestedAt !== undefined) {
+                this.history = this.history.slice(this.snapshotRequestedAt);
+                this.snapshotRequestedAt = 0;
+            } else {
+                this.history = [];
+            }
             console.log(`  [${this.code}] Snapshot received (${allUuids.length} objects, ${this.compressedLevelData.length} bytes)`);
             if (this.onSnapshotSaved) this.onSnapshotSaved(this);
             return true;

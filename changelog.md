@@ -13,6 +13,7 @@
 - Fixed crash that happens on android when guests leave or get kicked.
 - Fixed issue where after hosting, the multiplayer editor pop up becomes unresponsive until you press esc and reopen it again.
 - Fixed a bug where placing or selecting a large amount of objects would instantly freeze and softlock the game.
+- Fixed crash when deleting an object another player is interacting with in playtest.
 - Tried optimizing the signaling server logic by balancing memory time and http requests more efficiently.
 - Increased and refined the information given when connecting to a host (also fuck ICE).
 - Checked and fixed a lot of outdated information in the various README files.

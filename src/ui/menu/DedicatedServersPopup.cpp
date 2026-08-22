@@ -129,7 +129,7 @@ namespace mpedit {
         }
 
         void onConnect(CCObject*) {
-            std::string url = m_input->getString();
+            std::string url = geode::utils::string::trim(m_input->getString());
             if (url.empty()) return;
             
             this->setKeyboardEnabled(false);
@@ -192,8 +192,8 @@ namespace mpedit {
 
         void onAdd(CCObject*) {
             std::string name = m_nameInput->getString();
-            std::string url = m_urlInput->getString();
-            if (url.empty()) return;
+            std::string url = geode::utils::string::trim(m_urlInput->getString());
+            if (name.empty() || url.empty()) return;
             
             auto servers = m_parentPopup->getSavedServers();
             servers.push_back({name, url});

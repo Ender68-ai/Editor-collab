@@ -902,6 +902,8 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             if (auto* ui = this->m_editorUI) {
                 ui->deselectAll();
             }
+        } else if (!isPlaytesting && m_fields->m_wasPlaytesting) {
+            handler.flushDeferredDeletions();
         }
         m_fields->m_wasPlaytesting = isPlaytesting;
 

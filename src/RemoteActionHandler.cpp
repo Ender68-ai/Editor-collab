@@ -430,6 +430,16 @@ namespace mpedit {
         return nullptr;
     }
 
+    void RemoteActionHandler::flushDeferredDeletions() {
+        if (!m_deferredDeletionObjects.empty()) {
+            for (auto* obj : m_deferredDeletionObjects) {
+                obj->release();
+            }
+            log::info("RemoteActionHandler: Flushed {} deferred deletion objects", m_deferredDeletionObjects.size());
+            m_deferredDeletionObjects.clear();
+        }
+    }
+
     void RemoteActionHandler::applyPendingSync() {
         if (!m_pendingSync) {
             log::debug("RemoteActionHandler: applyPendingSync called but no pending sync");
@@ -597,11 +607,19 @@ namespace mpedit {
                     auto orangeUuid = getUUIDForObject(tpPortal->m_orangePortal);
                     auto* orange = tpPortal->m_orangePortal;
                     tpPortal->m_orangePortal = nullptr;
+                    if (editor->m_playbackMode != PlaybackMode::Not) {
+                        orange->retain();
+                        m_deferredDeletionObjects.push_back(orange);
+                    }
                     editor->removeObject(orange, true);
                     if (!orangeUuid.empty()) unregisterObject(orangeUuid);
                 }
             }
 
+            if (editor->m_playbackMode != PlaybackMode::Not) {
+                obj->retain();
+                m_deferredDeletionObjects.push_back(obj);
+            }
             editor->removeObject(obj, true);
             unregisterObject(uuid);
             log::debug("RemoteActionHandler: Deleted object (uuid={})", uuid);
@@ -785,6 +803,10 @@ namespace mpedit {
                     
                     auto* orange = tpPortal->m_orangePortal;
                     tpPortal->m_orangePortal = nullptr;
+                    if (editor->m_playbackMode != PlaybackMode::Not) {
+                        orange->retain();
+                        m_deferredDeletionObjects.push_back(orange);
+                    }
                     editor->removeObject(orange, true);
                     if (!orangeOldUuid.empty()) unregisterObject(orangeOldUuid);
                 }
@@ -793,6 +815,10 @@ namespace mpedit {
             auto objDataCopy = objData;
             ActionSerializer::injectLocalStartPosState(objDataCopy, oldObj);
 
+            if (editor->m_playbackMode != PlaybackMode::Not) {
+                oldObj->retain();
+                m_deferredDeletionObjects.push_back(oldObj);
+            }
             editor->removeObject(oldObj, true);
             unregisterObject(objDataCopy.uuid);
 
