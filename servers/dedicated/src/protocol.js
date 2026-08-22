@@ -24,6 +24,7 @@ const Opcode = {
     ServerMessage:      0x38,
     CursorUpdate:       0x40,
     MoveBatch:          0x41,
+    ChatMessage:        0x42,
     Heartbeat:          0x50,
     Error:              0xFF,
     Relay:              0xFE,
@@ -476,6 +477,11 @@ function deserializeCursorUpdate(r) {
         status: r.readString(),
     };
 }
+
+function deserializeChatMessage(r) {
+    return { message: r.readString() };
+}
+
 function deserializeUpdateSettings(r) {
     return { settings: readSettingsData(r) };
 }
@@ -515,5 +521,6 @@ module.exports = {
     serializeSyncLocksChunk,
     deserializePlayerJoined,
     deserializeCursorUpdate,
+    deserializeChatMessage,
     deserializeUpdateSettings,
 };

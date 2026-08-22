@@ -158,6 +158,9 @@ class Room {
             case proto.Opcode.SetViewOnly:
                 this._relayFrom(playerId, data);
                 break;
+            case proto.Opcode.ChatMessage:
+                this._onChatMessage(playerId, data);
+                break;
             default:
                 this._relayFrom(playerId, data);
                 break;
@@ -221,6 +224,16 @@ class Room {
         }
         this._relayFrom(fromId, data);
         this.dirty = true;
+    }
+    _onChatMessage(fromId, data) {
+        const r = new proto.Reader(data.slice(1));
+        const msg = proto.deserializeChatMessage(r);
+        if (r.error) return;
+        const player = this.players.get(fromId);
+        if (player) {
+            console.log(`\x1b[35m\x1b[1m[CHAT]\x1b[0m \x1b[32m${player.name}:\x1b[0m ${msg.message}`);
+        }
+        this._relayFrom(fromId, data);
     }
     _onKickPlayer(fromId, data) {
         const r = new proto.Reader(data.slice(1));
