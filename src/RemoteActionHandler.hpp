@@ -44,6 +44,7 @@ namespace mpedit {
         std::unordered_map<std::string, LockInfo> const& getObjectLocks() const { return m_objectLocks; }
         
         void updateLocks(float dt);
+        void flushDeferredDeletions();
 
         void pruneObjectFromHistory(LevelEditorLayer* editor, GameObject* obj);
 
@@ -107,7 +108,6 @@ namespace mpedit {
         std::unordered_map<GameObject*, std::string> m_preSelectSaveStrings;
 
         std::vector<cocos2d::CCObject*> m_deferredDeletionObjects;
-        void flushDeferredDeletions();
 
         bool m_processingRemote = false;
         bool m_initialSyncCompleted = false;
