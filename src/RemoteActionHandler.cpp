@@ -110,14 +110,7 @@ namespace mpedit {
             handleRemoteMoveObjects(playerId, msg.moves);
         });
 
-        net.on(proto::Opcode::ChatMessage, [](int playerId, proto::Reader& reader) {
-            auto msg = proto::deserializeChatMessage(reader);
-            if (reader.hasError()) {
-                log::error("RemoteActionHandler: Error deserializing ChatMessage");
-                return;
-            }
-            SessionManager::get().onChatMessageReceived(playerId, msg.message);
-        });
+
 
         net.on(proto::Opcode::TransformObjects, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
@@ -318,8 +311,16 @@ namespace mpedit {
             }
         });
 
+        net.on(proto::Opcode::SyncLocksChunk, [this](int playerId, proto::Reader& reader) {
+            auto msg = proto::deserializeSyncLocksChunk(reader);
+            if (reader.hasError()) return;
+            for (auto const& lock : msg.locks) {
+                m_objectLocks[lock.uuid] = {lock.playerId, 0.0f};
+            }
+        });
+
         net.on(proto::Opcode::SyncLevelEnd, [this](int playerId, proto::Reader& reader) {
-            auto msg = proto::deserializeSyncLevelEnd(reader);
+            proto::deserializeSyncLevelEnd(reader);
             if (reader.hasError()) {
                 log::error("RemoteActionHandler: Error deserializing SyncLevelEnd");
                 return;
@@ -359,7 +360,7 @@ namespace mpedit {
 
             log::info("RemoteActionHandler: Reassembled sync string, size: {} bytes, {} objects",
                 objectsString.size(), uuids.size());
-            handleRemoteSyncLevel(playerId, objectsString, uuids, m_chunkedSync.settings, msg.locks);
+            handleRemoteSyncLevel(playerId, objectsString, uuids, m_chunkedSync.settings, {});
 
             m_chunkedSync.active = false;
             m_chunkedSync.chunks.clear();
@@ -1268,8 +1269,13 @@ namespace mpedit {
         m_pendingPlacements.clear();
 
         if (!objects.empty() && !m_processingRemote) {
-            auto data = proto::serializePlaceObjects(objects);
-            P2PManager::get().send(data, ChannelType::Reliable);
+            constexpr size_t MAX_OBJECTS_PER_MESSAGE = 100;
+            for (size_t i = 0; i < objects.size(); i += MAX_OBJECTS_PER_MESSAGE) {
+                size_t chunkCount = std::min(MAX_OBJECTS_PER_MESSAGE, objects.size() - i);
+                std::vector<ActionSerializer::ObjectData> chunk(objects.begin() + i, objects.begin() + i + chunkCount);
+                auto data = proto::serializePlaceObjects(chunk);
+                P2PManager::get().send(data, ChannelType::Reliable);
+            }
             log::debug("RemoteActionHandler: Flushed batched placement of {} objects", objects.size());
         }
     }

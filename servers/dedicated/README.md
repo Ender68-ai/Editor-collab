@@ -22,8 +22,7 @@ It reads levels from your local `CCLocalLevels.dat` save file, hosts them in mem
    - **My Geometry Dash Saves:** Automatically locates your `CCLocalLevels.dat` file and lists your game's levels.
    - **Local .gmd files:** Reads `.gmd` files from the `levels/` folder next to the script.
    - **Custom file path:** Paste a direct path to any `.gmd` file on your system.
-4. Follow the terminal prompts to select the level(s) you want to host.
-5. The server starts on port 7575 by default.
+4. Follow the terminal prompts to select the level to host and configure the server (Port, Max Players, Password, Autosave interval, and Default View-Only state).
 
 ## Playing over the Internet
 
@@ -34,7 +33,7 @@ To play with people outside your local network, you need a public address.
 2. Players connect using your public IP: `ws://[your-public-ip]:7575`
 
 ### Tunnels
-If you cannot port forward, use a tunnel service.
+If you cannot port forward, use a tunnel service. I personally recommend ngrok or localtunnel, as they have both been tested and confirmed to work well.
 
 **ngrok:**
 ```bash
@@ -54,21 +53,26 @@ This gives you a URL like `https://my-server.loca.lt`. Use it to connect in-game
 2. Click **Add Server** and enter the server's URL.
 3. Click **Join**.
 
-*Note: To actually save the multiplayer level to your device, open the Editor Pause Menu and click **Save**.*
+*Note: To actually save the multiplayer level to your device, open the Editor Pause Menu and click **Save**. The dedicated server will always save and store levels independently in the levels folder and will never overwrite your local game level files.*
 
 ## Admin Commands
 
 Use these commands in the server terminal:
 
 * `/rooms` - List active rooms and player counts
-* `/save` - Force a save for all rooms
-* `/export <roomCode>` - Export a room's state to a `.gmd` file in the `saves/` folder
-* `/kick <roomCode> <playerId>` - Kick a player
-* `/ban <roomCode> <playerId>` - Ban a player
+* `/save` - Force a manual save to `[LevelName]_save.gmd`
+* `/export` - Export the current level to `[LevelName]_export.gmd` in the `levels/` folder
+* `/kick <playerId or Name>` - Kick a player from the server
+* `/ban <playerId or Name>` - Ban a player from the server
+* `/viewonly <playerId or Name> <on|off>` - Force a player into or out of view-only mode
 * `/stop` - Shut down the server
 
-## Auto-Saving
+## Saving & Auto-Saving
 
-The server requests a level snapshot from clients every 5 minutes. This is saved to `saves/[LevelName]_autosave.gmd`. 
+There are three ways levels are saved on the dedicated server (all saves go to the `levels/` folder):
 
-You can directly import this backup into Geometry Dash at any time, or use the `/export` command to generate a manual snapshot.
+1. **Auto-Saving:** When starting the server, you can specify an autosave interval in minutes. The server will automatically write a `[LevelName]_autosave.gmd` file in the background.
+2. **Terminal `/save`:** Typing `/save` in the terminal forces an immediate manual save to `[LevelName]_save.gmd`. 
+3. **In-Game "Save":** When a player clicks "Save" or "Save and Exit" inside Geometry Dash, it triggers the same manual save, creating or updating `[LevelName]_save.gmd`.
+
+You can directly import any of these `.gmd` files into Geometry Dash at any time, or use the `/export` command in the terminal to generate a clean `[LevelName]_export.gmd`.

@@ -22,6 +22,7 @@ namespace mpedit::proto {
         SyncLevelChunk    = 0x11,
         SyncLevelEnd      = 0x12,
         RequestSnapshot   = 0x13,
+        SyncLocksChunk    = 0x14,
 
         UpdateSettings    = 0x20,
         UpdateColorChannel = 0x21,
@@ -275,8 +276,9 @@ namespace mpedit::proto {
         uint32_t chunkIndex, const uint8_t* data, size_t dataLen,
         std::vector<std::string> const& uuids);
 
-    std::vector<uint8_t> serializeSyncLevelEnd(
-        std::vector<ActionSerializer::LockData> const& locks);
+    std::vector<uint8_t> serializeSyncLevelEnd();
+
+    std::vector<uint8_t> serializeSyncLocksChunk(std::vector<ActionSerializer::LockData> const& locks);
 
     std::vector<uint8_t> serializeRequestSnapshot();
 
@@ -361,10 +363,12 @@ namespace mpedit::proto {
     };
     SyncLevelChunkMsg deserializeSyncLevelChunk(Reader& r);
 
-    struct SyncLevelEndMsg {
+    struct SyncLevelEndMsg {};
+    void deserializeSyncLevelEnd(Reader& r);
+    struct SyncLocksChunkMsg {
         std::vector<ActionSerializer::LockData> locks;
     };
-    SyncLevelEndMsg deserializeSyncLevelEnd(Reader& r);
+    SyncLocksChunkMsg deserializeSyncLocksChunk(Reader& r);
 
     struct PlayerJoinedMsg {
         int playerId;

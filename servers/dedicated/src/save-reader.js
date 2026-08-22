@@ -123,10 +123,13 @@ function parseLevelDict(dictXml) {
         const valueStart = keys[i].index;
         const valueEnd = (i + 1 < keys.length) ? keys[i + 1].index - keys[i + 1].key.length - 7 : dictXml.length;
         const valueStr = dictXml.substring(valueStart, valueEnd).trim();
-        const tagMatch = valueStr.match(/^<(\w+)>([^<]*)<\/\w+>/s);
+        const tagMatch = valueStr.match(/^<(\w+)>([\s\S]*?)<\/\1>/);
         if (tagMatch) {
             const tag = tagMatch[1];
-            const val = tagMatch[2];
+            let val = tagMatch[2];
+            if (val.startsWith('<![CDATA[') && val.endsWith(']]>')) {
+                val = val.substring(9, val.length - 3);
+            }
             if (tag === 's') kvs[key] = val;
             else if (tag === 'i') kvs[key] = parseInt(val, 10);
             else if (tag === 'r') kvs[key] = parseFloat(val);
@@ -141,7 +144,14 @@ function parseLevelDict(dictXml) {
     if (!name) return null;
     const levelString = kvs['k4'] || '';
     const description = kvs['k3'] || '';
-    const objectCount = kvs['k48'] || 0;
+    let objectCount = kvs['k48'] || 0;
+    if (objectCount === 0 && levelString) {
+        const decoded = decodeLevelString(levelString);
+        if (decoded && decoded.objects) {
+            objectCount = (decoded.objects.match(/;/g) || []).length;
+        }
+    }
+    
     const audioTrack = kvs['k8'] || 0;
     const songID = kvs['k45'] || 0; 
     const revision = kvs['k46'] || 0;
@@ -170,7 +180,26 @@ function decodeLevelString(encoded) {
         } catch {
             decompressed = zlib.inflateSync(compressed).toString('utf-8');
         }
-        return splitLevelString(decompressed);
+        
+        let result = splitLevelString(decompressed);
+        
+        if (result.objects.startsWith('UEsDBB')) {
+            const buf = Buffer.from(result.objects, 'base64');
+            if (buf.length >= 4 && buf.readUInt32LE(0) === 0x04034b50) {
+                const compMethod = buf.readUInt16LE(8);
+                const dataOffset = 30 + buf.readUInt16LE(26) + buf.readUInt16LE(28);
+                const compressedData = buf.slice(dataOffset);
+                if (compMethod === 8) {
+                    try {
+                        result.objects = zlib.inflateRawSync(compressedData).toString('utf-8');
+                    } catch(e) {}
+                } else if (compMethod === 0) {
+                    result.objects = compressedData.toString('utf-8');
+                }
+            }
+        }
+        
+        return result;
     } catch (e) {
         return { objects: '', settings: '' };
     }
@@ -199,7 +228,18 @@ function encodeLevelString(settings, objects) {
     return b64;
 }
 function exportToGmd(room, outDir, suffix = '_export') {
-    const encoded = encodeLevelString(room.settings.saveString, room.compressedLevelData.toString('base64').replace(/\+/g, '-').replace(/\//g, '_'));
+    let objectsData = room.compressedLevelData;
+    if (objectsData.length >= 4 && objectsData.readUInt32LE(0) === 0x04034b50) {
+        const compMethod = objectsData.readUInt16LE(8);
+        const dataOffset = 30 + objectsData.readUInt16LE(26) + objectsData.readUInt16LE(28);
+        const compressedData = objectsData.slice(dataOffset);
+        if (compMethod === 8) {
+            try { objectsData = zlib.inflateRawSync(compressedData); } catch(e) {}
+        } else if (compMethod === 0) {
+            objectsData = compressedData;
+        }
+    }
+    const encoded = encodeLevelString(room.settings.saveString, objectsData.toString('utf8'));
     const gmd = `<plist version="1.0" gjver="2.0"><dict><k>k_0</k><s/><k>k_1</k><s></s><k>k2</k><s>${room.levelName}</s><k>k4</k><s>${encoded}</s></dict></plist>`;
     const safeName = room.levelName.replace(/[^a-zA-Z0-9_-]/g, '_');
     const outFile = path.join(outDir, `${safeName}${suffix}.gmd`);

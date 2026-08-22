@@ -30,6 +30,7 @@ namespace mpedit {
 
         m_localPlayerName = actualName;
         m_role = Role::Host;
+        m_defaultViewOnly = settings.defaultViewOnly;
 
         setupNetworkHandlers();
         P2PManager::RoomSettings p2pSettings;
@@ -92,6 +93,7 @@ namespace mpedit {
         m_role = Role::None;
         m_roomCode.clear();
         m_localPlayerId = -1;
+        m_defaultViewOnly = false;
         m_players.clear();
         m_chatHistory.clear();
 
@@ -137,9 +139,7 @@ namespace mpedit {
             onChatMessageReceived(m_localPlayerId, message);
         } else {
             P2PManager::get().sendTo(0, msg, ChannelType::Reliable);
-            if (P2PManager::get().isDedicatedServer()) {
-                onChatMessageReceived(m_localPlayerId, message);
-            }
+            onChatMessageReceived(m_localPlayerId, message);
         }
     }
 
@@ -267,11 +267,12 @@ namespace mpedit {
             for (auto& [id, cb] : callbacks) cb();
         });
 
-        net.onPeerConnected([this](int playerId, std::string const& name, int colorIndex) {
+        net.onPeerConnected([this](int playerId, std::string const& name, int colorIndex, std::string const& iconStr) {
             for (auto& p : m_players) {
                 if (p.id == playerId) {
                     p.name = name;
                     p.colorIndex = colorIndex;
+                    p.iconStr = iconStr;
                     return;
                 }
             }
@@ -280,10 +281,15 @@ namespace mpedit {
             info.id = playerId;
             info.name = name;
             info.colorIndex = colorIndex;
+            info.iconStr = iconStr;
             m_players.push_back(info);
 
             auto callbacks = m_onPlayerJoined;
             for (auto& [id, cb] : callbacks) cb(info);
+            
+            if (m_role == Role::Host && m_defaultViewOnly) {
+                setPlayerViewOnly(playerId, true);
+            }
         });
 
         net.on(proto::Opcode::PlayerJoined, [this](int fromPlayerId, proto::Reader& reader) {

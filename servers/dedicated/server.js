@@ -9,7 +9,7 @@ async function main() {
     const path = require('path');
     const prompts = require('prompts');
     
-    console.log('--- MultiplayerEdit Dedicated Server ---');
+    console.log('MultiplayerEdit Dedicated Server');
     
     const modeResponse = await prompts({
         type: 'select',
@@ -17,7 +17,7 @@ async function main() {
         message: 'Where do you want to load levels from?',
         choices: [
             { title: 'My Geometry Dash Saves (CCLocalLevels.dat)', value: 'gd' },
-            { title: 'Local .gmd files (from the levels/ directory)', value: 'gmd' },
+            { title: 'Local .gmd files (from the levels folder)', value: 'gmd' },
             { title: 'Enter a custom file path...', value: 'custom' }
         ]
     });
@@ -50,7 +50,7 @@ async function main() {
         const files = fs.readdirSync(levelsDir).filter(f => f.endsWith('.gmd'));
         if (files.length === 0) {
             console.error('\nNo .gmd files found in the levels/ directory.');
-            console.log('Drop your .gmd files into the levels/ folder and try again!');
+            console.log('Drop your .gmd files into the levels folder and try again!');
             process.exit(1);
         }
         console.log('');
@@ -107,6 +107,26 @@ async function main() {
             name: 'maxPlayers',
             message: 'Max players per room',
             initial: 100
+        },
+        {
+            type: 'text',
+            name: 'password',
+            message: 'Room password (leave blank for none)',
+            initial: ''
+        },
+        {
+            type: 'number',
+            name: 'autosaveInterval',
+            message: 'Autosave interval in minutes (0 to disable)',
+            initial: 5
+        },
+        {
+            type: 'toggle',
+            name: 'defaultViewOnly',
+            message: 'Default new players to view-only mode?',
+            initial: false,
+            active: 'yes',
+            inactive: 'no'
         }
     ]);
 
@@ -118,6 +138,10 @@ async function main() {
     const selectedLevel = response.selectedLevel;
     const port = (typeof response.port === 'number' && isFinite(response.port) && response.port > 0) ? response.port : 7575;
     const maxPlayers = (typeof response.maxPlayers === 'number' && isFinite(response.maxPlayers) && response.maxPlayers > 0) ? response.maxPlayers : 100;
+    const roomPassword = response.password || "";
+    const autosaveInterval = (typeof response.autosaveInterval === 'number' && isFinite(response.autosaveInterval) && response.autosaveInterval >= 0) ? response.autosaveInterval : 5;
+    const defaultViewOnly = !!response.defaultViewOnly;
+    
     const roomManager = new RoomManager();
     const wsServer = new WSServer(roomManager);
     console.log('\nStarting server...');
@@ -130,14 +154,25 @@ async function main() {
         audioTrack: selectedLevel.audioTrack,
         songID: selectedLevel.songID,
         levelLength: 0,
-        levelName: selectedLevel.name
+        levelName: selectedLevel.name,
+        password: roomPassword,
+        defaultViewOnly: defaultViewOnly
     };
     const objectCount = decoded.objects.split(';').filter(Boolean).length;
     const crypto = require('crypto');
     const uuids = Array.from({ length: objectCount }, () => crypto.randomUUID());
     const room = roomManager.createRoom(selectedLevel.name, { compressedBytes: Buffer.from(decoded.objects, 'utf8'), uuids: uuids }, settings);
     room.maxPlayers = maxPlayers;
+    room.password = roomPassword;
     console.log(`✓ Room created: "${room.levelName}" — Code: ${room.code}`);
+    
+    if (autosaveInterval > 0) {
+        setInterval(() => {
+            roomManager._performAutoSave();
+        }, autosaveInterval * 60000);
+        console.log(`✓ Autosave enabled (every ${autosaveInterval} minutes)`);
+    }
+    
     await wsServer.start(port);
     console.log(`\n✓ Server running on port ${port}!`);
     console.log(`Players can connect by entering 'ws://<your-ip>:${port}' in the game.`);
@@ -152,34 +187,58 @@ async function main() {
         const parts = line.trim().split(' ');
         const cmd = parts[0].toLowerCase();
         const args = parts.slice(1);
+        
+        const room = roomManager.rooms.values().next().value;
+        if (!room) {
+            console.log('No active room.');
+            return;
+        }
+
+        const resolvePlayer = (arg) => {
+            const id = parseInt(arg);
+            if (!isNaN(id) && room.players.has(id)) return id;
+            for (const [pid, p] of room.players) {
+                if (p.name && p.name.toLowerCase() === arg.toLowerCase()) return pid;
+            }
+            return null;
+        };
+
         if (cmd === '/stop') {
             console.log('Stopping server...');
             wsServer.stop();
             roomManager.stop();
             process.exit(0);
         } else if (cmd === '/save') {
-            console.log('Triggering auto-save for all rooms...');
-            roomManager._performAutoSave();
+            console.log('Saving level to disk manually...');
+            const levelsDir = require('path').join(process.cwd(), 'levels');
+            const outFile = saveReader.exportToGmd(room, levelsDir, '_save');
+            console.log(`Saved to ${outFile}`);
         } else if (cmd === '/kick') {
-            if (args.length !== 2) return console.log('Usage: /kick <roomCode> <playerId>');
-            const room = roomManager.getRoom(args[0]);
-            if (room) room._onKickPlayer(0, Buffer.concat([Buffer.from([0]), Buffer.from([parseInt(args[1])])])); 
-            else console.log('Room not found');
+            if (args.length !== 1) return console.log('Usage: /kick <playerId or Name>');
+            const pid = resolvePlayer(args[0]);
+            if (pid !== null) room._onKickPlayer(0, Buffer.concat([Buffer.from([0]), Buffer.from([pid])])); 
+            else console.log('Player not found');
         } else if (cmd === '/ban') {
-            if (args.length !== 2) return console.log('Usage: /ban <roomCode> <playerId>');
-            const room = roomManager.getRoom(args[0]);
-            if (room) room._onBanPlayer(0, Buffer.concat([Buffer.from([0]), Buffer.from([parseInt(args[1])])]));
-            else console.log('Room not found');
+            if (args.length !== 1) return console.log('Usage: /ban <playerId or Name>');
+            const pid = resolvePlayer(args[0]);
+            if (pid !== null) room._onBanPlayer(0, Buffer.concat([Buffer.from([0]), Buffer.from([pid])]));
+            else console.log('Player not found');
+        } else if (cmd === '/viewonly') {
+            if (args.length !== 2 || (args[1] !== 'on' && args[1] !== 'off')) return console.log('Usage: /viewonly <playerId or Name> <on|off>');
+            const pid = resolvePlayer(args[0]);
+            if (pid !== null) {
+                const isOn = args[1] === 'on';
+                const proto = require('./src/protocol');
+                const w = new proto.Writer();
+                w.writeOpcode(proto.Opcode.SetViewOnly);
+                w.writeU32(pid);
+                w.writeBool(isOn);
+                room._relayFrom(0, w.finish());
+                console.log(`Set view-only to ${isOn} for player ${args[0]}`);
+            } else console.log('Player not found');
         } else if (cmd === '/rooms') {
-            for (const [code, room] of roomManager.rooms) {
-                console.log(`  [${code}] "${room.levelName}" - ${room.players.size}/${room.maxPlayers} players`);
-            }
+            console.log(`  [${room.code}] "${room.levelName}" - ${room.players.size}/${room.maxPlayers} players`);
         } else if (cmd === '/export') {
-            if (args.length !== 1) {
-                return console.log('Usage: /export <roomCode>\n  Exports to the levels/ folder as a .gmd file.');
-            }
-            const room = roomManager.getRoom(args[0]);
-            if (!room) return console.log('Room not found');
             const levelsDir = require('path').join(process.cwd(), 'levels');
             const outFile = saveReader.exportToGmd(room, levelsDir);
             console.log(`Exported to ${outFile}`);

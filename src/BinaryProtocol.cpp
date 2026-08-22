@@ -295,15 +295,17 @@ namespace mpedit::proto {
         return std::move(w.takeData());
     }
 
-    std::vector<uint8_t> serializeSyncLevelEnd(
-        std::vector<ActionSerializer::LockData> const& locks)
-    {
+    std::vector<uint8_t> serializeSyncLevelEnd() {
         Writer w;
         w.writeOpcode(Opcode::SyncLevelEnd);
-        w.writeVarInt(static_cast<uint32_t>(locks.size()));
-        for (auto const& lock : locks) {
-            writeLockData(w, lock);
-        }
+        return std::move(w.takeData());
+    }
+
+    std::vector<uint8_t> serializeSyncLocksChunk(std::vector<ActionSerializer::LockData> const& locks) {
+        Writer w;
+        w.writeOpcode(Opcode::SyncLocksChunk);
+        w.writeVarInt(locks.size());
+        for (auto const& lock : locks) writeLockData(w, lock);
         return std::move(w.takeData());
     }
 
@@ -455,11 +457,13 @@ namespace mpedit::proto {
         return msg;
     }
 
-    SyncLevelEndMsg deserializeSyncLevelEnd(Reader& r) {
-        SyncLevelEndMsg msg;
-        uint32_t lockCount = r.readVarInt();
-        msg.locks.reserve(lockCount);
-        for (uint32_t i = 0; i < lockCount; ++i) {
+    void deserializeSyncLevelEnd(Reader& r) {
+    }
+
+    SyncLocksChunkMsg deserializeSyncLocksChunk(Reader& r) {
+        SyncLocksChunkMsg msg;
+        size_t lockCount = r.readVarInt();
+        for (size_t i = 0; i < lockCount; i++) {
             msg.locks.push_back(readLockData(r));
         }
         return msg;

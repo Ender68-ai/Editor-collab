@@ -24,6 +24,7 @@ namespace mpedit {
         uint32_t playerLimit = 100;
         bool isPrivate = false;
         std::string password = "";
+        bool defaultViewOnly = false;
     };
 
     class SessionManager {
@@ -97,6 +98,7 @@ namespace mpedit {
         int m_localPlayerId = -1;
         std::string m_localPlayerName;
         std::vector<PlayerInfo> m_players;
+        bool m_defaultViewOnly = false;
 
         std::map<void*, SessionCallback> m_onSessionStarted;
         std::map<void*, SessionCallback> m_onSessionEnded;

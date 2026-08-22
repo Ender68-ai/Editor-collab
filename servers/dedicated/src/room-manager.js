@@ -35,7 +35,11 @@ class RoomManager {
     }
     createRoom(levelName, levelData, settings) {
         const room = new Room(levelName, levelData, settings);
-        room.onSnapshotSaved = (r) => this._saveRoomToDisk(r);
+        room.onSnapshotSaved = (r) => {
+            const suffix = r.isAutoSaving ? '_autosave' : '_save';
+            r.isAutoSaving = false;
+            this._saveRoomToDisk(r, suffix);
+        };
         this.rooms.set(room.code, room);
         return room;
     }
@@ -59,19 +63,20 @@ class RoomManager {
     _performAutoSave() {
         for (const room of this.rooms.values()) {
             if (room.players.size > 0 && room.dirty) {
+                room.isAutoSaving = true;
                 room.requestSnapshot();
             } else if (!room.dirty && room.compressedLevelData && room.compressedLevelData.length > 0) {
-                this._saveRoomToDisk(room);
+                this._saveRoomToDisk(room, '_autosave');
             }
         }
     }
-    _saveRoomToDisk(room) {
+    _saveRoomToDisk(room, suffix = '_autosave') {
         try {
             const levelsDir = path.join(process.cwd(), 'levels');
-            const outFile = saveReader.exportToGmd(room, levelsDir, '_autosave');
-            console.log(`  [${room.code}] Auto-saved to ${path.basename(outFile)}`);
+            const outFile = saveReader.exportToGmd(room, levelsDir, suffix);
+            console.log(`  [${room.code}] Saved to ${path.basename(outFile)}`);
         } catch (e) {
-            console.error(`  [${room.code}] Failed to auto-save:`, e.message);
+            console.error(`  [${room.code}] Failed to save:`, e.message);
         }
     }
     async _updateSignalingServer() {

@@ -7,7 +7,7 @@ class WSServer {
         this.server = http.createServer((req, res) => this._handleHttp(req, res));
         this.server.keepAliveTimeout = 0;
         this.server.headersTimeout = 0;
-        this.wss = new WebSocket.Server({ noServer: true });
+        this.wss = new WebSocket.Server({ noServer: true, maxPayload: 250 * 1024 * 1024 });
         this.server.on('upgrade', (request, socket, head) => {
             const url = new URL(request.url, `http://${request.headers.host}`);
             const pathParts = url.pathname.split('/').filter(Boolean);

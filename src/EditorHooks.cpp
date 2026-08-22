@@ -268,6 +268,56 @@ class $modify(MPLevelBrowserLayer, LevelBrowserLayer) {
 
 
 namespace {
+    void sendChunkedLockObjects(std::vector<std::string> const& uuids, bool locked) {
+        constexpr size_t MAX_UUIDS_PER_MESSAGE = 300;
+        for (size_t i = 0; i < uuids.size(); i += MAX_UUIDS_PER_MESSAGE) {
+            size_t count = std::min(MAX_UUIDS_PER_MESSAGE, uuids.size() - i);
+            std::vector<std::string> chunk(uuids.begin() + i, uuids.begin() + i + count);
+            auto data = proto::serializeLockObjects(chunk, locked);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        }
+    }
+
+    void sendChunkedDeleteObjects(std::vector<std::string> const& uuids) {
+        constexpr size_t MAX_UUIDS_PER_MESSAGE = 300;
+        for (size_t i = 0; i < uuids.size(); i += MAX_UUIDS_PER_MESSAGE) {
+            size_t count = std::min(MAX_UUIDS_PER_MESSAGE, uuids.size() - i);
+            std::vector<std::string> chunk(uuids.begin() + i, uuids.begin() + i + count);
+            auto data = proto::serializeDeleteObjects(chunk);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        }
+    }
+
+    void sendChunkedMoveObjects(std::vector<ActionSerializer::MoveData> const& moves) {
+        constexpr size_t MAX_MOVES_PER_MESSAGE = 300;
+        for (size_t i = 0; i < moves.size(); i += MAX_MOVES_PER_MESSAGE) {
+            size_t count = std::min(MAX_MOVES_PER_MESSAGE, moves.size() - i);
+            std::vector<ActionSerializer::MoveData> chunk(moves.begin() + i, moves.begin() + i + count);
+            auto data = proto::serializeMoveObjects(chunk);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        }
+    }
+
+    void sendChunkedUpdateObjects(std::vector<ActionSerializer::ObjectData> const& updates) {
+        constexpr size_t MAX_UPDATES_PER_MESSAGE = 100;
+        for (size_t i = 0; i < updates.size(); i += MAX_UPDATES_PER_MESSAGE) {
+            size_t count = std::min(MAX_UPDATES_PER_MESSAGE, updates.size() - i);
+            std::vector<ActionSerializer::ObjectData> chunk(updates.begin() + i, updates.begin() + i + count);
+            auto data = proto::serializeUpdateObjects(chunk);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        }
+    }
+
+    void sendChunkedReconcileObjects(std::vector<ActionSerializer::ReconcileData> const& reconciles) {
+        constexpr size_t MAX_RECONCILES_PER_MESSAGE = 1000;
+        for (size_t i = 0; i < reconciles.size(); i += MAX_RECONCILES_PER_MESSAGE) {
+            size_t count = std::min(MAX_RECONCILES_PER_MESSAGE, reconciles.size() - i);
+            std::vector<ActionSerializer::ReconcileData> chunk(reconciles.begin() + i, reconciles.begin() + i + count);
+            auto data = proto::serializeReconcileObjects(chunk);
+            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+        }
+    }
+
     void sendChunkedSync(LevelEditorLayer* editor, int targetPlayerId, std::function<void()> onComplete = nullptr) {
         auto& handler = RemoteActionHandler::get();
 
@@ -311,8 +361,8 @@ namespace {
             std::filesystem::remove(tempPath, ec);
         }
 
-        constexpr size_t MAX_CHUNK_BYTES = 30000;
-        constexpr size_t MAX_UUIDS_PER_CHUNK = 500;
+        constexpr size_t MAX_CHUNK_BYTES = 10000;
+        constexpr size_t MAX_UUIDS_PER_CHUNK = 150;
 
         struct ChunkData {
             std::string objectsString;
@@ -391,11 +441,22 @@ namespace {
                     return;
                 }
 
+                size_t lockChunkCount = (sharedLocks->size() + 999) / 1000;
+                if (lockChunkCount == 0) lockChunkCount = 1;
                 if (*nextChunkIndex < totalChunks) {
                     net.sendTo(targetPlayerId, (*serializedChunks)[*nextChunkIndex], ChannelType::Reliable);
                     (*nextChunkIndex)++;
+                } else if (*nextChunkIndex < totalChunks + lockChunkCount) {
+                    if (!sharedLocks->empty()) {
+                        size_t lockChunkIdx = *nextChunkIndex - totalChunks;
+                        size_t startIdx = lockChunkIdx * 1000;
+                        size_t count = std::min((size_t)1000, sharedLocks->size() - startIdx);
+                        std::vector<ActionSerializer::LockData> chunk(sharedLocks->begin() + startIdx, sharedLocks->begin() + startIdx + count);
+                        net.sendTo(targetPlayerId, proto::serializeSyncLocksChunk(chunk), ChannelType::Reliable);
+                    }
+                    (*nextChunkIndex)++;
                 } else {
-                    auto endMsg = proto::serializeSyncLevelEnd(*sharedLocks);
+                    auto endMsg = proto::serializeSyncLevelEnd();
                     net.sendTo(targetPlayerId, endMsg, ChannelType::Reliable);
 
                     if (auto* notifNode = cocos2d::CCDirector::sharedDirector()->getNotificationNode()) {
@@ -684,8 +745,7 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
                 }
                 std::vector<std::string> uuids = {uuid};
 
-                auto data = proto::serializeDeleteObjects(uuids);
-                P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                sendChunkedDeleteObjects(uuids);
                 handler.unregisterObject(uuid);
                 log::debug("EditorHooks: Deleted object(s) (uuid={})", uuid);
             }
@@ -816,17 +876,14 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             log::info("EditorHooks: Synced redo placement of {} objects", placedObjects.size());
         }
         if (!deletedUuids.empty()) {
-            auto data = proto::serializeDeleteObjects(deletedUuids);
-            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+            sendChunkedDeleteObjects(deletedUuids);
             log::info("EditorHooks: Synced undo deletion of {} objects", deletedUuids.size());
         }
         if (!movedObjects.empty()) {
-            auto data = proto::serializeMoveObjects(movedObjects);
-            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+            sendChunkedMoveObjects(movedObjects);
         }
         if (!updatedObjects.empty()) {
-            auto data = proto::serializeUpdateObjects(updatedObjects);
-            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+            sendChunkedUpdateObjects(updatedObjects);
         }
         
         m_fields->m_inUndoRedo = false;
@@ -1085,8 +1142,7 @@ namespace {
         }
         
         if (!updates.empty()) {
-            auto data = proto::serializeUpdateObjects(updates);
-            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+            sendChunkedUpdateObjects(updates);
             log::info("EditorHooks: Broadcasted granular property updates for {} objects from popup", updates.size());
         }
     }
@@ -1202,8 +1258,7 @@ class $modify(MPEditorUI, EditorUI) {
                     tracked[obj] = obj->getSaveString(editor);
                 }
                 if (!handler.isProcessingRemote()) {
-                    auto data = proto::serializeLockObjects({uuid}, true);
-                    P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                    sendChunkedLockObjects({uuid}, true);
 
                     if (handler.isObjectPendingPlacement(obj)) {
                         handler.flushPendingPlacements();
@@ -1233,8 +1288,7 @@ class $modify(MPEditorUI, EditorUI) {
                             std::string currentSave = obj->getSaveString(editor);
                             if (ActionSerializer::hasDeepPropertyChanges(obj, tIt->second, currentSave)) {
                                 auto objData = ActionSerializer::extractObjectData(obj, uuid);
-                                auto data = proto::serializeUpdateObjects({objData});
-                                P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                                sendChunkedUpdateObjects({objData});
                             }
                         }
                     }
@@ -1249,13 +1303,11 @@ class $modify(MPEditorUI, EditorUI) {
                     rec.flipX = obj->isFlipX();
                     rec.flipY = obj->isFlipY();
                     
-                    auto recData = proto::serializeReconcileObjects({rec});
-                    P2PManager::get().send(std::move(recData), ChannelType::Reliable);
+                    sendChunkedReconcileObjects({rec});
                     
                     MessageBatcher::get().removePending(uuid);
 
-                    auto data = proto::serializeLockObjects({uuid}, false);
-                    P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                    sendChunkedLockObjects({uuid}, false);
                 }
             }
             tracked.erase(obj);
@@ -1308,16 +1360,13 @@ class $modify(MPEditorUI, EditorUI) {
                 }
                 
                 if (!updates.empty()) {
-                    auto data = proto::serializeUpdateObjects(updates);
-                    P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                    sendChunkedUpdateObjects(updates);
                 }
                 if (!reconciles.empty()) {
-                    auto data = proto::serializeReconcileObjects(reconciles);
-                    P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                    sendChunkedReconcileObjects(reconciles);
                 }
                 if (!uuids.empty()) {
-                    auto data = proto::serializeLockObjects(uuids, false);
-                    P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                    sendChunkedLockObjects(uuids, false);
                 }
             }
             handler.getTrackedSelections().clear();
@@ -1350,8 +1399,7 @@ class $modify(MPEditorUI, EditorUI) {
             }
 
             if (!uuids.empty()) {
-                auto data = proto::serializeDeleteObjects(uuids);
-                P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                sendChunkedDeleteObjects(uuids);
             }
         }
 
@@ -1431,8 +1479,7 @@ class $modify(MPEditorUI, EditorUI) {
                 }
             }
             if (!uuids.empty() && !handler.isProcessingRemote()) {
-                auto data = proto::serializeLockObjects(uuids, true);
-                P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                sendChunkedLockObjects(uuids, true);
             }
         }
     }
@@ -1504,8 +1551,7 @@ class $modify(MPEditorUI, EditorUI) {
         }
 
         if (!toLockUuids.empty()) {
-            auto data = proto::serializeLockObjects(toLockUuids, true);
-            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+            sendChunkedLockObjects(toLockUuids, true);
         }
 
         m_fields->m_lockRefreshTimer += dt;
@@ -1521,8 +1567,7 @@ class $modify(MPEditorUI, EditorUI) {
                 }
             }
             if (!refreshUuids.empty()) {
-                auto data = proto::serializeLockObjects(refreshUuids, true);
-                P2PManager::get().send(std::move(data), ChannelType::Reliable);
+                sendChunkedLockObjects(refreshUuids, true);
             }
         }
 
@@ -1618,16 +1663,13 @@ class $modify(MPEditorUI, EditorUI) {
         }
 
         if (!unlockUuids.empty()) {
-            auto data = proto::serializeLockObjects(unlockUuids, false);
-            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+            sendChunkedLockObjects(unlockUuids, false);
         }
         if (!reconciles.empty()) {
-            auto data = proto::serializeReconcileObjects(reconciles);
-            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+            sendChunkedReconcileObjects(reconciles);
         }
         if (!updates.empty()) {
-            auto data = proto::serializeUpdateObjects(updates);
-            P2PManager::get().send(std::move(data), ChannelType::Reliable);
+            sendChunkedUpdateObjects(updates);
         }
     }
 

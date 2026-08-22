@@ -61,7 +61,7 @@ class Room {
             return null;
         }
         const playerId = this.nextPlayerId++;
-        const player = { id: playerId, name, colorIndex, iconStr, ws };
+        const player = { id: playerId, name, colorIndex, iconStr, ws, isViewOnly: !!this.settings.defaultViewOnly };
         this.players.set(playerId, player);
         console.log(`  [${this.code}] ${name} joined (id: ${playerId}, ${this.players.size} players)`);
         const joinMsg = proto.serializePlayerJoined(playerId, name, colorIndex, iconStr);
@@ -76,6 +76,16 @@ class Room {
             ws.send(proto.serializePlayerJoined(p.id, p.name, p.colorIndex, p.iconStr));
         }
         this._syncLevelTo(ws);
+        
+        if (player.isViewOnly) {
+            const w = new proto.Writer();
+            w.writeOpcode(proto.Opcode.SetViewOnly);
+            w.writeU32(playerId);
+            w.writeBool(true);
+            const viewOnlyMsg = w.finish();
+            this._broadcastExcept(viewOnlyMsg, 0); 
+        }
+        
         return playerId;
     }
     removePlayer(playerId) {
@@ -96,7 +106,7 @@ class Room {
         const opcode = data[0];
         if (opcode === proto.Opcode.Heartbeat) return;
         
-        if (opcode === proto.Opcode.SyncLevelStart || opcode === proto.Opcode.SyncLevelChunk || opcode === proto.Opcode.SyncLevelEnd) {
+        if (opcode === proto.Opcode.SyncLevelStart || opcode === proto.Opcode.SyncLevelChunk || opcode === proto.Opcode.SyncLevelEnd || opcode === proto.Opcode.SyncLocksChunk) {
             this._handleSnapshotResponse(playerId, opcode, data);
             return;
         }
@@ -239,7 +249,10 @@ class Room {
             ws.send(proto.serializeSyncLevelStart(1, 0, this.settings));
             ws.send(proto.serializeSyncLevelChunk(0, Buffer.alloc(0), []));
             const locks = this._getLocksArray();
-            ws.send(proto.serializeSyncLevelEnd(locks));
+        for (let i = 0; i < locks.length; i += 1000) {
+            ws.send(proto.serializeSyncLocksChunk(locks.slice(i, i + 1000)));
+        }
+        ws.send(proto.serializeSyncLevelEnd());
             return;
         }
         const chunks = [];
@@ -269,7 +282,10 @@ class Room {
             ws.send(proto.serializeSyncLevelChunk(i, chunks[i].data, chunks[i].uuids));
         }
         const locks = this._getLocksArray();
-        ws.send(proto.serializeSyncLevelEnd(locks));
+        for (let i = 0; i < locks.length; i += 1000) {
+            ws.send(proto.serializeSyncLocksChunk(locks.slice(i, i + 1000)));
+        }
+        ws.send(proto.serializeSyncLevelEnd());
     }
     _getLocksArray() {
         const locks = [];
@@ -294,6 +310,7 @@ class Room {
         }
         if (!target) return;
         this.snapshotPending = true;
+        this.locks.clear();
         this.snapshotState = {
             fromPlayerId: target.id,
             totalChunks: 0,
@@ -310,7 +327,8 @@ class Room {
             const r = new proto.Reader(data.slice(1));
             const msg = proto.deserializeSyncLevelStart(r);
             if (r.error) return true;
-            this.snapshotState = {
+            this.locks.clear();
+        this.snapshotState = {
                 fromPlayerId: playerId,
                 active: true,
                 totalChunks: msg.totalChunks,
@@ -334,6 +352,18 @@ class Room {
             }
             return true;
         }
+        if (opcode === proto.Opcode.SyncLocksChunk && snap.active) {
+            const r = new proto.Reader(data.slice(1));
+            const msg = proto.deserializeSyncLocksChunk(r);
+            const now = Date.now();
+            for (const lock of msg.locks) {
+                this.locks.set(lock.uuid, {
+                    playerId: lock.playerId,
+                    time: now
+                });
+            }
+            return true;
+        }
         if (opcode === proto.Opcode.SyncLevelEnd && snap.active) {
             const r = new proto.Reader(data.slice(1));
             const msg = proto.deserializeSyncLevelEnd(r);
@@ -351,14 +381,7 @@ class Room {
                     this.levelName = snap.settings.levelName;
                 }
             }
-            this.locks.clear();
-            const now = Date.now();
-            for (const lock of msg.locks) {
-                this.locks.set(lock.uuid, {
-                    playerId: lock.playerId,
-                    expiresAt: now + (lock.timeLeft * 1000),
-                });
-            }
+            
             this.dirty = false;
             this.snapshotPending = false;
             this.snapshotState = null;

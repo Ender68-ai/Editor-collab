@@ -11,23 +11,19 @@ else()
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
 endif()
 
-# Windows definitions to prevent macros from breaking C++ std::min/std::max/limits
-add_compile_definitions(WIN32_LEAN_AND_MEAN)
-add_compile_definitions(NOMINMAX)
-add_compile_definitions(_WINSOCKAPI_)
+if (WIN32)
+    add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _WINSOCKAPI_)
+endif()
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE src)
 
-# ── Skip Install Rules ──────────────────────────────────────
-# Disable install rules to prevent target export issues with built-from-source deps
 set(CMAKE_SKIP_INSTALL_RULES ON)
 
 include(FetchContent)
 
-# ── MbedTLS 3.x ─────────────────────────────────────────────
 FetchContent_Declare(
     mbedtls
     GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
@@ -40,41 +36,38 @@ set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
 FetchContent_GetProperties(mbedtls)
 if(NOT mbedtls_POPULATED)
     FetchContent_Populate(mbedtls)
-    
-    # Patch MbedTLS configuration to enable DTLS-SRTP (required by WebRTC/libdatachannel)
+
     set(MBEDTLS_CONFIG_H "${mbedtls_SOURCE_DIR}/include/mbedtls/mbedtls_config.h")
     if(EXISTS "${MBEDTLS_CONFIG_H}")
-        message(STATUS "Patching ${MBEDTLS_CONFIG_H} to enable MBEDTLS_SSL_DTLS_SRTP...")
         file(READ "${MBEDTLS_CONFIG_H}" MBEDTLS_CONFIG_CONTENTS)
-        string(REPLACE "//#define MBEDTLS_SSL_DTLS_SRTP" 
-                       "#define MBEDTLS_SSL_DTLS_SRTP" 
+        string(REPLACE "//#define MBEDTLS_SSL_DTLS_SRTP"
+                       "#define MBEDTLS_SSL_DTLS_SRTP"
                        MBEDTLS_CONFIG_CONTENTS "${MBEDTLS_CONFIG_CONTENTS}")
         file(WRITE "${MBEDTLS_CONFIG_H}" "${MBEDTLS_CONFIG_CONTENTS}")
     endif()
-    
+
     set(MBEDTLS_CMAKE "${mbedtls_SOURCE_DIR}/CMakeLists.txt")
     if(EXISTS "${MBEDTLS_CMAKE}")
         file(READ "${MBEDTLS_CMAKE}" MBEDTLS_CMAKE_CONTENTS)
-        string(REGEX REPLACE "cmake_minimum_required\\(VERSION [0-9.]+\\)" "cmake_minimum_required(VERSION 3.10)" MBEDTLS_CMAKE_CONTENTS "${MBEDTLS_CMAKE_CONTENTS}")
+        string(REGEX REPLACE "cmake_minimum_required\\(VERSION [0-9.]+\\)"
+                             "cmake_minimum_required(VERSION 3.10)"
+                             MBEDTLS_CMAKE_CONTENTS "${MBEDTLS_CMAKE_CONTENTS}")
         file(WRITE "${MBEDTLS_CMAKE}" "${MBEDTLS_CMAKE_CONTENTS}")
     endif()
 
     add_subdirectory(${mbedtls_SOURCE_DIR} ${mbedtls_BINARY_DIR})
 endif()
 
-# Create the alias target that libdatachannel expects to find
 if (TARGET mbedtls AND NOT TARGET MbedTLS::MbedTLS)
     add_library(MbedTLS::MbedTLS ALIAS mbedtls)
 endif()
 
-# ── libdatachannel (WebRTC Data Channels) ──────────────────
 FetchContent_Declare(
     libdatachannel
     GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
     GIT_TAG        v0.22.4
 )
 
-# Configure libdatachannel settings
 set(NO_MEDIA ON CACHE BOOL "" FORCE)
 set(NO_WEBSOCKET OFF CACHE BOOL "" FORCE)
 set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
@@ -87,17 +80,15 @@ set(PREFER_SYSTEM_LIB OFF CACHE BOOL "" FORCE)
 set(USE_OPENSSL OFF CACHE BOOL "" FORCE)
 set(USE_MBEDTLS ON CACHE BOOL "" FORCE)
 
-# Populate and patch libdatachannel before making it available
 FetchContent_GetProperties(libdatachannel)
 if(NOT libdatachannel_POPULATED)
     FetchContent_Populate(libdatachannel)
-    
+
     set(USRSCTP_CMAKE "${libdatachannel_SOURCE_DIR}/deps/usrsctp/CMakeLists.txt")
     if(EXISTS "${USRSCTP_CMAKE}")
-        message(STATUS "Patching ${USRSCTP_CMAKE} for Clang compiler warning flags...")
         file(READ "${USRSCTP_CMAKE}" USRSCTP_CONTENTS)
-        string(REPLACE "if (CMAKE_C_COMPILER_ID MATCHES \"MSVC\" OR CMAKE_C_SIMULATE_ID MATCHES \"MSVC\")" 
-                       "if ((CMAKE_C_COMPILER_ID MATCHES \"MSVC\" OR CMAKE_C_SIMULATE_ID MATCHES \"MSVC\") AND NOT CMAKE_C_COMPILER_ID MATCHES \"Clang\")" 
+        string(REPLACE "if (CMAKE_C_COMPILER_ID MATCHES \"MSVC\" OR CMAKE_C_SIMULATE_ID MATCHES \"MSVC\")"
+                       "if ((CMAKE_C_COMPILER_ID MATCHES \"MSVC\" OR CMAKE_C_SIMULATE_ID MATCHES \"MSVC\") AND NOT CMAKE_C_COMPILER_ID MATCHES \"Clang\")"
                        USRSCTP_CONTENTS "${USRSCTP_CONTENTS}")
         file(WRITE "${USRSCTP_CMAKE}" "${USRSCTP_CONTENTS}")
     endif()
@@ -106,41 +97,51 @@ if(NOT libdatachannel_POPULATED)
         set(DEP_CMAKE "${libdatachannel_SOURCE_DIR}/deps/${dep}/CMakeLists.txt")
         if(EXISTS "${DEP_CMAKE}")
             file(READ "${DEP_CMAKE}" DEP_CONTENTS)
-            string(REGEX REPLACE "cmake_minimum_required\\(VERSION [0-9.]+\\)" "cmake_minimum_required(VERSION 3.10)" DEP_CONTENTS "${DEP_CONTENTS}")
+            string(REGEX REPLACE "cmake_minimum_required\\(VERSION [0-9.]+\\)"
+                                 "cmake_minimum_required(VERSION 3.10)"
+                                 DEP_CONTENTS "${DEP_CONTENTS}")
             file(WRITE "${DEP_CMAKE}" "${DEP_CONTENTS}")
         endif()
     endforeach()
-    
+
     set(SCTP_CPP "${libdatachannel_SOURCE_DIR}/src/impl/sctptransport.cpp")
     if(EXISTS "${SCTP_CPP}")
         file(READ "${SCTP_CPP}" SCTP_CONTENTS)
-        string(REPLACE "throw std::runtime_error(\"Sending failed, errno=\" + std::to_string(errno));" "return false;" SCTP_CONTENTS "${SCTP_CONTENTS}")
+        string(REPLACE "throw std::runtime_error(\"Sending failed, errno=\" + std::to_string(errno));"
+                       "return false;"
+                       SCTP_CONTENTS "${SCTP_CONTENTS}")
         file(WRITE "${SCTP_CPP}" "${SCTP_CONTENTS}")
     endif()
 
     set(DC_CPP "${libdatachannel_SOURCE_DIR}/src/impl/datachannel.cpp")
     if(EXISTS "${DC_CPP}")
         file(READ "${DC_CPP}" DC_CONTENTS)
-        string(REPLACE "throw std::runtime_error(\"DataChannel is closed\");" "return false;" DC_CONTENTS "${DC_CONTENTS}")
-        string(REPLACE "throw std::runtime_error(\"DataChannel not open\");" "return false;" DC_CONTENTS "${DC_CONTENTS}")
-        string(REPLACE "throw std::logic_error(\"DataChannel has no stream assigned\");" "return false;" DC_CONTENTS "${DC_CONTENTS}")
-        string(REPLACE "void IncomingDataChannel::processOpenMessage(message_ptr message) {\n\tstd::unique_lock lock(mMutex);\n\tauto transport = mSctpTransport.lock();\n\tif (!transport)\n\t\tthrow std::logic_error(\"DataChannel has no transport\");\n\n\tif (!mStream.has_value())\n\t\treturn false;" "void IncomingDataChannel::processOpenMessage(message_ptr message) {\n\tstd::unique_lock lock(mMutex);\n\tauto transport = mSctpTransport.lock();\n\tif (!transport)\n\t\tthrow std::logic_error(\"DataChannel has no transport\");\n\n\tif (!mStream.has_value())\n\t\treturn;" DC_CONTENTS "${DC_CONTENTS}")
+        string(REPLACE "if (!mStream.has_value())\n\t\tthrow std::logic_error(\"DataChannel has no stream assigned\");"
+                       "if (!mStream.has_value())\n\t\treturn;"
+                       DC_CONTENTS "${DC_CONTENTS}")
+        string(REPLACE "throw std::runtime_error(\"DataChannel is closed\");"
+                       "return false;"
+                       DC_CONTENTS "${DC_CONTENTS}")
+        string(REPLACE "throw std::runtime_error(\"DataChannel not open\");"
+                       "return false;"
+                       DC_CONTENTS "${DC_CONTENTS}")
+        string(REPLACE "throw std::logic_error(\"DataChannel has no stream assigned\");"
+                       "return false;"
+                       DC_CONTENTS "${DC_CONTENTS}")
         file(WRITE "${DC_CPP}" "${DC_CONTENTS}")
     endif()
 
     add_subdirectory(${libdatachannel_SOURCE_DIR} ${libdatachannel_BINARY_DIR})
 endif()
 
-target_link_libraries(${PROJECT_NAME} LibDataChannel::LibDataChannelStatic)
+target_link_libraries(${PROJECT_NAME} PRIVATE LibDataChannel::LibDataChannelStatic)
 
-# ── Geode SDK ──────────────────────────────────────────────
 if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "Unable to find Geode SDK! Please define GEODE_SDK environment variable to point to Geode")
 else()
     message(STATUS "Found Geode: $ENV{GEODE_SDK}")
 endif()
 
-# Re-enable install rules specifically for the Geode SDK and the mod target
 set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)

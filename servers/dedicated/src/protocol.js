@@ -10,6 +10,7 @@ const Opcode = {
     SyncLevelChunk:     0x11,
     SyncLevelEnd:       0x12,
     RequestSnapshot:    0x13,
+    SyncLocksChunk:     0x14,
     UpdateSettings:     0x20,
     UpdateColorChannel: 0x21,
     PlayerJoined:       0x30,
@@ -366,9 +367,15 @@ function serializeSyncLevelChunk(chunkIndex, data, uuids) {
     for (const uuid of uuids) w.writeString(uuid);
     return w.finish();
 }
-function serializeSyncLevelEnd(locks) {
+function serializeSyncLevelEnd() {
     const w = new Writer();
     w.writeOpcode(Opcode.SyncLevelEnd);
+    return w.finish();
+}
+
+function serializeSyncLocksChunk(locks) {
+    const w = new Writer();
+    w.writeOpcode(Opcode.SyncLocksChunk);
     w.writeVarInt(locks.length);
     for (const lock of locks) writeLockData(w, lock);
     return w.finish();
@@ -444,6 +451,10 @@ function deserializeSyncLevelChunk(r) {
     return { chunkIndex, data, uuids };
 }
 function deserializeSyncLevelEnd(r) {
+    return {};
+}
+
+function deserializeSyncLocksChunk(r) {
     const lockCount = r.readVarInt();
     const locks = [];
     for (let i = 0; i < lockCount; i++) locks.push(readLockData(r));
@@ -486,6 +497,7 @@ module.exports = {
     serializeSyncLevelStart,
     serializeSyncLevelChunk,
     serializeSyncLevelEnd,
+    serializeSyncLocksChunk,
     serializeRelay,
     serializeRequestSnapshot,
     serializeHeartbeat,
@@ -498,6 +510,8 @@ module.exports = {
     deserializeSyncLevelStart,
     deserializeSyncLevelChunk,
     deserializeSyncLevelEnd,
+    deserializeSyncLocksChunk,
+    serializeSyncLocksChunk,
     deserializePlayerJoined,
     deserializeCursorUpdate,
     deserializeUpdateSettings,

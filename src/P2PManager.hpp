@@ -123,7 +123,7 @@ namespace mpedit {
 
 
         using SessionStartedCb = std::function<void(std::string const& roomCode, int localPlayerId)>;
-        using PeerConnectedCb  = std::function<void(int playerId, std::string const& name, int colorIndex)>;
+        using PeerConnectedCb  = std::function<void(int playerId, std::string const& name, int colorIndex, std::string const& iconStr)>;
         using PeerDisconnectedCb = std::function<void(int playerId)>;
         using ErrorCb = std::function<void(std::string const& error)>;
         using StatusCb = std::function<void(std::string const& status)>;

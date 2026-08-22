@@ -34,6 +34,7 @@ namespace mpedit {
         rtc::Configuration config;
         config.iceServers.push_back({"stun:stun.l.google.com:19302"});
         config.iceServers.push_back({"stun:stun.cloudflare.com:3478"});
+        config.maxMessageSize = 250 * 1024 * 1024;
         return config;
     }
 
@@ -289,6 +290,7 @@ namespace mpedit {
         if (m_role == Role::Host && !m_roomCode.empty()) {
             auto url = getSignalingUrl() + "/rooms/" + m_roomCode + "/ban";
             auto req = geode::utils::web::WebRequest();
+            req.header("ngrok-skip-browser-warning", "1");
             req.header("Content-Type", "application/json");
             auto body = matjson::makeObject({{"playerName", playerName},
             {"iconStr", fmt::format("{}:{}:{}:{}:{}", GameManager::sharedState()->getPlayerFrame(), GameManager::sharedState()->getPlayerColor(), GameManager::sharedState()->getPlayerColor2(), GameManager::sharedState()->getPlayerGlow() ? 1 : 0, GameManager::sharedState()->getPlayerGlowColor())}});
@@ -334,6 +336,7 @@ namespace mpedit {
                 if (!m_roomCode.empty()) {
                     auto url = getSignalingUrl() + "/rooms/" + m_roomCode + "/leave";
                     auto req = geode::utils::web::WebRequest();
+                    req.header("ngrok-skip-browser-warning", "1");
                     req.header("Content-Type", "application/json");
                     auto body = matjson::makeObject({{"playerId", playerId}});
                     req.bodyJSON(body);
@@ -365,6 +368,7 @@ namespace mpedit {
         m_settings = settings;
 
         auto req = geode::utils::web::WebRequest();
+        req.header("ngrok-skip-browser-warning", "1");
         req.header("Content-Type", "application/json");
 
         matjson::Value body = matjson::makeObject({
@@ -450,6 +454,7 @@ namespace mpedit {
         }
         
         auto req = geode::utils::web::WebRequest();
+        req.header("ngrok-skip-browser-warning", "1");
         
         m_signalingListener.spawn(
             req.get(url),
@@ -499,6 +504,7 @@ namespace mpedit {
         auto url = getSignalingUrl() + "/rooms/" + code + "/signal?role=" + role + "&playerId=" + std::to_string(playerId) + "&timeout=" + std::to_string(static_cast<int>(timeoutSec * 1000));
 
         auto req = web::WebRequest();
+        req.header("ngrok-skip-browser-warning", "1");
         req.timeout(std::chrono::seconds(30));
 
         m_signalPollListener.spawn(
@@ -543,6 +549,7 @@ namespace mpedit {
         extendFastPoll();
         auto url = getSignalingUrl() + "/rooms/" + roomCode + "/signal";
         auto req = web::WebRequest();
+        req.header("ngrok-skip-browser-warning", "1");
         req.header("Content-Type", "application/json");
         req.bodyJSON(msg);
         async::spawn(req.post(url));
@@ -710,6 +717,7 @@ namespace mpedit {
         for (auto& cb : m_onStatus) cb("Connecting to lobby...");
 
         auto req = geode::utils::web::WebRequest();
+        req.header("ngrok-skip-browser-warning", "1");
         req.header("Content-Type", "application/json");
 
         matjson::Value body = matjson::makeObject({
@@ -952,11 +960,17 @@ namespace mpedit {
         }
         for (auto& cb : m_onStatus) cb("Connecting to server...");
 
-        std::string fullUrl = url + "/" + roomCode;
+        std::string finalUrl = url;
+        if (finalUrl.starts_with("ws://") && (finalUrl.find("ngrok.io") != std::string::npos || finalUrl.find("ngrok.app") != std::string::npos || finalUrl.find("ngrok-free.app") != std::string::npos)) {
+            finalUrl.replace(0, 5, "wss://");
+        }
+
+        std::string fullUrl = finalUrl + "/" + roomCode;
         if (!password.empty()) fullUrl += "?password=" + password;
 
         rtc::WebSocketConfiguration wsConfig;
         wsConfig.pingInterval = std::chrono::milliseconds(0);
+        wsConfig.maxMessageSize = 250 * 1024 * 1024;
         m_webSocket = std::make_shared<rtc::WebSocket>(wsConfig);
         
         m_webSocket->onOpen([this]() {
@@ -1192,7 +1206,16 @@ namespace mpedit {
             }
 
             for (auto& cb : m_onPeerConnected) {
-                cb(pid, name, colorIdx);
+                cb(pid, name, colorIdx, iconStr);
+            }
+
+            if (m_role == Role::Client && pid == 0) {
+                std::string myIconStr = "";
+                if (auto gm = GameManager::sharedState()) {
+                    myIconStr = fmt::format("{}:{}:{}:{}:{}", gm->getPlayerFrame(), gm->getPlayerColor(), gm->getPlayerColor2(), gm->getPlayerGlow() ? 1 : 0, gm->getPlayerGlowColor());
+                }
+                auto myMsg = proto::serializePlayerJoined(m_localPlayerId, m_localPlayerName, m_localPlayerId % 6, myIconStr);
+                sendTo(0, myMsg, ChannelType::Reliable);
             }
 
             if (m_role == Role::Host) {
@@ -1243,6 +1266,7 @@ namespace mpedit {
         if (m_role == Role::Host && !m_roomCode.empty()) {
             auto url = getSignalingUrl() + "/rooms/" + m_roomCode;
             auto req = web::WebRequest();
+            req.header("ngrok-skip-browser-warning", "1");
             async::spawn(req.send("DELETE", url));
         }
 

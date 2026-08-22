@@ -1,8 +1,8 @@
 # Multiplayer Edit Signaling Server
 
-This is the Deno Deploy signaling server that handles matchmaking and WebRTC SDP (Session Description Protocol) exchange for the Multiplayer Edit mod.
+This is the Deno Deploy signaling server that handles matchmaking and WebRTC SDP exchange for the Multiplayer Edit mod.
 
-Because the mod uses WebRTC Data Channels, players connect directly to each other peer-to-peer (P2P). This server is **only** used for the initial handshake to exchange IP addresses and connection metadata. Once a player joins a room, all game data flows directly between players.
+Because the mod uses WebRTC Data Channels, players connect directly to each other peer to peer. This server is **only** used for the initial handshake to exchange IP addresses and connection metadata. Once a player joins a room, all game data flows directly between players.
 
 ## Requirements
 
@@ -31,22 +31,18 @@ In Geometry Dash, go to the Multiplayer Edit mod settings and change the **Signa
 
 ## Features & Limits
 
-- **Auto-Expiration:** Rooms automatically expire and are cleaned up after 2 hours of inactivity.
+- **Auto-Expiration:** Rooms automatically expire and are cleaned up after 5 minutes of inactivity.
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/rooms` | Create room. Body: `{playerName, playerLimit, isPrivate, password}` |
+| POST | `/rooms` | Create room. Body: `{hostName, roomName, description, playerLimit, isPrivate, hasPassword, password, version}` |
 | GET | `/rooms/:code` | Get room info |
 | POST | `/rooms/:code/join` | Join room. Body: `{playerName, password}` |
-| POST | `/rooms/:code/leave` | Leave room. Decrements player count |
-| POST | `/rooms/:code/offer` | Send SDP offer. Body: `{sdp, targetPlayerId}` |
-| GET | `/rooms/:code/offer?playerId=N` | Poll for SDP offer |
-| POST | `/rooms/:code/answer` | Send SDP answer. Body: `{sdp, playerId}` |
-| GET | `/rooms/:code/answer?playerId=N` | Poll for SDP answer |
-| POST | `/rooms/:code/ice` | Send ICE candidates. Body: `{playerId, candidates[], isHost}` |
-| GET | `/rooms/:code/ice?playerId=N&isHost=bool` | Poll for ICE candidates |
+| POST | `/rooms/:code/leave` | Leave room. Body: `{playerId}` |
+| POST | `/rooms/:code/signal` | Send WebRTC message (Offer, Answer, or ICE). Body: `{type, ...msg}` |
+| GET | `/rooms/:code/signal?role=<host\|client>&playerId=N` | Poll for pending WebRTC messages using long-polling |
+| POST | `/rooms/:code/ban` | Ban a player from a room. Body: `{playerName}` |
 | DELETE | `/rooms/:code` | Close room (Host only) |
-| POST | `/ban` | Ban a player from a room |
 | GET | `/health` | Health check |
