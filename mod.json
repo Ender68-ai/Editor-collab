@@ -41,7 +41,6 @@
             "name": "Signaling Server URL",
             "description": "URL of the signaling server used for connection setup. Only change this if you're self-hosting your own signaling server.",
             "default": "https://dewy-flea-9364.d050.deno.net",
-            "max-length": 150,
             "filter": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:/.?&=-_"
         },
         "player-name": {
@@ -49,7 +48,7 @@
             "name": "Player Name",
             "description": "Your display name in multiplayer sessions. Leave empty to automatically use your username.",
             "default": "",
-            "max-length": 15
+            "match": "^.{0,15}$"
         },
         "display-section": {
             "type": "title",
