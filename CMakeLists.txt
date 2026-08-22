@@ -134,7 +134,7 @@ if(NOT libdatachannel_POPULATED)
     add_subdirectory(${libdatachannel_SOURCE_DIR} ${libdatachannel_BINARY_DIR})
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE LibDataChannel::LibDataChannelStatic)
+target_link_libraries(${PROJECT_NAME} LibDataChannel::LibDataChannelStatic)
 
 if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "Unable to find Geode SDK! Please define GEODE_SDK environment variable to point to Geode")
