@@ -84,6 +84,22 @@ Deno.serve(async (req) => {
 
     if (parts.length === 1 && req.method === "GET") {
         const rooms = [];
+        const ua = req.headers.get("user-agent") || "";
+        const isUnder060 = /multiplayeredit\/v?0\.[0-5]\./i.test(ua);
+        if (isUnder060) {
+            rooms.push({
+                roomCode: "UPDT",
+                hostName: "Update Needed!",
+                roomName: "PLEASE UPDATE MOD",
+                description: "Your mod version is outdated. Please update to v0.6.0 on Geode or GitHub!",
+                playerCount: 1,
+                playerLimit: 1,
+                isPrivate: false,
+                hasPassword: false,
+                version: "v0.6.0",
+                created: Date.now() + 999999999
+            });
+        }
         for await (const entry of kv.list({ prefix: ["room_meta"] })) {
             const room = entry.value;
             if (!room.isPrivate && room.version && room.version !== "Unknown") {
