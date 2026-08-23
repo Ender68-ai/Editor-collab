@@ -5,9 +5,12 @@ const CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 
 async function enqueueKv(code, queueName, msg) {
-
     const msgId = Date.now() + "_" + crypto.randomUUID();
-    await kv.set(["rooms", code, queueName, msgId], msg, { expireIn: ROOM_TTL });
+    const wakeupKey = ["rooms", code, queueName, "wakeup"];
+    let atomic = kv.atomic();
+    atomic = atomic.set(["rooms", code, queueName, msgId], msg, { expireIn: ROOM_TTL });
+    atomic = atomic.set(wakeupKey, Date.now(), { expireIn: ROOM_TTL });
+    await atomic.commit();
 }
 
 async function dequeueKv(code, queueName) {
@@ -16,6 +19,8 @@ async function dequeueKv(code, queueName) {
     const entriesToDelete = [];
 
     for await (const entry of kv.list({ prefix })) {
+        const lastKeyPart = entry.key[entry.key.length - 1];
+        if (lastKeyPart === "wakeup") continue;
         msgs.push(entry.value);
         entriesToDelete.push(entry);
     }
@@ -79,23 +84,21 @@ Deno.serve(async (req) => {
 
     if (parts.length === 1 && req.method === "GET") {
         const rooms = [];
-        for await (const entry of kv.list({ prefix: ["rooms"] })) {
-            if (entry.key.length === 2) {
-                const room = entry.value;
-                if (!room.isPrivate && room.version && room.version !== "Unknown") {
-                    rooms.push({
-                        roomCode: entry.key[1],
-                        hostName: room.hostName,
-                        roomName: room.roomName || "Room",
-                        description: room.description || "",
-                        playerCount: room.players.length,
-                        playerLimit: room.playerLimit || 0,
-                        isPrivate: !!room.isPrivate,
-                        hasPassword: !!room.hasPassword,
-                        version: room.version || "Unknown",
-                        created: room.created || 0
-                    });
-                }
+        for await (const entry of kv.list({ prefix: ["room_meta"] })) {
+            const room = entry.value;
+            if (!room.isPrivate && room.version && room.version !== "Unknown") {
+                rooms.push({
+                    roomCode: entry.key[1],
+                    hostName: room.hostName,
+                    roomName: room.roomName || "Room",
+                    description: room.description || "",
+                    playerCount: room.players.length,
+                    playerLimit: room.playerLimit || 0,
+                    isPrivate: !!room.isPrivate,
+                    hasPassword: !!room.hasPassword,
+                    version: room.version || "Unknown",
+                    created: room.created || 0
+                });
             }
         }
 
@@ -110,25 +113,26 @@ Deno.serve(async (req) => {
 
         const host = hostName || playerName || "Unknown";
 
-        await kv.set(
-            ["rooms", code],
-            {
-                roomId,
-                hostName: host,
-                roomName: roomName || "Room",
-                description: description || "",
-                playerLimit: playerLimit || 0,
-                isPrivate: !!isPrivate,
-                hasPassword: !!hasPassword,
-                password: password || "",
-                version: version || "Unknown",
-                nextId: 1,
-                created: Date.now(),
-                players: [{ id: 0, name: host }],
-                lastPing: Date.now(),
-            },
-            { expireIn: 5 * 60 * 1000 }
-        );
+        const roomObj = {
+            roomId,
+            hostName: host,
+            roomName: roomName || "Room",
+            description: description || "",
+            playerLimit: playerLimit || 0,
+            isPrivate: !!isPrivate,
+            hasPassword: !!hasPassword,
+            password: password || "",
+            version: version || "Unknown",
+            nextId: 1,
+            created: Date.now(),
+            players: [{ id: 0, name: host }],
+            lastPing: Date.now(),
+        };
+
+        let atomic = kv.atomic();
+        atomic = atomic.set(["rooms", code], roomObj, { expireIn: 5 * 60 * 1000 });
+        atomic = atomic.set(["room_meta", code], roomObj, { expireIn: 5 * 60 * 1000 });
+        await atomic.commit();
 
         return json({ roomCode: code, roomId });
     }
@@ -149,8 +153,10 @@ Deno.serve(async (req) => {
     }
 
     if (parts.length === 2 && req.method === "DELETE") {
-        await kv.delete(["rooms", code]);
-        new BroadcastChannel("signaling_wake_" + code).postMessage({ target: "host" });
+        let atomic = kv.atomic();
+        atomic = atomic.delete(["rooms", code]);
+        atomic = atomic.delete(["room_meta", code]);
+        await atomic.commit();
 
         return json({ ok: true });
     }
@@ -185,6 +191,7 @@ Deno.serve(async (req) => {
                 .atomic()
                 .check(currentRes)
                 .set(["rooms", code], currentRoom, { expireIn: 5 * 60 * 1000 })
+                .set(["room_meta", code], currentRoom, { expireIn: 5 * 60 * 1000 })
                 .commit();
 
             success = commit.ok;
@@ -195,7 +202,6 @@ Deno.serve(async (req) => {
 
         const joinMsg = { type: "client_joined", playerId, playerName };
         await enqueueKv(code, "hostQueue", joinMsg);
-        new BroadcastChannel("signaling_wake_" + code).postMessage({ target: "host" });
 
         return json({ playerId, hostName });
     }
@@ -220,6 +226,7 @@ Deno.serve(async (req) => {
                 .atomic()
                 .check(currentRes)
                 .set(["rooms", code], currentRoom, { expireIn: 5 * 60 * 1000 })
+                .set(["room_meta", code], currentRoom, { expireIn: 5 * 60 * 1000 })
                 .commit();
 
             success = commit.ok;
@@ -246,6 +253,7 @@ Deno.serve(async (req) => {
                 .atomic()
                 .check(currentRes)
                 .set(["rooms", code], currentRoom, { expireIn: 5 * 60 * 1000 })
+                .set(["room_meta", code], currentRoom, { expireIn: 5 * 60 * 1000 })
                 .commit();
 
             success = commit.ok;
@@ -278,6 +286,7 @@ Deno.serve(async (req) => {
                 const commit = await kv.atomic()
                     .check(currentRes)
                     .set(["rooms", code], currentRes.value, { expireIn: 5 * 60 * 1000 })
+                    .set(["room_meta", code], currentRes.value, { expireIn: 5 * 60 * 1000 })
                     .commit();
                 success = commit.ok;
                 retries--;
@@ -288,36 +297,57 @@ Deno.serve(async (req) => {
         if (initialMsgs.length > 0) return json(initialMsgs);
 
         const timeoutParam = Number(url.searchParams.get("timeout") || "0");
-        if (timeoutParam <= 0) return json([]);
+        let actualTimeout;
+        if (timeoutParam <= 0) {
+            actualTimeout = 16000;
+        } else {
+            actualTimeout = Math.min(timeoutParam, 5000);
+        }
+
+        const stream = kv.watch([["rooms", code, queueName, "wakeup"]]);
+        const reader = stream.getReader();
 
         return new Promise((resolve) => {
             let isResolved = false;
 
-            const complete = async (overrideMsgs) => {
+            const timer = setTimeout(async () => {
                 if (isResolved) return;
                 isResolved = true;
-                clearTimeout(timer);
-
-                const msgs = overrideMsgs || await dequeueKv(code, queueName);
-                resolve(json(msgs));
-            };
-
-            // Using BroadcastChannel to wake up local isolate resolvers
-            const bc = new BroadcastChannel("signaling_wake_" + code);
-
-            const timer = setTimeout(() => {
-                if (isResolved) return;
-                isResolved = true;
-                bc.close();
+                try { await reader.cancel(); } catch (_) {}
                 resolve(json([]));
-            }, timeoutParam);
+            }, actualTimeout);
 
-            bc.onmessage = async (e) => {
-                if (e.data.target === target) {
-                    bc.close();
-                    await complete();
+            (async () => {
+                try {
+                    let isFirst = true;
+                    while (true) {
+                        const { done } = await reader.read();
+                        if (done || isResolved) break;
+                        if (isFirst) {
+                            isFirst = false;
+                            continue;
+                        }
+                        
+                        const msgs = await dequeueKv(code, queueName);
+                        if (msgs.length > 0) {
+                            if (!isResolved) {
+                                isResolved = true;
+                                clearTimeout(timer);
+                                try { await reader.cancel(); } catch (_) {}
+                                resolve(json(msgs));
+                            }
+                            break;
+                        }
+                    }
+                } catch (_) {
+                    if (!isResolved) {
+                        isResolved = true;
+                        clearTimeout(timer);
+                        try { await reader.cancel(); } catch (_) {}
+                        resolve(json([]));
+                    }
                 }
-            };
+            })();
         });
     }
 
@@ -336,7 +366,6 @@ Deno.serve(async (req) => {
 
         if (targetQueue) {
             await enqueueKv(code, targetQueue, msg);
-            new BroadcastChannel("signaling_wake_" + code).postMessage({ target: targetWake });
         }
 
         return json({ ok: true });
