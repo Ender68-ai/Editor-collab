@@ -15,8 +15,6 @@ protected:
 
     bool m_collabState = false; // false = join, true = host
 
-    bool isCollabList = false;
-
 public:
     static CollabLayer* create();
     static CollabLayer *get() {

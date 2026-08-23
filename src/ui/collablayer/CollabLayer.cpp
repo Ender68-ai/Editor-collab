@@ -15,48 +15,6 @@
 using namespace geode::prelude;
 using namespace mpedit;
 
-// $modify classes here
-
-
-
-class $modify(MyLevelCell, LevelCell) {
-    void loadFromLevel(GJGameLevel* level) {
-        LevelCell::loadFromLevel(level);
-
-        this->updateCollabButtons();
-    }
-
-    void updateCollabButtons() {
-        auto mainLayer = this->getChildByID("main-layer");
-        if (!mainLayer)
-            return;
-
-        auto mainMenu = mainLayer->getChildByID("main-menu");
-        if (!mainMenu)
-            return;
-
-        if (auto select = mainMenu->getChildByID("select-toggler")) {
-            select->setVisible(false);
-        }
-    }
-
-    void onClick(CCObject* sender) {
-        if (m_mainMenu) {
-            if (auto select = m_mainMenu->getChildByID("select-toggler")) {
-                select->setVisible(false);
-            }
-        }
-
-        if (m_mainMenu) {
-            if (auto view = m_mainMenu->getChildByID("view-button")) {
-                // modify view here
-            }
-        }
-        
-
-        LevelCell::onClick(sender);
-    }
-};
 
 CollabLayer* CollabLayer::create() {
     auto ret = new CollabLayer();
@@ -352,9 +310,13 @@ void CollabLayer::updateStatus(float) {
 void CollabLayer::onHostMode(CCObject*) {
     // adds roomcreate and roomlist to the layer.
 
+    // Host mode adds the gjlistlayer and the roomcreatelayer to collablayer. it also flips the mode bool so onjoinmode is hidden.
+
 };
 void CollabLayer::onJoinMode(CCObject*) {
     // adds locallevellist and roomslist to the layer.
+
+    // Join mode adds the roomslist and the RoomDescLayer to collablayer. it also flips the mode bool so onhostmode is hidden.
 
 };
 
