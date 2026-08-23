@@ -29,11 +29,19 @@ namespace mpedit {
         return colors[index % colors.size()];
     }
 
+    CursorNode::~CursorNode() {
+        SessionManager::get().removeListener(this);
+    }
+
+
     bool CursorNode::init() {
         if (!CCNode::init()) return false;
         
         m_selectionDrawNode = cocos2d::CCDrawNode::create();
         this->addChild(m_selectionDrawNode);
+        SessionManager::get().onChatMessage(this, [this](SessionManager::ChatMessage const& msg) {
+            this->showChatBubble(msg.playerId, msg.message);
+        });
 
         this->scheduleUpdate();
         return true;
@@ -52,6 +60,9 @@ namespace mpedit {
         if (!m_selectionDrawNode) {
             m_selectionDrawNode = cocos2d::CCDrawNode::create();
             this->addChild(m_selectionDrawNode);
+        SessionManager::get().onChatMessage(this, [this](SessionManager::ChatMessage const& msg) {
+            this->showChatBubble(msg.playerId, msg.message);
+        });
         }
 
         auto& players = session.getPlayers();
@@ -60,7 +71,7 @@ namespace mpedit {
         std::unordered_set<int> activeIds;
 
         for (auto& player : players) {
-            if (player.id == localId) continue;
+            if (player.id == localId) { }
             
             activeIds.insert(player.id);
 
@@ -86,6 +97,10 @@ namespace mpedit {
                 this->addChild(pc.drawNode);
 
                 pc.label = CCLabelBMFont::create(player.name.c_str(), "chatFont.fnt");
+                if (player.id == localId) {
+                    pc.drawNode->setVisible(false);
+                    pc.label->setVisible(false);
+                }
                 pc.label->setScale(0.4f);
                 pc.label->setColor(color3);
                 pc.label->setOpacity(200);
@@ -94,6 +109,16 @@ namespace mpedit {
 
                 pc.targetX = player.cursorX;
                 pc.targetY = player.cursorY;
+                pc.chatBubble = cocos2d::extension::CCScale9Sprite::create("square02_001.png");
+                pc.chatBubble->setContentSize({100.f, 30.f});
+                pc.chatBubble->setOpacity(0);
+                pc.chatBubble->setAnchorPoint({0.5f, 0.f});
+                this->addChild(pc.chatBubble, 20);
+                pc.chatLabel = CCLabelBMFont::create("", "chatFont.fnt");
+                pc.chatLabel->setScale(0.6f);
+                pc.chatLabel->setOpacity(0);
+                this->addChild(pc.chatLabel, 21);
+
                 pc.drawNode->setPosition({pc.targetX, pc.targetY});
                 pc.label->setPosition({pc.targetX + 15.f, pc.targetY - 15.f});
 
@@ -119,6 +144,9 @@ namespace mpedit {
             }
             
             pc.drawNode->setPosition({newX, newY});
+            if (pc.chatBubble) pc.chatBubble->setPosition({newX, newY + 20.f});
+            if (pc.chatLabel) pc.chatLabel->setPosition({newX, newY + 35.f});
+
             pc.label->setString(player.name.c_str());
 
             if (player.isViewOnly) {
@@ -310,7 +338,9 @@ namespace mpedit {
                     this->addChild(pc.playtestIcon);
                 }
                 
-                pc.playtestIcon->setVisible(true);
+                bool isLocal = (player.id == localId);
+                
+                pc.playtestIcon->setVisible(!isLocal);
                 pc.playtestIcon->setPosition({newX, newY});
                 pc.playtestIcon->setRotation(rotation);
                 
@@ -323,7 +353,7 @@ namespace mpedit {
                         pc.playtestIcon2 = SimplePlayer::create(1);
                         this->addChild(pc.playtestIcon2);
                     }
-                    pc.playtestIcon2->setVisible(true);
+                    pc.playtestIcon2->setVisible(!isLocal);
                     pc.playtestIcon2->setPosition({new2X, new2Y});
                     pc.playtestIcon2->setRotation(p2Rot);
                     
@@ -413,9 +443,11 @@ namespace mpedit {
                 pc.label->setAnchorPoint({0.5f, 0.f});
                 pc.label->setPosition({newX, newY + 20.f});
             } else {
-                pc.drawNode->setVisible(true);
+                bool isLocal = (player.id == localId);
+                pc.drawNode->setVisible(!isLocal);
+                pc.label->setVisible(!isLocal);
                 if (pc.toolIndicator) {
-                    pc.toolIndicator->setVisible(true);
+                    pc.toolIndicator->setVisible(!isLocal);
                 }
                 if (pc.playtestIcon) {
                     pc.playtestIcon->setVisible(false);
@@ -473,11 +505,48 @@ namespace mpedit {
                 if (it->second.toolIndicator) it->second.toolIndicator->removeFromParent();
                 if (it->second.playtestIcon) it->second.playtestIcon->removeFromParent();
                 if (it->second.playtestIcon2) it->second.playtestIcon2->removeFromParent();
+                if (it->second.chatBubble) it->second.chatBubble->removeFromParent();
+                if (it->second.chatLabel) it->second.chatLabel->removeFromParent();
+                if (it->second.lockIcon) it->second.lockIcon->removeFromParent();
+
                 it = m_cursors.erase(it);
             } else {
                 ++it;
             }
         }
+    }
+
+
+
+    void CursorNode::showChatBubble(int playerId, std::string const& message) {
+        auto it = m_cursors.find(playerId);
+        if (it == m_cursors.end()) return;
+        
+        auto& pc = it->second;
+        if (!pc.chatBubble || !pc.chatLabel) return;
+
+        pc.chatLabel->setString(message.c_str());
+        pc.chatLabel->limitLabelWidth(150.f, 0.6f, 0.2f);
+        
+        auto size = pc.chatLabel->getScaledContentSize();
+        pc.chatBubble->setContentSize({std::max(size.width + 20.f, 30.f), size.height + 15.f});
+
+        pc.chatBubble->stopAllActions();
+        pc.chatLabel->stopAllActions();
+
+        pc.chatBubble->runAction(cocos2d::CCSequence::create(
+            cocos2d::CCFadeTo::create(0.2f, 150),
+            cocos2d::CCDelayTime::create(6.0f),
+            cocos2d::CCFadeOut::create(0.5f),
+            nullptr
+        ));
+
+        pc.chatLabel->runAction(cocos2d::CCSequence::create(
+            cocos2d::CCFadeIn::create(0.2f),
+            cocos2d::CCDelayTime::create(6.0f),
+            cocos2d::CCFadeOut::create(0.5f),
+            nullptr
+        ));
     }
 
 }

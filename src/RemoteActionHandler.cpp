@@ -3,6 +3,7 @@
 #include "BinaryProtocol.hpp"
 #include "SessionManager.hpp"
 #include "MessageBatcher.hpp"
+#include "ui/menu/MultiplayerMenuPopup.hpp"
 #include <Geode/Geode.hpp>
 #include <Geode/utils/file.hpp>
 #include <random>
@@ -109,6 +110,8 @@ namespace mpedit {
             handleRemoteMoveObjects(playerId, msg.moves);
         });
 
+
+
         net.on(proto::Opcode::TransformObjects, [this](int playerId, proto::Reader& reader) {
             if (playerId == P2PManager::get().getLocalPlayerId()) return;
             auto msg = proto::deserializeTransformObjects(reader);
@@ -209,6 +212,11 @@ namespace mpedit {
             }
         });
 
+        net.on(proto::Opcode::RequestSnapshot, [this](int playerId, proto::Reader& reader) {
+            log::info("RemoteActionHandler: Received RequestSnapshot from server");
+            this->sendSnapshotToServer();
+        });
+
         net.on(proto::Opcode::HostMigration, [this](int playerId, proto::Reader& reader) {
             int newHostId = reader.readU32();
             if (reader.hasError()) return;
@@ -227,6 +235,23 @@ namespace mpedit {
                     geode::Notification::create("You are no longer in View-Only mode.", cocos2d::CCSprite::createWithSpriteFrameName("GJ_completesIcon_001.png"))->show();
                 }
             }
+        });
+
+        net.on(proto::Opcode::Error, [](int playerId, proto::Reader& reader) {
+            auto msg = proto::deserializeError(reader);
+            if (reader.hasError()) return;
+            geode::queueInMainThread([msg] {
+                SessionManager::get().dispatchError(msg.message);
+                SessionManager::get().leaveSession();
+            });
+        });
+
+        net.on(proto::Opcode::ServerMessage, [](int playerId, proto::Reader& reader) {
+            auto msg = proto::deserializeServerMessage(reader);
+            if (reader.hasError()) return;
+            geode::queueInMainThread([msg] {
+                geode::Notification::create("Server says: " + msg.message, geode::NotificationIcon::Info)->show();
+            });
         });
 
         net.on(proto::Opcode::KickPlayer, [](int playerId, proto::Reader& reader) {
@@ -303,8 +328,16 @@ namespace mpedit {
             }
         });
 
+        net.on(proto::Opcode::SyncLocksChunk, [this](int playerId, proto::Reader& reader) {
+            auto msg = proto::deserializeSyncLocksChunk(reader);
+            if (reader.hasError()) return;
+            for (auto const& lock : msg.locks) {
+                m_objectLocks[lock.uuid] = {lock.playerId, 0.0f};
+            }
+        });
+
         net.on(proto::Opcode::SyncLevelEnd, [this](int playerId, proto::Reader& reader) {
-            auto msg = proto::deserializeSyncLevelEnd(reader);
+            proto::deserializeSyncLevelEnd(reader);
             if (reader.hasError()) {
                 log::error("RemoteActionHandler: Error deserializing SyncLevelEnd");
                 return;
@@ -319,14 +352,18 @@ namespace mpedit {
             std::string objectsString = "";
             if (!compressedString.empty()) {
                 geode::ByteVector bytes(compressedString.begin(), compressedString.end());
-                if (auto unzip = geode::utils::file::Unzip::create(bytes)) {
-                    if (auto extracted = unzip.unwrap().extract("level.txt")) {
-                        objectsString = std::string(extracted.unwrap().begin(), extracted.unwrap().end());
+                if (bytes.size() >= 4 && bytes[0] == 'P' && bytes[1] == 'K' && bytes[2] == 0x03 && bytes[3] == 0x04) {
+                    if (auto unzip = geode::utils::file::Unzip::create(bytes)) {
+                        if (auto extracted = unzip.unwrap().extract("level.txt")) {
+                            objectsString = std::string(extracted.unwrap().begin(), extracted.unwrap().end());
+                        } else {
+                            log::error("RemoteActionHandler: Failed to extract level.txt from sync payload");
+                        }
                     } else {
-                        log::error("RemoteActionHandler: Failed to extract level.txt from sync payload");
+                        log::error("RemoteActionHandler: Failed to create unzipper for sync payload");
                     }
                 } else {
-                    log::error("RemoteActionHandler: Failed to create unzipper for sync payload");
+                    objectsString = compressedString;
                 }
             }
             
@@ -340,7 +377,7 @@ namespace mpedit {
 
             log::info("RemoteActionHandler: Reassembled sync string, size: {} bytes, {} objects",
                 objectsString.size(), uuids.size());
-            handleRemoteSyncLevel(playerId, objectsString, uuids, m_chunkedSync.settings, msg.locks);
+            handleRemoteSyncLevel(playerId, objectsString, uuids, m_chunkedSync.settings, {});
 
             m_chunkedSync.active = false;
             m_chunkedSync.chunks.clear();
@@ -408,6 +445,16 @@ namespace mpedit {
             }
         }
         return nullptr;
+    }
+
+    void RemoteActionHandler::flushDeferredDeletions() {
+        if (!m_deferredDeletionObjects.empty()) {
+            for (auto* obj : m_deferredDeletionObjects) {
+                obj->release();
+            }
+            log::info("RemoteActionHandler: Flushed {} deferred deletion objects", m_deferredDeletionObjects.size());
+            m_deferredDeletionObjects.clear();
+        }
     }
 
     void RemoteActionHandler::applyPendingSync() {
@@ -577,11 +624,19 @@ namespace mpedit {
                     auto orangeUuid = getUUIDForObject(tpPortal->m_orangePortal);
                     auto* orange = tpPortal->m_orangePortal;
                     tpPortal->m_orangePortal = nullptr;
+                    if (editor->m_playbackMode != PlaybackMode::Not) {
+                        orange->retain();
+                        m_deferredDeletionObjects.push_back(orange);
+                    }
                     editor->removeObject(orange, true);
                     if (!orangeUuid.empty()) unregisterObject(orangeUuid);
                 }
             }
 
+            if (editor->m_playbackMode != PlaybackMode::Not) {
+                obj->retain();
+                m_deferredDeletionObjects.push_back(obj);
+            }
             editor->removeObject(obj, true);
             unregisterObject(uuid);
             log::debug("RemoteActionHandler: Deleted object (uuid={})", uuid);
@@ -765,6 +820,10 @@ namespace mpedit {
                     
                     auto* orange = tpPortal->m_orangePortal;
                     tpPortal->m_orangePortal = nullptr;
+                    if (editor->m_playbackMode != PlaybackMode::Not) {
+                        orange->retain();
+                        m_deferredDeletionObjects.push_back(orange);
+                    }
                     editor->removeObject(orange, true);
                     if (!orangeOldUuid.empty()) unregisterObject(orangeOldUuid);
                 }
@@ -773,6 +832,10 @@ namespace mpedit {
             auto objDataCopy = objData;
             ActionSerializer::injectLocalStartPosState(objDataCopy, oldObj);
 
+            if (editor->m_playbackMode != PlaybackMode::Not) {
+                oldObj->retain();
+                m_deferredDeletionObjects.push_back(oldObj);
+            }
             editor->removeObject(oldObj, true);
             unregisterObject(objDataCopy.uuid);
 
@@ -958,7 +1021,7 @@ namespace mpedit {
             };
 
             auto* level = GJGameLevel::create();
-            level->m_levelName = "Multiplayer Session";
+            level->m_levelName = settings.levelName.empty() ? "Multiplayer Session" : settings.levelName;
             level->m_levelType = GJLevelType::Editor;
             level->m_levelString = levelString;
             level->m_audioTrack = settings.audioTrack;
@@ -971,6 +1034,11 @@ namespace mpedit {
                 m_pendingSync.reset();
                 return;
             }
+
+            if (MultiplayerMenuPopup::s_instance) {
+                MultiplayerMenuPopup::s_instance->forceClose();
+            }
+
             cocos2d::CCDirector::sharedDirector()->pushScene(scene);
 
             log::info("RemoteActionHandler: Pushed editor scene; pending sync will apply in init() (hasPending={})",
@@ -1244,8 +1312,13 @@ namespace mpedit {
         m_pendingPlacements.clear();
 
         if (!objects.empty() && !m_processingRemote) {
-            auto data = proto::serializePlaceObjects(objects);
-            P2PManager::get().send(data, ChannelType::Reliable);
+            constexpr size_t MAX_OBJECTS_PER_MESSAGE = 100;
+            for (size_t i = 0; i < objects.size(); i += MAX_OBJECTS_PER_MESSAGE) {
+                size_t chunkCount = std::min(MAX_OBJECTS_PER_MESSAGE, objects.size() - i);
+                std::vector<ActionSerializer::ObjectData> chunk(objects.begin() + i, objects.begin() + i + chunkCount);
+                auto data = proto::serializePlaceObjects(chunk);
+                P2PManager::get().send(data, ChannelType::Reliable);
+            }
             log::debug("RemoteActionHandler: Flushed batched placement of {} objects", objects.size());
         }
     }

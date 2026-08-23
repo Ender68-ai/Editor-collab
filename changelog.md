@@ -1,3 +1,25 @@
+# 0.6.0
+- Added dedicated Server support for headless server hosting! See the `servers/dedicated` folder for instructions on how to run a dedicated server.
+- Added a "Servers" button in the Multiplayer menu. Here you can directly join or save dedicated server IPs.
+- When connected to a dedicated server, you can save a local copy of the level manually, or save directly to the servers level folder.
+- The dedicated server CLI has dedicated admin commands.
+- Added a chat so you can text other people in your session! You can either press "/" to open up a quick message box in the editor, or go into the multiplayer edit menu and view the full chat.
+- Other players can see your messages sent in chat above your cursor.
+- Now shows the players cube icon next to the username on the player list and chat.
+- Added a view button on the player list to jump to their cursor in the editor.
+- Added a check to tell you if you're on an outdated version of the mod.
+- Added an option to make the default setting of the room to be view-only to prevent trolling.
+- Added notification telling you when someone joins or leaves the session.
+- Limited setting the player name in the mod settings to only 15 characters.
+- Fixed the Multiplayer Edit button in the editor overlapping with other UI elements (and also made the text golden lol).
+- Fixed crash that happens on android when guests leave or get kicked.
+- Fixed issue where after hosting, the multiplayer editor pop up becomes unresponsive until you press esc and reopen it again.
+- Fixed a bug where placing or selecting a large amount of objects would instantly freeze and softlock the game.
+- Fixed crash when deleting an object another player is interacting with in playtest.
+- Tried optimizing the signaling server logic by balancing memory time and http requests more efficiently.
+- Increased and refined the information given when connecting to a host (also fuck ICE).
+- Checked and fixed a lot of outdated information in the various README files.
+
 # 0.5.4
 - Added a button for joining the discord server.
 - Redesigned the patreon button to match the discord button.

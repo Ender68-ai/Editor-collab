@@ -18,13 +18,13 @@ namespace mpedit {
     }
 
     bool CreateRoomPopup::init(MultiplayerMenuPopup* parent) {
-        if (!BasePopup::init(300.f, 240.f)) return false;
+        if (!BasePopup::init(300.f, 260.f)) return false;
         m_parentPopup = parent;
         
         this->setTitle("Create Room");
 
         auto layoutNode = CCNode::create();
-        layoutNode->setContentSize({260.f, 160.f});
+        layoutNode->setContentSize({260.f, 190.f});
         layoutNode->setPosition(this->center() + cocos2d::CCPoint{0.f, 15.f});
         layoutNode->setAnchorPoint({0.5f, 0.5f});
         layoutNode->setLayout(ColumnLayout::create()->setGap(12.f)->setAxisReverse(true));
@@ -84,6 +84,29 @@ namespace mpedit {
         privRow->updateLayout();
         layoutNode->addChild(privRow);
 
+        auto voRow = CCNode::create();
+        voRow->setContentSize({240.f, 30.f});
+        voRow->setLayout(RowLayout::create()->setGap(8.f)->setAxisAlignment(AxisAlignment::Center));
+        
+        auto voLabel = CCLabelBMFont::create("Default View-Only", "goldFont.fnt");
+        voLabel->setScale(0.4f);
+        voRow->addChild(voLabel);
+        
+        auto voOnSpr = CCSprite::createWithSpriteFrameName("GJ_checkOn_001.png");
+        auto voOffSpr = CCSprite::createWithSpriteFrameName("GJ_checkOff_001.png");
+        voOnSpr->setScale(0.6f);
+        voOffSpr->setScale(0.6f);
+        m_viewOnlyToggle = CCMenuItemToggler::create(voOffSpr, voOnSpr, this, nullptr);
+        
+        auto voMenu = CCMenu::create();
+        voMenu->setContentSize({30.f, 30.f});
+        m_viewOnlyToggle->setPosition({15.f, 15.f});
+        voMenu->addChild(m_viewOnlyToggle);
+        voRow->addChild(voMenu);
+        
+        voRow->updateLayout();
+        layoutNode->addChild(voRow);
+
         layoutNode->updateLayout();
 
         auto hostBtnSprite = ButtonSprite::create("Create", "goldFont.fnt", "GJ_button_01.png", 0.8f);
@@ -99,8 +122,6 @@ namespace mpedit {
         settings.roomName = m_nameInput->getString();
         if (settings.roomName.empty()) settings.roomName = fmt::format("{}'s room", GJAccountManager::sharedState()->m_username);
         
-        settings.password = m_passInput->getString();
-        
         std::string lim = m_limitInput->getString();
         if (!lim.empty()) {
             settings.playerLimit = std::stoi(lim);
@@ -108,10 +129,15 @@ namespace mpedit {
             settings.playerLimit = 0;
         }
         
+        settings.password = m_passInput->getString();
         settings.isPrivate = m_privateToggle->isToggled();
+        settings.defaultViewOnly = m_viewOnlyToggle->isToggled();
         
         SessionManager::get().hostSession(Mod::get()->getSettingValue<std::string>("player-name"), settings);
         
+        this->setKeyboardEnabled(false);
+        this->setTouchEnabled(false);
+        this->removeFromParentAndCleanup(true);
         if (m_parentPopup) {
             m_parentPopup->onConnecting();
         } else {
@@ -119,7 +145,6 @@ namespace mpedit {
             popup->show();
             popup->onConnecting();
         }
-        this->onClose(nullptr);
     }
 
 }

@@ -34,6 +34,7 @@ namespace mpedit {
             int audioTrack = 0;
             int songID = 0;
             float levelLength = 0;
+            std::string levelName = "";
         };
 
         struct ColorChannelData {

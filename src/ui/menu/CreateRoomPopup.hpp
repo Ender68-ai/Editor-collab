@@ -13,6 +13,7 @@ namespace mpedit {
         geode::TextInput* m_passInput = nullptr;
         geode::TextInput* m_limitInput = nullptr;
         CCMenuItemToggler* m_privateToggle = nullptr;
+        CCMenuItemToggler* m_viewOnlyToggle = nullptr;
         
         MultiplayerMenuPopup* m_parentPopup = nullptr;
 

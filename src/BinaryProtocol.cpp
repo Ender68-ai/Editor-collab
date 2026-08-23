@@ -136,6 +136,7 @@ namespace mpedit::proto {
         w.writeVarInt(static_cast<uint32_t>(s.audioTrack));
         w.writeVarInt(static_cast<uint32_t>(s.songID));
         w.writeF32(s.levelLength);
+        w.writeString(s.levelName);
     }
 
     ActionSerializer::LevelSettingsData readSettingsData(Reader& r) {
@@ -144,6 +145,7 @@ namespace mpedit::proto {
         s.audioTrack = static_cast<int>(r.readVarInt());
         s.songID = static_cast<int>(r.readVarInt());
         s.levelLength = r.readF32();
+        s.levelName = r.readString();
         return s;
     }
 
@@ -293,26 +295,35 @@ namespace mpedit::proto {
         return std::move(w.takeData());
     }
 
-    std::vector<uint8_t> serializeSyncLevelEnd(
-        std::vector<ActionSerializer::LockData> const& locks)
-    {
+    std::vector<uint8_t> serializeSyncLevelEnd() {
         Writer w;
         w.writeOpcode(Opcode::SyncLevelEnd);
-        w.writeVarInt(static_cast<uint32_t>(locks.size()));
-        for (auto const& lock : locks) {
-            writeLockData(w, lock);
-        }
+        return std::move(w.takeData());
+    }
+
+    std::vector<uint8_t> serializeSyncLocksChunk(std::vector<ActionSerializer::LockData> const& locks) {
+        Writer w;
+        w.writeOpcode(Opcode::SyncLocksChunk);
+        w.writeVarInt(locks.size());
+        for (auto const& lock : locks) writeLockData(w, lock);
+        return std::move(w.takeData());
+    }
+
+    std::vector<uint8_t> serializeRequestSnapshot() {
+        Writer w;
+        w.writeOpcode(Opcode::RequestSnapshot);
         return std::move(w.takeData());
     }
 
     std::vector<uint8_t> serializePlayerJoined(
-        int playerId, std::string const& name, int colorIndex)
+        int playerId, std::string const& name, int colorIndex, std::string const& iconStr)
     {
         Writer w;
         w.writeOpcode(Opcode::PlayerJoined);
         w.writeVarInt(static_cast<uint32_t>(playerId));
         w.writeString(name);
         w.writeVarInt(static_cast<uint32_t>(colorIndex));
+        w.writeString(iconStr);
         return std::move(w.takeData());
     }
 
@@ -446,11 +457,13 @@ namespace mpedit::proto {
         return msg;
     }
 
-    SyncLevelEndMsg deserializeSyncLevelEnd(Reader& r) {
-        SyncLevelEndMsg msg;
-        uint32_t lockCount = r.readVarInt();
-        msg.locks.reserve(lockCount);
-        for (uint32_t i = 0; i < lockCount; ++i) {
+    void deserializeSyncLevelEnd(Reader& r) {
+    }
+
+    SyncLocksChunkMsg deserializeSyncLocksChunk(Reader& r) {
+        SyncLocksChunkMsg msg;
+        size_t lockCount = r.readVarInt();
+        for (size_t i = 0; i < lockCount; i++) {
             msg.locks.push_back(readLockData(r));
         }
         return msg;
@@ -461,6 +474,7 @@ namespace mpedit::proto {
         msg.playerId = static_cast<int>(r.readVarInt());
         msg.name = r.readString();
         msg.colorIndex = static_cast<int>(r.readVarInt());
+        if (r.hasRemaining()) { msg.iconStr = r.readString(); }
         return msg;
     }
 
@@ -476,26 +490,35 @@ namespace mpedit::proto {
         return msg;
     }
 
+    ServerMessageMsg deserializeServerMessage(Reader& r) {
+        ServerMessageMsg msg;
+        msg.message = r.readString();
+        return msg;
+    }
+
     UpdateSettingsMsg deserializeUpdateSettings(Reader& r) {
         UpdateSettingsMsg msg;
         msg.settings = readSettingsData(r);
         return msg;
     }
 
-    std::vector<uint8_t> serializeRoomInfo(std::vector<RoomInfoPlayer> const& players) {
+    std::vector<uint8_t> serializeRoomInfo(int localPlayerId, std::vector<RoomInfoPlayer> const& players) {
         Writer w;
         w.writeOpcode(Opcode::RoomInfo);
+        w.writeVarInt(static_cast<uint32_t>(localPlayerId));
         w.writeVarInt(static_cast<uint32_t>(players.size()));
         for (auto const& p : players) {
             w.writeVarInt(static_cast<uint32_t>(p.id));
             w.writeString(p.name);
             w.writeVarInt(static_cast<uint32_t>(p.colorIndex));
+            w.writeString(p.iconStr);
         }
         return w.takeData();
     }
 
     RoomInfoMsg deserializeRoomInfo(Reader& r) {
         RoomInfoMsg msg;
+        msg.localPlayerId = static_cast<int>(r.readVarInt());
         uint32_t count = r.readVarInt();
         msg.players.reserve(count);
         for (uint32_t i = 0; i < count; ++i) {
@@ -503,6 +526,7 @@ namespace mpedit::proto {
             p.id = static_cast<int>(r.readVarInt());
             p.name = r.readString();
             p.colorIndex = static_cast<int>(r.readVarInt());
+            p.iconStr = r.readString();
             msg.players.push_back(p);
         }
         return msg;
@@ -558,5 +582,21 @@ namespace mpedit::proto {
         msg.data.legacyHSV = r.readU8() != 0;
         return msg;
     }
+
+
+
+    std::vector<uint8_t> serializeChatMessage(std::string const& message) {
+        Writer w;
+        w.writeOpcode(Opcode::ChatMessage);
+        w.writeString(message);
+        return w.takeData();
+    }
+
+    ChatMessageMsg deserializeChatMessage(Reader& r) {
+        ChatMessageMsg msg;
+        msg.message = r.readString();
+        return msg;
+    }
+
 
 }

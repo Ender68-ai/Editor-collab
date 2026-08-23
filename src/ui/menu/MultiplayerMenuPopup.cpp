@@ -7,6 +7,9 @@
 #include <Geode/ui/TextInput.hpp>
 #include <Geode/ui/BasedButtonSprite.hpp>
 #include <Geode/utils/web.hpp>
+#include "DedicatedServersPopup.hpp"
+#include "ChatPopup.hpp"
+
 
 using namespace geode::prelude;
 
@@ -40,9 +43,18 @@ namespace mpedit {
 
         void onJoin(cocos2d::CCObject*) {
             std::string pwd = m_input->getString();
-            SessionManager::get().joinSession(m_room.roomCode, Mod::get()->getSettingValue<std::string>("player-name"), pwd);
+            if (m_room.serverUrl.starts_with("ws://") || m_room.serverUrl.starts_with("wss://") || m_room.serverUrl.starts_with("http://") || m_room.serverUrl.starts_with("https://")) {
+                std::string wsUrl = m_room.serverUrl;
+                if (wsUrl.starts_with("http://")) wsUrl.replace(0, 7, "ws://");
+                else if (wsUrl.starts_with("https://")) wsUrl.replace(0, 8, "wss://");
+                SessionManager::get().joinDedicatedServer(wsUrl, m_room.roomCode, pwd);
+            } else {
+                SessionManager::get().joinSession(m_room.roomCode, Mod::get()->getSettingValue<std::string>("player-name"), pwd);
+            }
+            this->setKeyboardEnabled(false);
+            this->setTouchEnabled(false);
+            this->removeFromParentAndCleanup(true);
             if (m_parent) m_parent->onConnecting();
-            this->onClose(nullptr);
         }
 
     public:
@@ -99,7 +111,9 @@ namespace mpedit {
             auto p = writer.data();
             data.insert(data.end(), p.begin(), p.end());
             P2PManager::get().send(data, ChannelType::Reliable);
-            this->onClose(nullptr);
+            this->setKeyboardEnabled(false);
+            this->setTouchEnabled(false);
+            this->removeFromParentAndCleanup(true);
         }
 
         void onToggleViewOnly(CCObject*) {
@@ -243,36 +257,103 @@ namespace mpedit {
             bg->setColor({0, 0, 0});
             this->addChild(bg);
 
+            int cubeFrame = 1;
+            cocos2d::ccColor3B col1 = nameColor;
+            cocos2d::ccColor3B col2 = {255, 255, 255};
+            bool glowEnabled = false;
+            cocos2d::ccColor3B glowCol = {0, 0, 0};
+
+            if (!info.iconStr.empty()) {
+                std::stringstream ss(info.iconStr);
+                std::string token;
+                std::vector<std::string> tokens;
+                while (std::getline(ss, token, ':')) {
+                    tokens.push_back(token);
+                }
+                if (tokens.size() >= 5) {
+                    cubeFrame = geode::utils::numFromString<int>(tokens[0]).unwrapOr(1);
+                    auto gm = GameManager::sharedState();
+                    col1 = gm->colorForIdx(geode::utils::numFromString<int>(tokens[1]).unwrapOr(0));
+                    col2 = gm->colorForIdx(geode::utils::numFromString<int>(tokens[2]).unwrapOr(0));
+                    glowEnabled = (tokens[3] == "1");
+                    glowCol = gm->colorForIdx(geode::utils::numFromString<int>(tokens[4]).unwrapOr(0));
+                }
+            }
+
+            auto icon = SimplePlayer::create(cubeFrame);
+            icon->setColor(col1);
+            icon->setSecondColor(col2);
+            if (glowEnabled) {
+                icon->setGlowOutline(glowCol);
+            }
+            icon->setScale(0.55f);
+            icon->setPosition({15.f, 15.f});
+            this->addChild(icon);
+
             auto name = CCLabelBMFont::create(info.name.c_str(), "bigFont.fnt");
             name->setAnchorPoint({0, 0.5f});
-            name->setPosition({10.f, 15.f});
+            name->setPosition({30.f, 15.f});
             name->setScale(0.4f);
             name->setColor(nameColor);
             this->addChild(name);
             
             if (info.isViewOnly) {
                 auto viewOnlyLabel = CCLabelBMFont::create("[View Only]", "chatFont.fnt");
+                viewOnlyLabel->setAnchorPoint({0, 0.5f});
                 viewOnlyLabel->setScale(0.35f);
                 viewOnlyLabel->setColor({255, 200, 100});
-                viewOnlyLabel->setPosition({width - 80.f, 15.f});
+                viewOnlyLabel->setPosition({name->getPositionX() + name->getScaledContentSize().width + 10.f, 15.f});
                 this->addChild(viewOnlyLabel);
             }
             
+            float nextX = width - 20.f;
+            auto menu = CCMenu::create();
+            menu->setContentSize(this->getContentSize());
+            menu->setPosition(this->getContentSize() / 2.f);
+            this->addChild(menu);
+            
             if (SessionManager::get().getRole() == SessionManager::Role::Host && info.id != SessionManager::get().getLocalPlayerId()) {
-                auto menu = CCMenu::create();
-                menu->setContentSize(this->getContentSize());
-                menu->setPosition(this->getContentSize() / 2.f);
-                this->addChild(menu);
-                
                 auto gear = CCSprite::createWithSpriteFrameName("GJ_optionsBtn_001.png");
                 gear->setScale(0.5f);
                 auto btn = CCMenuItemSpriteExtra::create(gear, this, menu_selector(ActivePlayerCell::onOptions));
-                btn->setPosition(CCPoint{width - 20.f, 15.f} - menu->getContentSize() / 2.f);
+                btn->setPosition(CCPoint{nextX, 15.f} - menu->getContentSize() / 2.f);
                 btn->setUserData(reinterpret_cast<void*>(static_cast<uintptr_t>(info.id)));
                 menu->addChild(btn);
+                
+                nextX -= 35.f;
+            }
+            
+            if (info.id != SessionManager::get().getLocalPlayerId()) {
+                auto viewSprite = ButtonSprite::create("View", "goldFont.fnt", "GJ_button_04.png", 0.7f);
+                viewSprite->setScale(0.5f);
+                auto viewBtn = CCMenuItemSpriteExtra::create(viewSprite, this, menu_selector(ActivePlayerCell::onView));
+                viewBtn->setPosition(CCPoint{nextX - 10.f, 15.f} - menu->getContentSize() / 2.f);
+                viewBtn->setUserData(reinterpret_cast<void*>(static_cast<uintptr_t>(info.id)));
+                menu->addChild(viewBtn);
             }
             
             return true;
+        }
+        
+        void onView(CCObject* sender) {
+            auto btn = static_cast<CCNode*>(sender);
+            int id = static_cast<int>(reinterpret_cast<uintptr_t>(btn->getUserData()));
+            if (auto p = SessionManager::get().getPlayer(id)) {
+                if (auto editor = LevelEditorLayer::get()) {
+                    auto winSize = cocos2d::CCDirector::sharedDirector()->getWinSize();
+                    float scale = editor->m_objectLayer->getScale();
+                    editor->m_objectLayer->setPosition({
+                        winSize.width / 2.f - p->cursorX * scale,
+                        winSize.height / 2.f - p->cursorY * scale
+                    });
+                    editor->m_editorUI->constrainGameLayerPosition();
+                    
+                    auto scene = cocos2d::CCDirector::sharedDirector()->getRunningScene();
+                    if (auto popup = scene->getChildByType<MultiplayerMenuPopup>(0)) {
+                        popup->forceClose();
+                    }
+                }
+            }
         }
         
         void onOptions(CCObject* sender) {
@@ -338,6 +419,44 @@ namespace mpedit {
             this->setupRoomBrowser();
         }
 
+        static bool s_hasCheckedForUpdates = false;
+        if (!s_hasCheckedForUpdates && geode::Mod::get()->getSettingValue<bool>("check-updates")) {
+            s_hasCheckedForUpdates = true;
+            auto req = geode::utils::web::WebRequest();
+            m_updateTask.spawn(
+                req.get("https://raw.githubusercontent.com/xXoanon/MultiplayerEdit/main/mod.json"),
+                [](geode::utils::web::WebResponse res) {
+                    if (!res.ok()) return;
+                    auto json = res.json().unwrapOr(matjson::Value());
+                    auto fetchedVersionStr = json.get<std::string>("version").unwrapOr("");
+                    if (fetchedVersionStr.empty()) return;
+                    
+                    auto currentVer = geode::Mod::get()->getVersion();
+                    if (auto latestVerRes = geode::VersionInfo::parse(fetchedVersionStr)) {
+                        auto latestVer = latestVerRes.unwrap();
+                        if (latestVer > currentVer) {
+                            geode::createQuickPopup(
+                                "Update Available!",
+                                fmt::format(
+                                    "Warning! You are on an <cr>outdated</c> version of the mod.\n\n"
+                                    "Your version: <cy>{}</c>\nLatest version: <cg>{}</c>\n\n"
+                                    "Join the official Discord to never miss an update.",
+                                    currentVer.toVString(),
+                                    latestVer.toVString()
+                                ),
+                                "Cancel", "Join Discord",
+                                [](auto, bool btn2) {
+                                    if (btn2) {
+                                        geode::utils::web::openLinkInBrowser("https://discord.gg/mdsuxYu2YP");
+                                    }
+                                }
+                            );
+                        }
+                    }
+                }
+            );
+        }
+
         auto* helper = UpdateHelperNode::create([](float dt) {
             P2PManager::get().dispatchMessages();
         }, 0.05f);
@@ -373,6 +492,8 @@ namespace mpedit {
                 if (error.find("invalid password") != std::string::npos && !m_lastJoinCode.empty()) {
                     P2PManager::RoomInfo fakeRoom;
                     fakeRoom.roomCode = m_lastJoinCode;
+                    fakeRoom.serverUrl = m_lastServerUrl;
+                    fakeRoom.hasPassword = true;
                     this->promptPassword(fakeRoom);
                 } else {
                     FLAlertLayer::create("Error", error, "OK")->show();
@@ -426,7 +547,7 @@ namespace mpedit {
         m_browserUiNode->addChild(centerMenu);
 
         m_codeInput = geode::TextInput::create(130.f, "Code", "chatFont.fnt");
-        m_codeInput->setCommonFilter(geode::CommonFilter::Alphanumeric);
+        m_codeInput->setCommonFilter(geode::CommonFilter::Any);
         centerMenu->addChild(m_codeInput);
 
         auto joinSprite = ButtonSprite::create("Join", "goldFont.fnt", "GJ_button_01.png", 0.8f);
@@ -447,6 +568,19 @@ namespace mpedit {
         auto refreshBtn = CCMenuItemSpriteExtra::create(refreshSprite, this, menu_selector(MultiplayerMenuPopup::onRefresh));
         rightMenu->addChild(refreshBtn);
         rightMenu->updateLayout();
+
+        m_leftMenu = CCMenu::create();
+        m_leftMenu->setContentSize({100.f, 40.f});
+        m_leftMenu->setPosition(this->fromBottomLeft(15.f, 15.f));
+        m_leftMenu->setAnchorPoint({0.f, 0.f});
+        m_leftMenu->setLayout(RowLayout::create()->setAxisAlignment(AxisAlignment::Start));
+        m_browserUiNode->addChild(m_leftMenu);
+
+        auto serversBtnSprite = ButtonSprite::create("Servers", "goldFont.fnt", "GJ_button_04.png", 0.7f);
+        serversBtnSprite->setScale(0.65f);
+        auto serversBtn = CCMenuItemSpriteExtra::create(serversBtnSprite, this, menu_selector(MultiplayerMenuPopup::onDedicatedServers));
+        m_leftMenu->addChild(serversBtn);
+        m_leftMenu->updateLayout();
     }
 
     void MultiplayerMenuPopup::clearCenter() {
@@ -487,6 +621,16 @@ namespace mpedit {
 
     void MultiplayerMenuPopup::fetchRooms() {
         geode::Ref<MultiplayerMenuPopup> safeThis = this;
+        
+        std::string customUrl = "";
+        if (m_codeInput) {
+            std::string code = geode::utils::string::trim(m_codeInput->getString());
+            if (code.starts_with("ws://") || code.starts_with("wss://") || code.starts_with("http://") || code.starts_with("https://")) {
+                customUrl = code;
+                if (customUrl.back() == '/') customUrl.pop_back();
+            }
+        }
+
         P2PManager::get().fetchRooms([safeThis](std::vector<P2PManager::RoomInfo> const& rooms) {
             if (safeThis->getParent()) {
                 safeThis->populateRooms(rooms);
@@ -495,7 +639,7 @@ namespace mpedit {
                     safeThis->m_statusLabel->setString("No rooms found");
                 }
             }
-        });
+        }, customUrl);
     }
 
     void MultiplayerMenuPopup::populateRooms(std::vector<P2PManager::RoomInfo> const& rooms) {
@@ -512,6 +656,7 @@ namespace mpedit {
         }
         m_scrollLayer->m_contentLayer->updateLayout();
         m_scrollLayer->scrollToTop();
+        geode::cocos::handleTouchPriority(this);
     }
 
     void MultiplayerMenuPopup::onRefresh(CCObject*) {
@@ -527,15 +672,41 @@ namespace mpedit {
 
     void MultiplayerMenuPopup::onJoinByCode(cocos2d::CCObject*) {
         if (!m_codeInput) return;
-        std::string code = m_codeInput->getString();
+        std::string code = geode::utils::string::trim(m_codeInput->getString());
         if (code.empty()) {
-            geode::Notification::create("Please enter a room code", geode::NotificationIcon::Warning)->show();
+            geode::Notification::create("Please enter a room code or server URL", geode::NotificationIcon::Warning)->show();
             return;
         }
 
         m_lastJoinCode = code;
+        if (code.starts_with("ws://") || code.starts_with("wss://") || code.starts_with("http://") || code.starts_with("https://")) {
+            this->onRefresh(nullptr);
+            return;
+        }
         SessionManager::get().joinSession(code, Mod::get()->getSettingValue<std::string>("player-name"), "");
         this->onConnecting();
+    }
+
+    void MultiplayerMenuPopup::onDedicatedServers(cocos2d::CCObject*) {
+        DedicatedServersPopup::create([this](std::string const& url) {
+            this->onConnecting();
+            
+            geode::Ref<MultiplayerMenuPopup> safeThis = this;
+            P2PManager::get().fetchRooms([safeThis, url](std::vector<P2PManager::RoomInfo> const& rooms) {
+                if (!safeThis->getParent()) return;
+                
+                if (rooms.empty()) {
+                    safeThis->clearCenter();
+                    if (safeThis->m_browserUiNode) safeThis->m_browserUiNode->setVisible(true);
+                    geode::Notification::create("Server has no active levels hosted", geode::NotificationIcon::Warning)->show();
+                    return;
+                }
+                
+                auto room = rooms[0];
+                room.serverUrl = url;
+                safeThis->onJoinRoom(room);
+            }, url);
+        })->show();
     }
 
     void MultiplayerMenuPopup::onHostForm(cocos2d::CCObject*) {
@@ -574,6 +745,7 @@ namespace mpedit {
         m_sessionUiNode->addChild(cancelMenu);
 
         
+        geode::cocos::handleTouchPriority(this);
     }
 
     void MultiplayerMenuPopup::updateStatus(std::string const& status) {
@@ -679,12 +851,25 @@ namespace mpedit {
         auto leaveSprite = ButtonSprite::create("Leave", "goldFont.fnt", "GJ_button_06.png", 0.8f);
         leaveSprite->setScale(0.7f);
         auto leaveBtn = CCMenuItemSpriteExtra::create(leaveSprite, this, menu_selector(MultiplayerMenuPopup::onLeave));
+        auto chatSprite = ButtonSprite::create("Chat", "goldFont.fnt", "GJ_button_01.png", 0.8f);
+        chatSprite->setScale(0.7f);
+        auto chatBtn = CCMenuItemSpriteExtra::create(chatSprite, this, menu_selector(MultiplayerMenuPopup::onChat));
+        chatBtn->setPosition({60.f, 0.f});
+
         auto leaveMenu = CCMenu::create();
         leaveMenu->setPosition(this->fromBottomLeft(35.f, 25.f));
         leaveMenu->addChild(leaveBtn);
+        leaveMenu->addChild(chatBtn);
+
         m_sessionUiNode->addChild(leaveMenu);
 
         
+        geode::cocos::handleTouchPriority(this);
+    }
+
+    void MultiplayerMenuPopup::onChat(CCObject*) {
+        auto popup = ChatPopup::create();
+        if (popup) popup->show();
     }
 
     void MultiplayerMenuPopup::onLeave(CCObject*) {
@@ -759,10 +944,18 @@ namespace mpedit {
 
     void MultiplayerMenuPopup::onJoinRoom(P2PManager::RoomInfo const& room) {
         m_lastJoinCode = room.roomCode;
+        m_lastServerUrl = room.serverUrl;
         if (room.hasPassword) {
             promptPassword(room);
         } else {
-            SessionManager::get().joinSession(room.roomCode, Mod::get()->getSettingValue<std::string>("player-name"), "");
+            if (room.serverUrl.starts_with("ws://") || room.serverUrl.starts_with("wss://") || room.serverUrl.starts_with("http://") || room.serverUrl.starts_with("https://")) {
+                std::string wsUrl = room.serverUrl;
+                if (wsUrl.starts_with("http://")) wsUrl.replace(0, 7, "ws://");
+                else if (wsUrl.starts_with("https://")) wsUrl.replace(0, 8, "wss://");
+                SessionManager::get().joinDedicatedServer(wsUrl, room.roomCode, "");
+            } else {
+                SessionManager::get().joinSession(room.roomCode, Mod::get()->getSettingValue<std::string>("player-name"), "");
+            }
             this->onConnecting();
         }
     }
