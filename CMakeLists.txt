@@ -5,13 +5,18 @@ project(MultiplayerEdit VERSION 0.5.0)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+add_compile_definitions(_ITERATOR_DEBUG_LEVEL=0)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -D_ITERATOR_DEBUG_LEVEL=0")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_ITERATOR_DEBUG_LEVEL=0")
+
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "iOS" OR IOS)
     set(CMAKE_OSX_ARCHITECTURES "arm64")
 else()
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
 endif()
 
-# Windows definitions to prevent macros from breaking C++ std::min/std::max/limits
 add_compile_definitions(WIN32_LEAN_AND_MEAN)
 add_compile_definitions(NOMINMAX)
 add_compile_definitions(_WINSOCKAPI_)
@@ -19,15 +24,16 @@ add_compile_definitions(_WINSOCKAPI_)
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE src)
+target_include_directories(${PROJECT_NAME} PRIVATE 
+src
 
-# ── Skip Install Rules ──────────────────────────────────────
-# Disable install rules to prevent target export issues with built-from-source deps
+src/include
+)
+
 set(CMAKE_SKIP_INSTALL_RULES ON)
 
 include(FetchContent)
 
-# ── MbedTLS 3.x ─────────────────────────────────────────────
 FetchContent_Declare(
     mbedtls
     GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
@@ -41,7 +47,6 @@ FetchContent_GetProperties(mbedtls)
 if(NOT mbedtls_POPULATED)
     FetchContent_Populate(mbedtls)
     
-    # Patch MbedTLS configuration to enable DTLS-SRTP (required by WebRTC/libdatachannel)
     set(MBEDTLS_CONFIG_H "${mbedtls_SOURCE_DIR}/include/mbedtls/mbedtls_config.h")
     if(EXISTS "${MBEDTLS_CONFIG_H}")
         message(STATUS "Patching ${MBEDTLS_CONFIG_H} to enable MBEDTLS_SSL_DTLS_SRTP...")
@@ -62,19 +67,16 @@ if(NOT mbedtls_POPULATED)
     add_subdirectory(${mbedtls_SOURCE_DIR} ${mbedtls_BINARY_DIR})
 endif()
 
-# Create the alias target that libdatachannel expects to find
 if (TARGET mbedtls AND NOT TARGET MbedTLS::MbedTLS)
     add_library(MbedTLS::MbedTLS ALIAS mbedtls)
 endif()
 
-# ── libdatachannel (WebRTC Data Channels) ──────────────────
 FetchContent_Declare(
     libdatachannel
     GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
     GIT_TAG        v0.22.4
 )
 
-# Configure libdatachannel settings
 set(NO_MEDIA ON CACHE BOOL "" FORCE)
 set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
 set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
@@ -87,10 +89,12 @@ set(PREFER_SYSTEM_LIB OFF CACHE BOOL "" FORCE)
 set(USE_OPENSSL OFF CACHE BOOL "" FORCE)
 set(USE_MBEDTLS ON CACHE BOOL "" FORCE)
 
-# Populate and patch libdatachannel before making it available
 FetchContent_GetProperties(libdatachannel)
 if(NOT libdatachannel_POPULATED)
     FetchContent_Populate(libdatachannel)
+
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -D_ITERATOR_DEBUG_LEVEL=0")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_ITERATOR_DEBUG_LEVEL=0")
     
     set(USRSCTP_CMAKE "${libdatachannel_SOURCE_DIR}/deps/usrsctp/CMakeLists.txt")
     if(EXISTS "${USRSCTP_CMAKE}")
@@ -114,8 +118,6 @@ if(NOT libdatachannel_POPULATED)
     add_subdirectory(${libdatachannel_SOURCE_DIR} ${libdatachannel_BINARY_DIR})
 endif()
 
-target_link_libraries(${PROJECT_NAME} LibDataChannel::LibDataChannelStatic)
-
 # ── Geode SDK ──────────────────────────────────────────────
 if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "Unable to find Geode SDK! Please define GEODE_SDK environment variable to point to Geode")
@@ -123,7 +125,6 @@ else()
     message(STATUS "Found Geode: $ENV{GEODE_SDK}")
 endif()
 
-# Re-enable install rules specifically for the Geode SDK and the mod target
 set(CMAKE_SKIP_INSTALL_RULES OFF)
 
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
@@ -131,5 +132,15 @@ add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 if (WIN32)
     target_link_options(${PROJECT_NAME} PRIVATE "-Wl,/MAP")
 endif()
+
+add_subdirectory(src/include/cue)
+add_subdirectory(src/include/advancedlabel)
+add_subdirectory(src/include/uibuilder)
+
+target_link_libraries(${PROJECT_NAME}
+    cue
+    advanced_label
+    LibDataChannel::LibDataChannelStatic
+)
 
 setup_geode_mod(${PROJECT_NAME})

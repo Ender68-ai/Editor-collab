@@ -6,30 +6,32 @@
         "mac": "2.2081",
         "ios": "2.2081"
     },
-    "id": "d050.multiplayeredit",
-    "name": "Multiplayer Edit",
-    "version": "v0.5.4",
-    "developer": "d050",
-    "description": "Collaborate with friends in real-time level editing! Host a session and build together.",
+    "id": "ender68.mpedit",
+    "name": "MPEdit",
+    "version": "0.6.0-alpha.1",
+    "developers": ["d050", "Ender"],
+    "links": {
+        "source": "https://github.com/Ender68-ai/Editor-collab"
+    },
+    "description": "Multiplayer editor for Geometry Dash.",
     "dependencies": {
-        "geode.node-ids": ">=1.0.0"
+        "geode.node-ids": ">=v1.21.0",
+        "alphalaneous.alphas_geode_utils": ">=v1.2.5"
     },
     "tags": [
-        "editor",
-        "online",
-        "enhancement",
-        "utility",
-        "interface",
-        "content"
+        "editor", "online", "enhancement", "interface"
     ],
-    "links": {
-        "community": "https://discord.gg/mdsuxYu2YP",
-        "source": "https://github.com/xXoanon/MultiplayerEdit",
-        "homepage": "https://d050.vercel.app/"
-    },
-    "issues": {
-        "info": "Please report any bugs or crashes on the GitHub issues page.",
-        "url": "https://github.com/xXoanon/MultiplayerEdit/issues"
+    "resources": {
+        "sprites": [
+            "resources/backbtn.png",
+            "resources/button.png",
+            "resources/button2.png",
+            "resources/crosshair.png",
+            "resources/cursor.png",
+            "resources/settingsbtn.png",
+            "resources/online.png",
+            "resources/offline.png"
+        ]
     },
     "settings": {
         "connection-section": {
@@ -47,8 +49,8 @@
         "player-name": {
             "type": "string",
             "name": "Player Name",
-            "description": "Your display name in multiplayer sessions. Leave empty to automatically use your username.",
-            "default": ""
+            "description": "Your display name in multiplayer sessions.",
+            "default": "Player"
         },
         "display-section": {
             "type": "title",
@@ -65,6 +67,17 @@
             "name": "Show Notifications",
             "description": "Show notifications when players join/leave.",
             "default": true
+        },
+        "max-players": {
+            "type": "int",
+            "default": 8,
+            "min": 2,
+            "max": 16,
+            "name": "Max Players",
+            "description": "Maximum players allowed when hosting a room",
+            "control": {
+                "slider": true
+            }
         }
     }
 }
