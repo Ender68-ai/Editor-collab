@@ -2,7 +2,7 @@
 #include <Geode/modify/LevelCell.hpp>
 #include <Geode/loader/Log.hpp>
 
-#include "../ui.hpp"
+#include "../ui/ui.hpp"
 
 
 class $modify(MyLevelCell, LevelCell) {

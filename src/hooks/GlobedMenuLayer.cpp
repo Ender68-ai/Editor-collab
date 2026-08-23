@@ -6,8 +6,8 @@
 
 #include <include/uibuilder/UIBuilder.hpp>
 #include <include/globed/GlobedMenuLayer.hpp>
-#include "../collablayer/CollabLayer.hpp"
-#include "../ui.hpp"
+#include "../ui/collablayer/CollabLayer.hpp"
+#include "../ui/ui.hpp"
 
 
 using namespace cocos2d;
