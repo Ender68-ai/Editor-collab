@@ -100,12 +100,12 @@ bool CollabLayer::init() {
         menu_selector(CollabLayer::onSettings)
     );
 
-    auto modeButton = CCSprite::createWithSpriteFrameName("GJ_button_01.png");
-    modeButton->setScale(1.0f);
-    modeButton->setContentWidth(2.f);
-    modeButton->setColor({139, 69, 19}); // brown
+    auto modeTag = CCSprite::createWithSpriteFrameName("GJ_button_01.png");
+    modeTag->setScale(1.0f);
+    modeTag->setContentWidth(2.f);
+    modeTag->setColor({139, 69, 19}); // brown
 
-    modeButton->setPosition({
+    modeTag->setPosition({
         winSize.width * 0.5f,
         winSize.height * 0.92f
     });
@@ -210,7 +210,7 @@ bool CollabLayer::init() {
     auto menu3 = CCMenu::create();
     menu3->setID("CollabStateMenu"_spr);
     menu3->setPosition(0, 0);
-    menu3->addChild(modeButton);
+    menu3->addChild(modeTag);
     menu3->addChild(joinmodebtn);
     menu3->addChild(hostmodebtn);
     menu3->addChild(modeButtonLine);

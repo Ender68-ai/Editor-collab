@@ -70,7 +70,7 @@ function json(data, status = 200) {
     });
 }
 
-Deno.serve(async (req) => {
+Deno.serve({ port: 7575 }, async (req) => {
     if (req.method === "OPTIONS") return json({ ok: true });
 
     const url = new URL(req.url);
