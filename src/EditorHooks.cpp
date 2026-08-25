@@ -228,45 +228,6 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
     }
 };
 
-
-class $modify(MPLevelBrowserLayer, LevelBrowserLayer) {
-    bool init(GJSearchObject* object) {
-        if (!LevelBrowserLayer::init(object)) return false;
-
-        if (object->m_searchType != SearchType::MyLevels) return true;
-
-        auto* btnSprite = ButtonSprite::create(
-            "Multiplayer Edit", 90, true, "goldFont.fnt", "GJ_button_01.png", 30.f, 0.45f
-        );
-        auto* btn = CCMenuItemSpriteExtra::create(
-            btnSprite,
-            this,
-            menu_selector(MPLevelBrowserLayer::onMultiplayer)
-        );
-        btn->setID("multiplayer-button"_spr);
-
-        if (auto* targetMenu = typeinfo_cast<CCMenu*>(this->getChildByIDRecursive("new-item-menu"))) {
-            targetMenu->addChild(btn);
-            targetMenu->updateLayout();
-        } else {
-            auto* centerMenu = CCMenu::create();
-            centerMenu->setID("multiplayer-menu"_spr);
-            auto winSize = CCDirector::sharedDirector()->getWinSize();
-            centerMenu->setPosition({winSize.width / 2.f, 35.f});
-            btn->setPosition({0, 0});
-            centerMenu->addChild(btn);
-            this->addChild(centerMenu, 10);
-        }
-
-        return true;
-    }
-
-    void onMultiplayer(CCObject*) {
-        MultiplayerMenuPopup::create()->show();
-    }
-};
-
-
 namespace {
     void sendChunkedLockObjects(std::vector<std::string> const& uuids, bool locked) {
         constexpr size_t MAX_UUIDS_PER_MESSAGE = 300;

@@ -2,6 +2,9 @@
 
 #include <Geode/Geode.hpp>
 
+#include "../utils/NineSlice.hpp"
+
+
 using namespace geode::prelude;
 
 class CollabLayer : public CCLayer, public TableViewCellDelegate {
@@ -47,7 +50,12 @@ public:
     void onHostMode(CCObject*);
     void onJoinMode(CCObject*);
 
+    void onMultiplayer(CCObject*);
+
+    GJListLayer* m_listLayer;
+    CCMenu* m_roomListMenu;
+    NineSliceBox* m_publicRoomList;
+    CCMenuItemSpriteExtra* m_roomListButton;
 
 };
-
 

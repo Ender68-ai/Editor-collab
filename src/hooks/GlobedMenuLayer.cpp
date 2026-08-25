@@ -7,7 +7,7 @@
 #include <include/uibuilder/UIBuilder.hpp>
 #include <include/globed/GlobedMenuLayer.hpp>
 #include "../ui/collablayer/CollabLayer.hpp"
-#include "../ui/ui.hpp"
+#include "../ui/Ui.hpp"
 
 
 using namespace cocos2d;

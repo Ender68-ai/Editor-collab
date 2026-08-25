@@ -13,6 +13,9 @@ public:
     static RoomList* create();
 };
 
+
+
+// JoinMode: Public rooms, and current room. add animation later.   
 /* if (auto layer = CollabLayer::get()) {
             log::info("COLLAB LOCAL LEVEL CLICK!");
 

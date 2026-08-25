@@ -3,7 +3,7 @@
 #include <Geode/Geode.hpp>
 
 #include <Geode/cocos/layers_scenes_transitions_nodes/CCTransition.h>
-#include "../ui/ui.hpp"
+#include "../ui/Ui.hpp"
 #include "../ui/collablayer/CollabLayer.hpp"
 
 class $modify(MyEditLevelLayer, EditLevelLayer) {

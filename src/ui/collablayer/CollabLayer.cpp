@@ -7,13 +7,18 @@
 #include "settings/settings.hpp"
 #include "CollabLayer.hpp"
 #include "SessionManager.hpp"
-#include "../ui.hpp"
 #include "modes/HostMode.hpp"
 #include "modes/JoinMode.hpp"
+#include "../utils/Panel.hpp"
+#include "../Ui.hpp"
+#include "../menu/MultiplayerMenuPopup.hpp"
 
 
 using namespace geode::prelude;
 using namespace mpedit;
+
+
+// Create
 
 
 CollabLayer* CollabLayer::create() {
@@ -26,6 +31,7 @@ CollabLayer* CollabLayer::create() {
     return nullptr;
 }
 
+// Stuff for listview delegate
 
 bool CollabLayer::cellPerformedAction(
     TableViewCell* cell,
@@ -48,9 +54,12 @@ int CollabLayer::getCellDelegateType() {
     return 0;
 }
 
+
+// initialize fromcollab so hooks work
+
 bool fromCollab = false;
 
-
+// init
 bool CollabLayer::init() {
     if (!CCLayer::init())
         return false;
@@ -71,10 +80,6 @@ bool CollabLayer::init() {
     backSprite->setAnchorPoint({0.5f, 0.5f});
     backSprite->setScale(0.2f);
     backSprite->setRotation(270.0f);
-    backSprite->setColor({ 255, 255, 255 });
-    backSprite->setOpacity(255);
-    backSprite->setCascadeColorEnabled(true);
-    backSprite->setCascadeOpacityEnabled(true);
     backSprite->setPosition({winSize.width * 0.02f, winSize.height * 0.95f});
 
     auto backButton = CCMenuItemSpriteExtra::create(
@@ -91,6 +96,7 @@ bool CollabLayer::init() {
     settingsSprite->setCascadeColorEnabled(true);
     settingsSprite->setCascadeOpacityEnabled(true); 
 
+    // session indicator for online indicator sprite
     auto &session = SessionManager::get();
     auto playerCount = session.getPlayers().size();
 
@@ -100,15 +106,13 @@ bool CollabLayer::init() {
         menu_selector(CollabLayer::onSettings)
     );
 
-    auto modeTag = CCSprite::createWithSpriteFrameName("GJ_button_01.png");
-    modeTag->setScale(1.0f);
-    modeTag->setContentWidth(2.f);
-    modeTag->setColor({139, 69, 19}); // brown
 
-    modeTag->setPosition({
-        winSize.width * 0.5f,
-        winSize.height * 0.92f
-    });
+    // mode tag and buttons
+
+    auto modeTag = Panel::create("", {winSize.width * 0.4f, 50.f});
+    modeTag->setPosition({winSize.width * 0.5f, winSize.height * 0.92f});
+    modeTag->setScale(0.8f);
+
 
     auto jointxt = CCLabelBMFont::create("JOIN", "goldFont.fnt");
 
@@ -118,7 +122,7 @@ bool CollabLayer::init() {
         menu_selector(CollabLayer::onJoinMode)
     );
 
-    joinmodebtn->setScale(0.8f);
+    joinmodebtn->setScale(0.6f);
 
     joinmodebtn->setPosition({
         winSize.width * 0.4f,
@@ -133,15 +137,22 @@ bool CollabLayer::init() {
         menu_selector(CollabLayer::onHostMode)
     );
 
-    hostmodebtn->setScale(0.8f);
-
-    auto modeButtonLine = CCLayerColor::create({255, 255, 255, 255}, 100.f, 1.f);
-    modeButtonLine->setPosition({150.f, 150.f});
+    hostmodebtn->setScale(0.6f);
 
     hostmodebtn->setPosition({
         winSize.width * 0.6f,
         winSize.height * 0.92f
     });
+
+    auto modeMenu = CCMenu::create();
+    modeMenu->setID("CollabStateMenu"_spr);
+    modeMenu->setPosition(0, 0);
+    modeMenu->addChild(modeTag);
+    modeMenu->addChild(joinmodebtn);
+    modeMenu->addChild(hostmodebtn);
+    addChild(modeMenu);
+
+    // BackMenu
     
     backButton->setPosition({
         winSize.width * 0.02f,
@@ -152,6 +163,15 @@ bool CollabLayer::init() {
         winSize.width * 0.02f,
         winSize.height * 0.80f
     });
+
+    auto backMenu = CCMenu::create();
+    backMenu->setID("BackMenu"_spr);
+    backMenu->setPosition(CCPoint(winSize.width * 0.04f, (float)(0)));
+    backMenu->addChild(backButton);
+    backMenu->addChild(settingsButton);
+    addChild(backMenu);
+
+    // SessionMenu
 
     bool isInSession = session.isInSession();
 
@@ -188,33 +208,16 @@ bool CollabLayer::init() {
     winSize.width * 0.85f,
     winSize.height * 0.45f
     });
-    
-
-
-    auto menu1 = CCMenu::create();
-    menu1->setID("BackMenu"_spr);
-    menu1->setPosition(CCPoint(winSize.width * 0.04f, (float)(0)));
-    menu1->addChild(backButton);
-    menu1->addChild(settingsButton);
-    addChild(menu1);
-
         
-    auto menu2 = CCMenu::create();
-    menu2->setID("SessionMenu"_spr);
-    menu2->addChild(m_onlineSprite);
-    menu2->addChild(m_offlineSprite);
-    menu2->addChild(m_playerCountLabel);
-    menu2->setPosition(CCPoint(winSize.width * 0.1f, (float)(winSize.height * 0.35f)));
-    addChild(menu2);
+    auto SessionMenu = CCMenu::create();
+    SessionMenu->setID("SessionMenu"_spr);
+    SessionMenu->addChild(m_onlineSprite);
+    SessionMenu->addChild(m_offlineSprite);
+    SessionMenu->addChild(m_playerCountLabel);
+    SessionMenu->setPosition(CCPoint(winSize.width * 0.1f, (float)(winSize.height * 0.35f)));
+    addChild(SessionMenu);
 
-    auto menu3 = CCMenu::create();
-    menu3->setID("CollabStateMenu"_spr);
-    menu3->setPosition(0, 0);
-    menu3->addChild(modeTag);
-    menu3->addChild(joinmodebtn);
-    menu3->addChild(hostmodebtn);
-    menu3->addChild(modeButtonLine);
-    addChild(menu3);
+    // JoinModes implementation
 
     auto delegate = HostLocalLevelList::create();
 
@@ -230,7 +233,7 @@ bool CollabLayer::init() {
 
     listView->setID("local-levels-list"_spr);
 
-    auto listLayer = GJListLayer::create(
+    auto levelListLayer = GJListLayer::create(
         listView,
         "Local",
         {255, 255, 255, 255},
@@ -238,9 +241,10 @@ bool CollabLayer::init() {
         200.f,
         0
     );
-    auto top = listLayer->getChildByID("top-border");
-    auto bottom = listLayer->getChildByID("bottom-border");
-    auto view = listLayer->getChildByID("view-button");
+    m_listLayer = levelListLayer;
+    auto top = levelListLayer->getChildByID("top-border");
+    auto bottom = levelListLayer->getChildByID("bottom-border");
+    auto view = levelListLayer->getChildByID("view-button");
 
     if (top) {
         top->setScaleX(0.6f);
@@ -250,14 +254,75 @@ bool CollabLayer::init() {
         bottom->setScaleX(0.6f);
     }
 
-
-
-    listLayer->setPosition({
+    levelListLayer->setPosition({
         winSize.width * 0.15f,
         winSize.height * 0.15f
     });
+    levelListLayer->setVisible(false);
     
-    addChild(listLayer);
+    addChild(levelListLayer);
+
+    // PublicRoomList
+    
+    auto panel = NineSliceBox::create(winSize.width * 0.8f, winSize.height * 0.7f);
+    panel->setPosition({
+        winSize.width * 0.1f,
+        winSize.height * 0.1f
+    });
+    m_publicRoomList = panel;
+
+    auto boxTitle = CCLabelBMFont::create("Public Rooms", "goldFont.fnt");
+    boxTitle->setScale(0.6f);
+    boxTitle->setPosition({
+        winSize.width * 0.4f,
+        winSize.height * 0.65f
+    });
+
+
+
+
+
+
+
+    panel->addChild(boxTitle);
+    this->addChild(panel);
+    
+
+
+    /// Placeholder button (relocate for now)
+
+    auto* roomListBtnSpr = ButtonSprite::create(
+            "Multiplayer Edit", 90, true, "goldFont.fnt", "GJ_button_01.png", 30.f, 0.45f);
+
+    auto* roomListButton = CCMenuItemSpriteExtra::create(
+        roomListBtnSpr,
+        this,
+        menu_selector(CollabLayer::onMultiplayer)
+    );
+    m_roomListButton = roomListButton;
+
+    auto roomListMenu = CCMenu::create();
+    roomListMenu->setPosition({
+        winSize.width * 0.7f,
+        winSize.height * 0.15f
+    });
+    m_roomListMenu = roomListMenu;
+    roomListMenu->addChild(roomListButton);
+    this->addChild(roomListMenu);
+
+
+    // end of JoinMode
+
+    // HostModes implementation
+
+    // RoomCreate
+
+
+
+
+    
+
+    // end of HostMode
 
 
     if(m_collabState) {
@@ -266,13 +331,7 @@ bool CollabLayer::init() {
         CollabLayer::onJoinMode(nullptr);
     }
 
-    this->schedule(schedule_selector(CollabLayer::updateStatus), 0.25f);
 
-
-
-    
-
-    
     return true;
 };
 
@@ -309,16 +368,32 @@ void CollabLayer::updateStatus(float) {
 };
 void CollabLayer::onHostMode(CCObject*) {
     // adds roomcreate and roomlist to the layer.
+    m_listLayer->setVisible(true);
 
+    m_roomListMenu->setVisible(false);
+
+    m_publicRoomList->setVisible(false);
+
+    m_roomListButton->setVisible(false);
     // Host mode adds the gjlistlayer and the roomcreatelayer to collablayer. it also flips the mode bool so onjoinmode is hidden.
 
 };
 void CollabLayer::onJoinMode(CCObject*) {
-    // adds locallevellist and roomslist to the layer.
 
-    // Join mode adds the roomslist and the RoomDescLayer to collablayer. it also flips the mode bool so onhostmode is hidden.
+    m_listLayer->setVisible(false);
 
-};
+    m_roomListMenu->setVisible(true);
+
+    m_publicRoomList->setVisible(true);
+
+    m_roomListButton->setVisible(true);
+
+}
+
+
+void CollabLayer::onMultiplayer(CCObject*) {
+        MultiplayerMenuPopup::create()->show();
+    }
 
 
 
