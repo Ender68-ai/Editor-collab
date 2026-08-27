@@ -18,6 +18,9 @@ protected:
 
     bool m_collabState = false; // false = join, true = host
 
+    void onDiscord(CCObject*);
+    void onPatreon(CCObject*);
+
 public:
     static CollabLayer* create();
     static CollabLayer *get() {

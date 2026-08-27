@@ -191,11 +191,11 @@ bool CollabLayer::init() {
 
     m_offlineSprite->setPosition({
         winSize.width * 0.8f,
-        winSize.height * 0.45f
+        winSize.height * 0.9f
     });
     m_onlineSprite->setPosition({
         winSize.width * 0.8f,
-        winSize.height * 0.45f
+        winSize.height * 0.9f
     });
     m_onlineSprite->setScale(0.2f);
     m_offlineSprite->setScale(0.22f);
@@ -205,8 +205,27 @@ bool CollabLayer::init() {
     );
     m_playerCountLabel->setScale(0.5f);
     m_playerCountLabel->setPosition({
-    winSize.width * 0.85f,
-    winSize.height * 0.45f
+    winSize.width * 0.75f,
+    winSize.height * 0.9f
+    });
+
+    auto discordSpr = CCSprite::createWithSpriteFrameName("gj_discordIcon_001.png");
+    discordSpr->setScale(1.0f);
+    auto discordBtn = CCMenuItemSpriteExtra::create(discordSpr, this, menu_selector(CollabLayer::onDiscord));
+    discordBtn->setPosition({
+        winSize.width * 0.88f,
+        winSize.height * 0.9f
+    });
+
+    auto patreonIcon = CCSprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
+    auto patreonSpr = CircleButtonSprite::create(
+        patreonIcon, CircleBaseColor::Pink, CircleBaseSize::Small
+    );
+    patreonSpr->setScale(0.85f);
+    auto patreonBtn = CCMenuItemSpriteExtra::create(patreonSpr, this, menu_selector(CollabLayer::onPatreon));
+    patreonBtn->setPosition({
+        winSize.width * 0.95f,
+        winSize.height * 0.9f
     });
         
     auto SessionMenu = CCMenu::create();
@@ -214,54 +233,12 @@ bool CollabLayer::init() {
     SessionMenu->addChild(m_onlineSprite);
     SessionMenu->addChild(m_offlineSprite);
     SessionMenu->addChild(m_playerCountLabel);
-    SessionMenu->setPosition(CCPoint(winSize.width * 0.1f, (float)(winSize.height * 0.35f)));
+    SessionMenu->addChild(patreonBtn);
+    SessionMenu->addChild(discordBtn);
+    SessionMenu->setPosition(0, 0);
     addChild(SessionMenu);
 
-    // JoinModes implementation
-
-    auto delegate = HostLocalLevelList::create();
-
-    auto listView = CustomListView::create(
-        LocalLevelManager::sharedState()->m_localLevels,
-        delegate,
-        200.f,
-        200.f,
-        0,
-        BoomListType::Level,
-        0.f
-    );
-
-    listView->setID("local-levels-list"_spr);
-
-    auto levelListLayer = GJListLayer::create(
-        listView,
-        "Local",
-        {255, 255, 255, 255},
-        200.f,
-        200.f,
-        0
-    );
-    m_listLayer = levelListLayer;
-    auto top = levelListLayer->getChildByID("top-border");
-    auto bottom = levelListLayer->getChildByID("bottom-border");
-    auto view = levelListLayer->getChildByID("view-button");
-
-    if (top) {
-        top->setScaleX(0.6f);
-    }
-
-    if (bottom) { 
-        bottom->setScaleX(0.6f);
-    }
-
-    levelListLayer->setPosition({
-        winSize.width * 0.15f,
-        winSize.height * 0.15f
-    });
-    levelListLayer->setVisible(false);
-    
-    addChild(levelListLayer);
-
+    // JoinModes implementatiom
     // PublicRoomList
     
     auto panel = NineSliceBox::create(winSize.width * 0.8f, winSize.height * 0.7f);
@@ -315,6 +292,55 @@ bool CollabLayer::init() {
 
     // HostModes implementation
 
+
+    auto delegate = HostLocalLevelList::create();
+
+    auto listView = CustomListView::create(
+        LocalLevelManager::sharedState()->m_localLevels,
+        delegate,
+        200.f,
+        200.f,
+        0,
+        BoomListType::Level,
+        0.f
+    );
+
+    listView->setID("local-levels-list"_spr);
+
+    auto levelListLayer = GJListLayer::create(
+        listView,
+        "Local",
+        {255, 255, 255, 255},
+        200.f,
+        200.f,
+        0
+    );
+    m_listLayer = levelListLayer;
+    auto top = levelListLayer->getChildByID("top-border");
+    auto bottom = levelListLayer->getChildByID("bottom-border");
+    auto view = levelListLayer->getChildByID("view-button");
+
+    if (top) {
+        top->setScaleX(0.6f);
+    }
+
+    if (bottom) { 
+        bottom->setScaleX(0.6f);
+    }
+
+
+
+
+    levelListLayer->setPosition({
+        winSize.width * 0.15f,
+        winSize.height * 0.15f
+    });
+    levelListLayer->setVisible(false);
+    levelListLayer->setScale(0.9f);
+
+    
+    addChild(levelListLayer);
+
     // RoomCreate
 
 
@@ -366,6 +392,30 @@ void CollabLayer::updateStatus(float) {
         );
 
 };
+
+void CollabLayer::onDiscord(CCObject*) {
+        createQuickPopup(
+            "Discord",
+            "Join the <cy>Multiplayer Edit</c> Discord server?",
+            "Cancel", "Join",
+            [](auto, bool btn2) {
+                if (btn2) geode::utils::web::openLinkInBrowser("https://discord.gg/mdsuxYu2YP");
+            }
+        );
+};
+
+void CollabLayer::onPatreon(CCObject*) {
+        createQuickPopup(
+            "Patreon",
+            "Support me on <cy>Patreon</c>?",
+            "Cancel", "Open",
+            [](auto, bool btn2) {
+                if (btn2) geode::utils::web::openLinkInBrowser("https://www.patreon.com/cw/d050/membership");
+            }
+        );
+};
+
+
 void CollabLayer::onHostMode(CCObject*) {
     // adds roomcreate and roomlist to the layer.
     m_listLayer->setVisible(true);

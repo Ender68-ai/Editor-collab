@@ -41,7 +41,7 @@ set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
 
 FetchContent_GetProperties(mbedtls)
 if(NOT mbedtls_POPULATED)
-    FetchContent_Populate(mbedtls)
+    FetchContent_MakeAvailable(mbedtls)
 
     set(MBEDTLS_CONFIG_H "${mbedtls_SOURCE_DIR}/include/mbedtls/mbedtls_config.h")
     if(EXISTS "${MBEDTLS_CONFIG_H}")
@@ -61,7 +61,6 @@ if(NOT mbedtls_POPULATED)
         file(WRITE "${MBEDTLS_CMAKE}" "${MBEDTLS_CMAKE_CONTENTS}")
     endif()
 
-    add_subdirectory(${mbedtls_SOURCE_DIR} ${mbedtls_BINARY_DIR})
 endif()
 
 if (TARGET mbedtls AND NOT TARGET MbedTLS::MbedTLS)
@@ -88,7 +87,7 @@ set(USE_MBEDTLS ON CACHE BOOL "" FORCE)
 
 FetchContent_GetProperties(libdatachannel)
 if(NOT libdatachannel_POPULATED)
-    FetchContent_Populate(libdatachannel)
+    FetchContent_MakeAvailable(libdatachannel)
 
     set(USRSCTP_CMAKE "${libdatachannel_SOURCE_DIR}/deps/usrsctp/CMakeLists.txt")
     if(EXISTS "${USRSCTP_CMAKE}")
@@ -137,7 +136,6 @@ if(NOT libdatachannel_POPULATED)
         file(WRITE "${DC_CPP}" "${DC_CONTENTS}")
     endif()
 
-    add_subdirectory(${libdatachannel_SOURCE_DIR} ${libdatachannel_BINARY_DIR})
 endif()
 
 target_link_libraries(${PROJECT_NAME} LibDataChannel::LibDataChannelStatic)

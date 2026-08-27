@@ -6,11 +6,11 @@
         "mac": "2.2081",
         "ios": "2.2081"
     },
-    "id": "d050.multiplayeredit",
+    "id": "ender68.multiplayeredit",
     "name": "Multiplayer Edit",
     "version": "v0.6.0",
     "developer": "d050",
-    "description": "Collaborate with friends in real-time level editing! Host a session and build together.",
+    "description": "Collaborate with friends in real-time level editing.",
     "dependencies": {
         "geode.node-ids": ">=v1.21.0",
         "alphalaneous.alphas_geode_utils": ">=v1.2.5"

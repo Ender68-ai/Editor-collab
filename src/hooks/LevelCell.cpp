@@ -2,8 +2,6 @@
 #include <Geode/modify/LevelCell.hpp>
 #include <Geode/loader/Log.hpp>
 
-#include "../ui/Ui.hpp"
-
 using namespace geode::prelude;
 
 class $modify(MPLevelCell, LevelCell) {
@@ -16,17 +14,19 @@ class $modify(MPLevelCell, LevelCell) {
             "ender68.multiplayeredit/collab-layer"
         ) != nullptr;
 
-        if(fromCollab) {
+            if(fromCollab) {
             // hook to add to other list
+             }
+            else {
+                LevelCell::onClick(sender);
+            }
         }
-        else {
-        LevelCell::onClick(sender);
-        }
-    }
 
     void loadFromLevel(GJGameLevel* level) {
-        LevelCell::loadFromLevel(level);
 
+        // Basically load the cells and then schedule upd
+        
+        LevelCell::loadFromLevel(level);
 
         this->schedule(
                 schedule_selector(MPLevelCell::updateCollabButtons),
@@ -36,57 +36,55 @@ class $modify(MPLevelCell, LevelCell) {
 
     void updateCollabButtons(float dt) {
 
-    auto scene = CCDirector::sharedDirector()->getRunningScene();
+        auto scene = CCDirector::sharedDirector()->getRunningScene();
 
-    bool isCollabScene =
-        scene->getChildByID("ender68.multiplayeredit/collab-layer") != nullptr;
+        bool isCollabScene =
+            scene->getChildByID("ender68.multiplayeredit/collab-layer") != nullptr;
 
 
-    if (!isCollabScene) {
-        return;
-    }
+            if (!isCollabScene) {
+                return;
+            }
 
-    auto mainLayer = this->getChildByID("main-layer");
+        auto mainLayer = this->getChildByID("main-layer");
+            if (!mainLayer) {
+                log::debug("NO MAIN LAYER");
+                return;
+            }
 
-        if (!mainLayer) {
-            log::debug("NO MAIN LAYER");
-            return;
-        }
+            if (auto infoIcon = mainLayer->getChildByID("info-icon")) {
+                infoIcon->setVisible(false);
+            }
+            if (auto infoLabel = mainLayer->getChildByID("info-label")) {
+                infoLabel->setVisible(false);
+            }
+            if (auto revision = mainLayer->getChildByID("level-revision")) {
+                revision->setVisible(false);
+            }
 
-    auto mainMenu = mainLayer->getChildByID("main-menu");
+        auto mainMenu = mainLayer->getChildByID("main-menu");
 
-        if (!mainMenu) {
-            log::debug("NO MAIN MENU");
-            return;
-        }
+            if (!mainMenu) {
+                return;
+            }            
+            if (auto toggler = mainMenu->getChildByID("select-toggler")) {
+                toggler->setVisible(false);
+            }
+            
 
-        if (auto infoIcon = mainLayer->getChildByID("info-icon")) {
-            infoIcon->setVisible(false);
-        }
-        if (auto infoLabel = mainLayer->getChildByID("info-label")) {
-            infoLabel->setVisible(false);
-        }
-        if (auto toggler = mainMenu->getChildByID("select-toggler")) {
-            toggler->setVisible(false);
-        }
-        if (auto revision = mainLayer->getChildByID("level-revision")) {
-            revision->setVisible(false);
-        }
+            auto view = mainMenu->getChildByID("view-button");
 
-    auto view = mainMenu->getChildByID("view-button");
+            auto viewButton = typeinfo_cast<CCMenuItemSpriteExtra*>(view);
+                if (!viewButton) {
+                    return;
+                }
 
-    auto viewButton = typeinfo_cast<CCMenuItemSpriteExtra*>(view);
-        if (!viewButton) {
-            log::debug("NO VIEW BUTTON");
-            return;
-        }
+            auto btnSprite = typeinfo_cast<ButtonSprite*>(viewButton->getNormalImage());
+                if(!btnSprite)
+                    return;
 
-    auto btnSprite = typeinfo_cast<ButtonSprite*>(viewButton->getNormalImage());
-        if(!btnSprite)
-            return;
-
-        btnSprite->m_label->setString("Host");
-        btnSprite->m_BGSprite->setColor({30, 128, 255});  
-        
+                btnSprite->m_label->setString("Host");
+                btnSprite->m_BGSprite->setColor({30, 128, 255});  
+                
     }
 };
