@@ -20,6 +20,7 @@ protected:
 
     void onDiscord(CCObject*);
     void onPatreon(CCObject*);
+    void onWeb(CCObject*);
 
 public:
     static CollabLayer* create();

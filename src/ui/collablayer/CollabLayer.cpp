@@ -217,9 +217,9 @@ bool CollabLayer::init() {
         winSize.height * 0.9f
     });
 
-    auto patreonIcon = CCSprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
-    auto patreonSpr = CircleButtonSprite::create(
-        patreonIcon, CircleBaseColor::Pink, CircleBaseSize::Small
+    auto patreonSpr = CCSprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
+    auto patreonbtn = CircleButtonSprite::create(
+        patreonSpr, CircleBaseColor::Pink, CircleBaseSize::Small
     );
     patreonSpr->setScale(0.85f);
     auto patreonBtn = CCMenuItemSpriteExtra::create(patreonSpr, this, menu_selector(CollabLayer::onPatreon));
@@ -227,6 +227,14 @@ bool CollabLayer::init() {
         winSize.width * 0.95f,
         winSize.height * 0.9f
     });
+
+    auto webSpr = CCSprite::create("webspr.png"_spr);
+    auto webBtn = CCMenuItemSpriteExtra::create(webSpr, this, menu_selector(CollabLayer::onWeb));
+    webBtn->setPosition({
+        winSize.width * 0.95f,
+        winSize.height * 0.8f
+    });
+    webBtn->setScale(0.25f);
         
     auto SessionMenu = CCMenu::create();
     SessionMenu->setID("SessionMenu"_spr);
@@ -235,6 +243,7 @@ bool CollabLayer::init() {
     SessionMenu->addChild(m_playerCountLabel);
     SessionMenu->addChild(patreonBtn);
     SessionMenu->addChild(discordBtn);
+    SessionMenu->addChild(webBtn);
     SessionMenu->setPosition(0, 0);
     addChild(SessionMenu);
 
@@ -413,6 +422,17 @@ void CollabLayer::onPatreon(CCObject*) {
                 if (btn2) geode::utils::web::openLinkInBrowser("https://www.patreon.com/cw/d050/membership");
             }
         );
+};
+
+void CollabLayer::onWeb(CCObject*) {
+    createQuickPopup(
+        "Web Page",
+        "Visit our web page?",
+        "Cancel", "Visit",
+        [](auto, bool btn2) {
+            if (btn2) geode::utils::web::openLinkInBrowser("http://mpedit-web.duckdns.org:8001");
+        }
+    );
 };
 
 
