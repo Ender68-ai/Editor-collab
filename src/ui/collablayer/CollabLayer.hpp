@@ -3,6 +3,7 @@
 #include <Geode/Geode.hpp>
 
 #include "../utils/NineSlice.hpp"
+#include "modes/HostMode.hpp"
 
 
 using namespace geode::prelude;
@@ -21,6 +22,12 @@ protected:
     void onDiscord(CCObject*);
     void onPatreon(CCObject*);
     void onWeb(CCObject*);
+
+    void updateExtMenu(float dt);
+
+    CCNode* m_webBtn;
+
+    HostMode* m_hostMode = nullptr;
 
 public:
     static CollabLayer* create();
@@ -56,7 +63,7 @@ public:
 
     void onMultiplayer(CCObject*);
 
-    GJListLayer* m_listLayer;
+   
     CCMenu* m_roomListMenu;
     NineSliceBox* m_publicRoomList;
     CCMenuItemSpriteExtra* m_roomListButton;

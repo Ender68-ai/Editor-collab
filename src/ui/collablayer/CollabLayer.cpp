@@ -1,13 +1,11 @@
 #include <Geode/Geode.hpp>
 #include <Geode/binding/LevelBrowserLayer.hpp>
-#include <Geode/binding/LocalLevelManager.hpp>
-#include <Geode/binding/CustomListView.hpp>
 #include <Geode/modify/LevelCell.hpp>
 
 #include "settings/settings.hpp"
 #include "CollabLayer.hpp"
 #include "SessionManager.hpp"
-#include "modes/HostMode.hpp"
+
 #include "modes/JoinMode.hpp"
 #include "../utils/Panel.hpp"
 #include "../Ui.hpp"
@@ -213,28 +211,29 @@ bool CollabLayer::init() {
     discordSpr->setScale(1.0f);
     auto discordBtn = CCMenuItemSpriteExtra::create(discordSpr, this, menu_selector(CollabLayer::onDiscord));
     discordBtn->setPosition({
-        winSize.width * 0.88f,
+        winSize.width * 0.95f,
         winSize.height * 0.9f
     });
 
-    auto patreonSpr = CCSprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
-    auto patreonbtn = CircleButtonSprite::create(
-        patreonSpr, CircleBaseColor::Pink, CircleBaseSize::Small
+    auto patreonIcon = CCSprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
+    auto patreonSpr = CircleButtonSprite::create(
+        patreonIcon, CircleBaseColor::Pink, CircleBaseSize::Small
     );
     patreonSpr->setScale(0.85f);
     auto patreonBtn = CCMenuItemSpriteExtra::create(patreonSpr, this, menu_selector(CollabLayer::onPatreon));
     patreonBtn->setPosition({
         winSize.width * 0.95f,
-        winSize.height * 0.9f
+        winSize.height * 0.8f
     });
 
     auto webSpr = CCSprite::create("webspr.png"_spr);
     auto webBtn = CCMenuItemSpriteExtra::create(webSpr, this, menu_selector(CollabLayer::onWeb));
     webBtn->setPosition({
         winSize.width * 0.95f,
-        winSize.height * 0.8f
+        winSize.height * 0.7f
     });
-    webBtn->setScale(0.25f);
+    webBtn->setScale(0.3f);
+    m_webBtn = webBtn;
         
     auto SessionMenu = CCMenu::create();
     SessionMenu->setID("SessionMenu"_spr);
@@ -246,6 +245,11 @@ bool CollabLayer::init() {
     SessionMenu->addChild(webBtn);
     SessionMenu->setPosition(0, 0);
     addChild(SessionMenu);
+
+    this->schedule(
+            schedule_selector(CollabLayer::updateExtMenu),
+            0.1f
+        );      
 
     // JoinModes implementatiom
     // PublicRoomList
@@ -263,10 +267,6 @@ bool CollabLayer::init() {
         winSize.width * 0.4f,
         winSize.height * 0.65f
     });
-
-
-
-
 
 
 
@@ -297,66 +297,15 @@ bool CollabLayer::init() {
     this->addChild(roomListMenu);
 
 
-    // end of JoinMode
-
     // HostModes implementation
+    auto hostMode = HostMode::create();
 
+    if (!hostMode)
+        return false;
 
-    auto delegate = HostLocalLevelList::create();
-
-    auto listView = CustomListView::create(
-        LocalLevelManager::sharedState()->m_localLevels,
-        delegate,
-        200.f,
-        200.f,
-        0,
-        BoomListType::Level,
-        0.f
-    );
-
-    listView->setID("local-levels-list"_spr);
-
-    auto levelListLayer = GJListLayer::create(
-        listView,
-        "Local",
-        {255, 255, 255, 255},
-        200.f,
-        200.f,
-        0
-    );
-    m_listLayer = levelListLayer;
-    auto top = levelListLayer->getChildByID("top-border");
-    auto bottom = levelListLayer->getChildByID("bottom-border");
-    auto view = levelListLayer->getChildByID("view-button");
-
-    if (top) {
-        top->setScaleX(0.6f);
-    }
-
-    if (bottom) { 
-        bottom->setScaleX(0.6f);
-    }
-
-
-
-
-    levelListLayer->setPosition({
-        winSize.width * 0.15f,
-        winSize.height * 0.15f
-    });
-    levelListLayer->setVisible(false);
-    levelListLayer->setScale(0.9f);
-
-    
-    addChild(levelListLayer);
-
-    // RoomCreate
-
-
-
-
-    
-
+    m_hostMode = hostMode;
+    this->addChild(m_hostMode);
+    m_hostMode->setVisible(false);
     // end of HostMode
 
 
@@ -435,28 +384,31 @@ void CollabLayer::onWeb(CCObject*) {
     );
 };
 
+void CollabLayer::updateExtMenu(float dt) {
+    m_webBtn->setScale(0.3f);
+}
 
-void CollabLayer::onHostMode(CCObject*) {
-    // adds roomcreate and roomlist to the layer.
-    m_listLayer->setVisible(true);
 
-    m_roomListMenu->setVisible(false);
-
-    m_publicRoomList->setVisible(false);
-
-    m_roomListButton->setVisible(false);
-    // Host mode adds the gjlistlayer and the roomcreatelayer to collablayer. it also flips the mode bool so onjoinmode is hidden.
-
-};
 void CollabLayer::onJoinMode(CCObject*) {
-
-    m_listLayer->setVisible(false);
 
     m_roomListMenu->setVisible(true);
 
     m_publicRoomList->setVisible(true);
 
     m_roomListButton->setVisible(true);
+
+    m_hostMode->setVisible(false);
+
+}
+
+void CollabLayer::onHostMode(CCObject*) {
+    m_roomListMenu->setVisible(false);
+
+    m_publicRoomList->setVisible(false);
+
+    m_roomListButton->setVisible(false);
+
+    m_hostMode->setVisible(true);
 
 }
 

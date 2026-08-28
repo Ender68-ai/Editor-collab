@@ -5,6 +5,19 @@
 
 using namespace geode::prelude;
 
+class HostMode : public CCNode {
+    protected:
+        bool init();
+
+        GJListLayer* m_listLayer;
+
+    public:
+        static HostMode* create();
+};
+
+
+
+
 class HostLocalLevelList : public CCNode, public TableViewCellDelegate {
 protected:
     bool init();
@@ -23,12 +36,7 @@ public:
     bool shouldSnapToSelected();
     int getCellDelegateType();
 
+    
+
 };
 
-class RoomCreate {
-protected:
-    bool init();
-
-public:
-    static RoomCreate* create();
-};

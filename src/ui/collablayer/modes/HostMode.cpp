@@ -1,23 +1,94 @@
 #include "HostMode.hpp"
+#include "hostmode/RoomCreateLayer.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/LocalLevelManager.hpp>
 #include <Geode/binding/CustomListView.hpp>
-
-
-// arch
-
-/*
-    CollabLayer:
-    GJListLayer:
-         CustomListView : BoomListView
-            
-        HostLocalLevelList : CCNode + TableViewCellDelegate
-
-*/
-
+#include <Geode/binding/GJListLayer.hpp>
 
 using namespace geode::prelude;
+
+
+HostMode* HostMode::create() {
+    auto ret = new HostMode();
+
+    if (ret && ret->init()) {
+        ret->autorelease();
+        return ret;
+    }
+
+    delete ret;
+    return nullptr;
+}
+
+
+bool HostMode::init() {
+    if (!CCNode::init())
+        return false;
+
+    auto winSize = CCDirector::sharedDirector()->getWinSize();
+
+
+    auto roomSetup = RoomCreateLayer::create();
+        if (!roomSetup)
+        return false;
+    this->addChild(roomSetup);
+
+    auto delegate = HostLocalLevelList::create();
+
+    auto listView = CustomListView::create(
+        LocalLevelManager::sharedState()->m_localLevels,
+        delegate,
+        200.f,
+        200.f,
+        0,
+        BoomListType::Level,
+        0.f
+    );
+
+    if (!listView)
+        return false;
+
+    listView->setID("local-levels-list"_spr);
+
+    auto levelListLayer = GJListLayer::create(
+        listView,
+        "Local",
+        {255, 255, 255, 255},
+        200.f,
+        200.f,
+        0
+    );
+
+    if (!levelListLayer)
+        return false;
+
+    auto top = levelListLayer->getChildByID("top-border");
+    auto bottom = levelListLayer->getChildByID("bottom-border");
+
+    if (top) {
+        top->setScaleX(0.6f);
+    }
+
+    if (bottom) {
+        bottom->setScaleX(0.6f);
+    }
+
+    levelListLayer->setPosition({
+        winSize.width * 0.15f,
+        winSize.height * 0.15f
+    });
+
+    levelListLayer->setVisible(false);
+    levelListLayer->setScale(0.9f);
+
+    m_listLayer = levelListLayer;
+    this->addChild(m_listLayer);
+
+    return true;
+}
+
+// HostLocalLevelList
 
 HostLocalLevelList* HostLocalLevelList::create() {
     auto ret = new HostLocalLevelList();
@@ -26,6 +97,8 @@ HostLocalLevelList* HostLocalLevelList::create() {
         ret->autorelease();
         return ret;
     }
+
+    
 
     delete ret;
     return nullptr;
@@ -38,7 +111,7 @@ bool HostLocalLevelList::cellPerformedAction(
     cocos2d::CCNode* parent
 ) {
     if (action == CellAction::Click) {
-        // TODO
+        // TODO: handle level selection
         return true;
     }
 
@@ -58,25 +131,13 @@ int HostLocalLevelList::getCellDelegateType() {
 }
 
 bool HostLocalLevelList::init() {
-    if (!CCNode::init()) {
-        return false;
-    }
+    if (!CCNode::init())
+        return false; 
 
-    auto levels = LocalLevelManager::sharedState()->m_localLevels;
-
-    auto list = CustomListView::create(
-        levels,
-        this,
-        200.f,
-        200.f,
-        0,
-        BoomListType::Level,
-        0.f
-    );
-
-    if (!list) {
-        return false;
-    }
-    
     return true;
 }
+
+
+
+
+// RoomCreateLayer

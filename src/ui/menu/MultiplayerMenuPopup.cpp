@@ -515,27 +515,7 @@ namespace mpedit {
     }
 
     void MultiplayerMenuPopup::setupMenus() {
-        auto topMenu = CCMenu::create();
-        topMenu->setContentSize({80.f, 40.f});
-        topMenu->setPosition(this->fromTopRight(10.f, 10.f));
-        topMenu->setAnchorPoint({1.f, 1.f});
-        topMenu->setLayout(RowLayout::create()->setAxisAlignment(AxisAlignment::End)->setGap(5.f));
-        m_uiMenu->addChild(topMenu);
-
-        auto discordSpr = CCSprite::createWithSpriteFrameName("gj_discordIcon_001.png");
-        discordSpr->setScale(1.0f);
-        auto discordBtn = CCMenuItemSpriteExtra::create(discordSpr, this, menu_selector(MultiplayerMenuPopup::onDiscord));
-        topMenu->addChild(discordBtn);
-
-        auto patreonIcon = CCSprite::createWithSpriteFrameName("GJ_starsIcon_001.png");
-        auto patreonSpr = CircleButtonSprite::create(
-            patreonIcon, CircleBaseColor::Pink, CircleBaseSize::Small
-        );
-        patreonSpr->setScale(0.85f);
-        auto patreonBtn = CCMenuItemSpriteExtra::create(patreonSpr, this, menu_selector(MultiplayerMenuPopup::onPatreon));
-        topMenu->addChild(patreonBtn);
-        topMenu->updateLayout();
-
+       
         m_browserUiNode = CCNode::create();
         m_mainLayer->addChild(m_browserUiNode);
 
@@ -576,11 +556,6 @@ namespace mpedit {
         m_leftMenu->setLayout(RowLayout::create()->setAxisAlignment(AxisAlignment::Start));
         m_browserUiNode->addChild(m_leftMenu);
 
-        auto serversBtnSprite = ButtonSprite::create("Servers", "goldFont.fnt", "GJ_button_04.png", 0.7f);
-        serversBtnSprite->setScale(0.65f);
-        auto serversBtn = CCMenuItemSpriteExtra::create(serversBtnSprite, this, menu_selector(MultiplayerMenuPopup::onDedicatedServers));
-        m_leftMenu->addChild(serversBtn);
-        m_leftMenu->updateLayout();
     }
 
     void MultiplayerMenuPopup::clearCenter() {
@@ -913,28 +888,6 @@ namespace mpedit {
             m_isConnecting = false;
             this->setupRoomBrowser();
         }
-    }
-
-    void MultiplayerMenuPopup::onDiscord(CCObject*) {
-        createQuickPopup(
-            "Discord",
-            "Join the <cy>Multiplayer Edit</c> Discord server?",
-            "Cancel", "Join",
-            [](auto, bool btn2) {
-                if (btn2) geode::utils::web::openLinkInBrowser("https://discord.gg/mdsuxYu2YP");
-            }
-        );
-    }
-
-    void MultiplayerMenuPopup::onPatreon(CCObject*) {
-        createQuickPopup(
-            "Patreon",
-            "Support me on <cy>Patreon</c>?",
-            "Cancel", "Open",
-            [](auto, bool btn2) {
-                if (btn2) geode::utils::web::openLinkInBrowser("https://www.patreon.com/cw/d050/membership");
-            }
-        );
     }
 
     void MultiplayerMenuPopup::onCopyCode(CCObject*) {
