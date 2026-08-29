@@ -28,31 +28,6 @@ CollabLayer* CollabLayer::create() {
     delete ret;
     return nullptr;
 }
-
-// Stuff for listview delegate
-
-bool CollabLayer::cellPerformedAction(
-    TableViewCell* cell,
-    int listType,
-    CellAction action,
-    cocos2d::CCNode* parent
-) {
-    return false;
-}
-
-int CollabLayer::getSelectedCellIdx() {
-    return -1;
-}
-
-bool CollabLayer::shouldSnapToSelected() {
-    return false;
-}
-
-int CollabLayer::getCellDelegateType() {
-    return 0;
-}
-
-
 // initialize fromcollab so hooks work
 
 bool fromCollab = false;
