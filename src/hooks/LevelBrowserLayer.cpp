@@ -1,7 +1,7 @@
 #include <Geode/modify/LevelBrowserLayer.hpp>
 #include <Geode/binding/LevelBrowserLayer.hpp>
 #include <Geode/cocos/layers_scenes_transitions_nodes/CCTransition.h>
-#include "ui/Ui.hpp"
+#include "ui/ui.hpp"
 #include "ui/collablayer/CollabLayer.hpp"
 
 class $modify(MyLevelBrowserLayer, LevelBrowserLayer) {

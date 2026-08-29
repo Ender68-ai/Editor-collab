@@ -16,6 +16,10 @@ jobs:
             os: windows-latest
             target: Win64
             configure-args: "-DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl"
+          - name: Android64
+            os: ubuntu-latest
+            target: Android64
+            configure-args: ""
 
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
