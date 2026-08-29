@@ -20,10 +20,6 @@ jobs:
             os: macos-latest
             target: MacOS
 
-          - name: Android32
-            os: ubuntu-latest
-            target: Android32
-
           - name: Android64
             os: ubuntu-latest
             target: Android64
@@ -36,15 +32,15 @@ jobs:
     runs-on: ${{ matrix.config.os }}
 
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: Build Mod
-      uses: geode-sdk/build-geode-mod@main
-      with:
-        sdk: v5.9.0
-        combine: true
-        target: ${{ matrix.config.target }}
-        configure-args: "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+      - name: Build Mod
+        uses: geode-sdk/build-geode-mod@main
+        with:
+          sdk: v5.9.0
+          combine: true
+          target: ${{ matrix.config.target }}
+          configure-args: "-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl"
 
   package:
     name: Package Mod
