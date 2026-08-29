@@ -8,7 +8,7 @@
 
 #include "modes/JoinMode.hpp"
 #include "../utils/Panel.hpp"
-#include "../Ui.hpp"
+#include "../ui.hpp"
 #include "../menu/MultiplayerMenuPopup.hpp"
 
 
