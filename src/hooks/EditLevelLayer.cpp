@@ -3,8 +3,8 @@
 #include <Geode/Geode.hpp>
 
 #include <Geode/cocos/layers_scenes_transitions_nodes/CCTransition.h>
-#include "../ui/Ui.hpp"
-#include "../ui/collablayer/CollabLayer.hpp"
+#include "ui/Ui.hpp"
+#include "ui/collablayer/CollabLayer.hpp"
 
 class $modify(MyEditLevelLayer, EditLevelLayer) {
     void onBack(CCObject* sender) {
