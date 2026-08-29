@@ -16,17 +16,9 @@ jobs:
             os: windows-latest
             target: Win64
             configure-args: "-DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl"
-          - name: macOS
-            os: macos-latest
-            target: MacOS
-            configure-args: ""
           - name: Android64
             os: ubuntu-latest
             target: Android64
-            configure-args: ""
-          - name: iOS
-            os: macos-latest
-            target: iOS
             configure-args: ""
 
     name: ${{ matrix.config.name }}
@@ -57,4 +49,3 @@ jobs:
         with:
           name: MPEdit
           path: ${{ steps.build.outputs.build-output }}
-
