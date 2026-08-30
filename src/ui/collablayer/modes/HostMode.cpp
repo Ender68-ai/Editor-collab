@@ -22,16 +22,33 @@ HostMode* HostMode::create() {
 }
 
 
+void HostMode::showListAfterDelay(float) {
+    if (m_listLayer) {
+        m_listLayer->setVisible(true);
+    }
+}
+
 bool HostMode::init() {
     if (!CCNode::init())
         return false;
 
     auto winSize = CCDirector::sharedDirector()->getWinSize();
 
+    auto self = this;
+    self->retain();
 
-    auto roomSetup = RoomCreateLayer::create();
-        if (!roomSetup)
+    auto roomSetup = RoomCreateLayer::create([self]() {
+        if (self && self->m_listLayer) {
+            self->scheduleOnce(schedule_selector(HostMode::showListAfterDelay), 0.5f);
+        }
+        self->release();
+    });
+
+    if (!roomSetup) {
+        self->release();
         return false;
+    }
+
     this->addChild(roomSetup);
 
     auto delegate = HostLocalLevelList::create();
@@ -75,8 +92,8 @@ bool HostMode::init() {
     }
 
     levelListLayer->setPosition({
-        winSize.width * 0.15f,
-        winSize.height * 0.15f
+        winSize.width * 0.55f,
+        winSize.height * 0.12f
     });
 
     levelListLayer->setVisible(false);

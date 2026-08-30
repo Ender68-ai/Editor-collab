@@ -1,26 +1,29 @@
 #include <Geode/binding/LevelCell.hpp>
+#include <Geode/binding/EditLevelLayer.hpp>
 #include <Geode/modify/LevelCell.hpp>
 #include <Geode/loader/Log.hpp>
+
 
 using namespace geode::prelude;
 
 class $modify(MPLevelCell, LevelCell) {
 
     void onClick(CCObject* sender) {
+        auto* scene = CCDirector::sharedDirector()->getRunningScene();
 
-        auto scene = CCDirector::sharedDirector()->getRunningScene();
-
-        bool fromCollab = scene->getChildByID(
+        bool fromCollab = scene && scene->getChildByID(
             "ender68.multiplayeredit/collab-layer"
         ) != nullptr;
 
-            if(fromCollab) {
-            // hook to add to other list
-             }
-            else {
-                LevelCell::onClick(sender);
-            }
+        if (fromCollab) {
+            CCDirector::sharedDirector()->replaceScene(
+                LevelEditorLayer::scene(m_level, false)
+            );
+            return;
         }
+
+        LevelCell::onClick(sender);
+    }
 
     void loadFromLevel(GJGameLevel* level) {
 

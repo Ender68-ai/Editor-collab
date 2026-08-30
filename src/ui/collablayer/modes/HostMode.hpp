@@ -8,6 +8,7 @@ using namespace geode::prelude;
 class HostMode : public CCNode {
     protected:
         bool init();
+        void showListAfterDelay(float);
 
         GJListLayer* m_listLayer;
 

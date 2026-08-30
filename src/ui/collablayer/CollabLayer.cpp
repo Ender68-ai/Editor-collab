@@ -68,8 +68,7 @@ bool CollabLayer::init() {
     settingsSprite->setOpacity(255);
     settingsSprite->setCascadeColorEnabled(true);
     settingsSprite->setCascadeOpacityEnabled(true); 
-
-    // session indicator for online indicator sprite
+    
     auto &session = SessionManager::get();
     auto playerCount = session.getPlayers().size();
 

@@ -467,6 +467,8 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         float m_cursorSendTimer = 0.f;
         bool m_sessionActive = false;
         bool m_inUndoRedo = false;
+        bool m_initializing = true;
+        bool m_settingsBroadcastInProgress = false;
         cocos2d::CCPoint m_lastSentLevelPos = {0.f, 0.f};
         bool m_wasPlaytesting = false;
 
@@ -483,11 +485,15 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
     void levelSettingsUpdated() {
         LevelEditorLayer::levelSettingsUpdated();
 
+        if (m_fields->m_initializing) return;
+        if (m_fields->m_settingsBroadcastInProgress) return;
+
         auto& handler = RemoteActionHandler::get();
         if (handler.isProcessingRemote() || !handler.isInitialSyncCompleted()) return;
 
         auto& session = SessionManager::get();
         if (session.isInSession()) {
+            m_fields->m_settingsBroadcastInProgress = true;
             ActionSerializer::LevelSettingsData settings;
             if (this->m_levelSettings) {
                 settings.saveString = this->m_levelSettings->getSaveString();
@@ -499,12 +505,16 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
             }
             auto data = proto::serializeUpdateSettings(settings);
             P2PManager::get().send(std::move(data), ChannelType::Reliable);
+            m_fields->m_settingsBroadcastInProgress = false;
             log::info("EditorHooks: Broadcasted update_settings");
         }
     }
 
     bool init(GJGameLevel* level, bool unk) {
-        if (!LevelEditorLayer::init(level, unk)) return false;
+        if (!LevelEditorLayer::init(level, unk)) {
+            m_fields->m_initializing = false;
+            return false;
+        }
 
         s_startPosObjects.clear();
         s_startPosSaveStrings.clear();
@@ -602,6 +612,7 @@ class $modify(MPLevelEditorLayer, LevelEditorLayer) {
         cursorNode->setID("cursor-node"_spr);
         this->m_objectLayer->addChild(cursorNode, 999);
 
+        m_fields->m_initializing = false;
         return true;
     }
 

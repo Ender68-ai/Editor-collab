@@ -1,6 +1,5 @@
 #include <Geode/modify/LevelBrowserLayer.hpp>
 #include <Geode/binding/LevelBrowserLayer.hpp>
-#include <Geode/cocos/layers_scenes_transitions_nodes/CCTransition.h>
 #include "ui/ui.hpp"
 #include "ui/collablayer/CollabLayer.hpp"
 
@@ -40,7 +39,6 @@ class $modify(MyLevelBrowserLayer, LevelBrowserLayer) {
             }
             return true;
         }
-
         void onMyButton(CCObject* sender) {
         auto collabLayer = CollabLayer::create();
         auto scene = CCScene::create();

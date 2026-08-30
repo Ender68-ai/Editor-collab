@@ -1,15 +1,19 @@
 #include <Geode/Geode.hpp>
 
+#include <fmt/format.h>
+
 #include "RoomCreateLayer.hpp"
 #include "SessionManager.hpp"
-#include <fmt/format.h>
+#include "P2PManager.hpp"
+
 
 using namespace geode::prelude;
 
 
 
-RoomCreateLayer* RoomCreateLayer::create() {
+RoomCreateLayer* RoomCreateLayer::create(std::function<void()> onRoomCreated) {
     auto ret = new RoomCreateLayer();
+    ret->m_onRoomCreated = std::move(onRoomCreated);
 
     if (ret && ret->init()) {
         ret->autorelease();
@@ -20,11 +24,13 @@ RoomCreateLayer* RoomCreateLayer::create() {
     return nullptr;
 }
 
+
 bool RoomCreateLayer::init() {
     if (!CCNode::init())
         return false;
 
     auto winSize = CCDirector::sharedDirector()->getWinSize();
+
     auto panelWidth = winSize.width * 0.8f;
     auto panelHeight = winSize.height * 0.7f;
 
@@ -36,12 +42,15 @@ bool RoomCreateLayer::init() {
     boxTitle->setScale(0.6f);
     boxTitle->setPosition({panelWidth * 0.5f, panelHeight - 10.f});
     panel->addChild(boxTitle);
+    m_boxTitle = boxTitle;
+
 
     auto layoutNode = CCNode::create();
     layoutNode->setContentSize({260.f, 190.f});
     layoutNode->setPosition({panelWidth * 0.5f, panelHeight * 0.52f});
     layoutNode->setAnchorPoint({0.5f, 0.5f});
     layoutNode->setLayout(ColumnLayout::create()->setGap(12.f)->setAxisReverse(true));
+    m_layoutNode = layoutNode;
 
     auto createLabeledInput = [](CCNode* parent, const char* labelStr, float width, const char* placeholder, int maxLen, geode::CommonFilter filter, geode::TextInput*& outInput) {
         auto wrapper = CCNode::create();
@@ -98,6 +107,7 @@ bool RoomCreateLayer::init() {
     createToggleRow(layoutNode, "Private Room", m_privateToggle);
     createToggleRow(layoutNode, "Default View-Only", m_viewOnlyToggle);
     layoutNode->updateLayout();
+    m_layoutNode = layoutNode;
     panel->addChild(layoutNode);
 
     auto createButton = CCMenuItemSpriteExtra::create(
@@ -106,11 +116,41 @@ bool RoomCreateLayer::init() {
         menu_selector(RoomCreateLayer::onCreate)
     );
     auto createMenu = CCMenu::create();
-    createMenu->setPosition({panelWidth * 0.5f, 28.f});
+    createMenu->setPosition({panelWidth * 0.5f, 10.f});
     createMenu->addChild(createButton);
     panel->addChild(createMenu);
+    m_createMenu = createMenu;
 
     this->addChild(panel);
+
+
+
+    // wHEN ROOM IS CREATED
+
+    auto* hostingTitle = CCLabelBMFont::create("", "goldFont.fnt");
+    hostingTitle->setScale(0.6f);
+    hostingTitle->setPosition({panelWidth * 0.25f, panelHeight - 10.f});
+    hostingTitle->setVisible(false);
+    panel->addChild(hostingTitle);
+    m_hostingTitle = hostingTitle;
+
+
+
+
+
+    auto self = this;
+    self->retain();
+    mpedit::P2PManager::get().onSessionStarted(
+        [self](std::string const& roomCode, int localPlayerId) {
+            if (!self->m_createRoomLayer) {
+                self->release();
+                return;
+            }
+
+            self->onSessionStarted(roomCode, localPlayerId);
+            self->release();
+        }
+    );
     return true;
 }
 
@@ -136,4 +176,30 @@ void RoomCreateLayer::onCreate(CCObject*) {
         settings
     );
 }
+
+void RoomCreateLayer::onSessionStarted(std::string const& roomCode, int playerId) {
+    if (!m_createRoomLayer || !m_boxTitle || !m_layoutNode || !m_createMenu || !m_hostingTitle) {
+        return;
+    }
+
+    auto winSize = CCDirector::sharedDirector()->getWinSize();
+    log::info("Room created: {}", roomCode);
+
+    m_hostingTitle->setString(
+    m_nameInput->getString().c_str()
+    );
+
+    m_createRoomLayer->animateResize( winSize.width * 0.4f, winSize.height * 0.7f, 0.5f);
+
+    m_boxTitle->setVisible(false);
+    m_layoutNode->setVisible(false);
+    m_createMenu->setVisible(false);
+    m_hostingTitle->setVisible(true);
+
+    if (m_onRoomCreated) {
+        m_onRoomCreated();
+    }
+}
+
+
 
