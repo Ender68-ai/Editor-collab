@@ -275,31 +275,30 @@ bool RoomCreateLayer::init() {
     passwordToggleMenu->setVisible(false);
     panel->addChild(passwordToggleMenu);
     m_passwordToggleMenu = passwordToggleMenu;
+    
+    this->retain();
 
-    auto self = this;
-    self->retain();
-
-    mpedit::SessionManager::get().onPlayerJoined(this, [self](mpedit::PlayerInfo const&) {
-        if (self && self->m_scrollLayer) {
-            self->refreshPlayerList();
+    mpedit::SessionManager::get().onPlayerJoined(this, [this](mpedit::PlayerInfo const&) {
+        if (this->m_scrollLayer) {
+            this->refreshPlayerList();
         }
     });
 
-    mpedit::SessionManager::get().onPlayerLeft(this, [self](mpedit::PlayerInfo const&) {
-        if (self && self->m_scrollLayer) {
-            self->refreshPlayerList();
+    mpedit::SessionManager::get().onPlayerLeft(this, [this](mpedit::PlayerInfo const&) {
+        if (this->m_scrollLayer) {
+            this->refreshPlayerList();
         }
     });
 
     mpedit::P2PManager::get().onSessionStarted(
-        [self](std::string const& roomCode, int localPlayerId) {
-            if (!self->m_createRoomLayer) {
-                self->release();
+        [this](std::string const& roomCode, int localPlayerId) {
+            if (!this->m_createRoomLayer) {
+                this->release();
                 return;
             }
 
-            self->onSessionStarted(roomCode, localPlayerId);
-            self->release();
+            this->onSessionStarted(roomCode, localPlayerId);
+            this->release();
         }
     );
     return true;
@@ -395,6 +394,7 @@ void RoomCreateLayer::onSessionStarted(std::string const& roomCode, int playerId
     if (!m_createRoomLayer || !m_boxTitle || !m_layoutNode || !m_createMenu || !m_hostingTitle) {
         return;
     }
+    log::info("ROOM CREATE UI RECEIVED SESSION START");
 
     auto winSize = CCDirector::sharedDirector()->getWinSize();
 
@@ -497,8 +497,12 @@ void RoomCreateLayer::onCopyRoomCode(CCObject*) {
 void RoomCreateLayer::onLeaveSession(CCObject*) {
     mpedit::SessionManager::get().leaveSession();
 
-    auto winSize = CCDirector::sharedDirector()->getWinSize();
+    log::info(
+        "after leave: isInSession = {}",
+        mpedit::SessionManager::get().isInSession()
+    );
 
+    auto winSize = CCDirector::sharedDirector()->getWinSize();
     m_createRoomLayer->animateResize( winSize.width * 0.8f, winSize.height * 0.7f, 0.5f);
 
     m_boxTitle->setVisible(true);
