@@ -29,6 +29,14 @@ bool RoomCreateLayer::init() {
     if (!CCNode::init())
         return false;
 
+    auto& session = mpedit::SessionManager::get();
+    if (session.isInSession()) {
+        if (m_onRoomCreated) {
+            m_onRoomCreated();
+        }
+        return true;
+    }
+
     auto winSize = CCDirector::sharedDirector()->getWinSize();
 
     auto panelWidth = winSize.width * 0.8f;

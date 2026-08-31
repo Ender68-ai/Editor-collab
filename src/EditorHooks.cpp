@@ -49,16 +49,6 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
     bool init(LevelEditorLayer* editor) {
         if (!EditorPauseLayer::init(editor)) return false;
 
-        auto* btnSprite = ButtonSprite::create(
-            "Multiplayer Edit", 90, true, "goldFont.fnt", "GJ_button_01.png", 30.f, 0.45f
-        );
-        auto* btn = CCMenuItemSpriteExtra::create(
-            btnSprite,
-            this,
-            menu_selector(MPEditorPauseLayer::onMultiplayer)
-        );
-        btn->setID("multiplayer-button"_spr);
-
         CCMenu* targetMenu = typeinfo_cast<CCMenu*>(this->getChildByIDRecursive("resume-menu"));
         if (!targetMenu) {
             targetMenu = typeinfo_cast<CCMenu*>(this->getChildByIDRecursive("center-button-menu"));
@@ -79,20 +69,6 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
             if (targetMenu) {
                 targetMenu->addChild(saveCopyBtn);
             }
-        }
-
-        if (targetMenu) {
-            targetMenu->addChild(btn);
-            targetMenu->updateLayout();
-        } else {
-            auto* fallbackMenu = CCMenu::create();
-            fallbackMenu->setID("multiplayer-menu"_spr);
-            fallbackMenu->setPosition({0, 0});
-            
-            auto winSize = CCDirector::sharedDirector()->getWinSize();
-            btn->setPosition({winSize.width / 2.f, 40.f});
-            fallbackMenu->addChild(btn);
-            this->addChild(fallbackMenu, 10);
         }
 
         if (session.isInSession()) {

@@ -19,7 +19,7 @@ bool NineSliceBox::init(float width, float height) {
         return false;
 
     m_bg = geode::NineSlice::create(
-        "square02b_001.png",
+        "GJ_square01.png",
         {},
         {
             .top = 10.f,
@@ -32,7 +32,6 @@ bool NineSliceBox::init(float width, float height) {
     m_bg->setContentSize({width, height});
     m_bg->setAnchorPoint({0, 0});
     m_bg->setOpacity(255);
-    m_bg->setColor({139, 69, 19});
 
     this->addChild(m_bg);
 

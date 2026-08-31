@@ -223,7 +223,11 @@ bool CollabLayer::init() {
     this->schedule(
             schedule_selector(CollabLayer::updateExtMenu),
             0.1f
-        );      
+    );
+    this->schedule(
+            schedule_selector(CollabLayer::updateStatus),
+            0.25f
+    );      
 
     // JoinModes implementatiom
     // PublicRoomList
@@ -295,8 +299,14 @@ bool CollabLayer::init() {
 
 
 void CollabLayer::onBack(CCObject* sender) {
+    auto& session = SessionManager::get();
+
+    if (session.isInSession()) {
+        session.leaveSession();
+    }
+
     CCDirector::sharedDirector()->popSceneWithTransition(
-        0.5f, 
+        0.5f,
         cocos2d::PopTransition()
     );
 }
