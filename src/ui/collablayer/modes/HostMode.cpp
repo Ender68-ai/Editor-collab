@@ -1,5 +1,6 @@
 #include "HostMode.hpp"
 #include "hostmode/RoomCreateLayer.hpp"
+#include "SessionManager.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/LocalLevelManager.hpp>
@@ -23,9 +24,7 @@ HostMode* HostMode::create() {
 
 
 void HostMode::showListAfterDelay(float) {
-    if (m_listLayer) {
         m_listLayer->setVisible(true);
-    }
 }
 
 bool HostMode::init() {
@@ -50,6 +49,13 @@ bool HostMode::init() {
     }
 
     this->addChild(roomSetup);
+
+    // Register callback for when session ends
+    mpedit::SessionManager::get().onSessionEnded(this, [self]() {
+        if (self && self->m_listLayer) {
+            self->m_listLayer->setVisible(false);
+        }
+    });
 
     auto delegate = HostLocalLevelList::create();
 

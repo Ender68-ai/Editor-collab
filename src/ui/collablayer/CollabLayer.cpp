@@ -5,8 +5,6 @@
 #include "settings/settings.hpp"
 #include "CollabLayer.hpp"
 #include "SessionManager.hpp"
-
-#include "modes/JoinMode.hpp"
 #include "../utils/Panel.hpp"
 #include "../ui.hpp"
 #include "../menu/MultiplayerMenuPopup.hpp"
