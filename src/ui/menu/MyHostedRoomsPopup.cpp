@@ -282,7 +282,7 @@ protected:
         auto body = matjson::makeObject({});
         body["action"] = "setPassword";
         body["code"] = m_parentPopup->m_code;
-        body["password"] = m_input->getString();
+        body["password"] = std::string(m_input->getString());
         
         req.bodyJSON(body);
         m_parentPopup->m_manageTask.spawn(
@@ -354,7 +354,7 @@ protected:
         
         int maxPlayers = 100;
         try {
-            maxPlayers = std::stoi(m_input->getString());
+            maxPlayers = std::stoi(std::string(m_input->getString()));
         } catch(...) {}
         body["maxPlayers"] = maxPlayers;
         
