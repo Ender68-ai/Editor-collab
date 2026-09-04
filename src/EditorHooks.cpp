@@ -14,8 +14,6 @@
 #include "MessageBatcher.hpp"
 #include "ActionSerializer.hpp"
 #include "RemoteActionHandler.hpp"
-#include "ui/menu/MultiplayerMenuPopup.hpp"
-#include "ui/menu/CreateRoomPopup.hpp"
 #include "ui/QuickChatPopup.hpp"
 
 #include "ui/SessionStatusNode.hpp"

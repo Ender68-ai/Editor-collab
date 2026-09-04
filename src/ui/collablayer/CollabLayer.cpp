@@ -302,12 +302,13 @@ void CollabLayer::onBack(CCObject* sender) {
     if (session.isInSession()) {
         session.leaveSession();
     }
+        auto levelBrowserLayer = LevelBrowserLayer::create(GJSearchObject::create(SearchType::MyLevels));
+        auto scene = CCScene::create();
+        scene->addChild(levelBrowserLayer);
+        auto transition = Transition::create(0.5f, scene, {0, 0, 0});
+        CCDirector::sharedDirector()->replaceScene(transition);
+    };
 
-    CCDirector::sharedDirector()->popSceneWithTransition(
-        0.5f,
-        cocos2d::PopTransition()
-    );
-}
 
 
 void CollabLayer::onSettings(CCObject*) {

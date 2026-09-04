@@ -12,6 +12,7 @@
 #endif
 
 using namespace geode::prelude;
+using namespace mpedit;
 
 
 
@@ -290,17 +291,15 @@ bool RoomCreateLayer::init() {
         }
     });
 
-    mpedit::P2PManager::get().onSessionStarted(
-        [this](std::string const& roomCode, int localPlayerId) {
-            if (!this->m_createRoomLayer) {
-                this->release();
-                return;
-            }
+   mpedit::SessionManager::get().onSessionStarted(this, [this]() {
+    if (!this->m_createRoomLayer)
+        return;
 
-            this->onSessionStarted(roomCode, localPlayerId);
-            this->release();
-        }
+    this->onSessionStarted(
+        mpedit::SessionManager::get().getRoomCode(),
+        mpedit::SessionManager::get().getLocalPlayerId()
     );
+    });
     return true;
 }
 

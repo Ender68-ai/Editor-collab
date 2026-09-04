@@ -77,13 +77,7 @@ void NineSliceBox::updateResize(float dt) {
     float progress = m_animationTime / m_animationDuration;
 
     if (progress >= 1.f) {
-        m_bg->setContentSize(m_targetSize);
-
-        this->unschedule(
-            schedule_selector(NineSliceBox::updateResize)
-        );
-
-        return;
+        progress = 1.f;
     }
 
     float width =
@@ -95,5 +89,11 @@ void NineSliceBox::updateResize(float dt) {
         (m_targetSize.height - m_startSize.height) * progress;
 
     m_bg->setContentSize({width, height});
-}
+    this->setContentSize({width, height});
 
+    if (progress >= 1.f) {
+        this->unschedule(
+            schedule_selector(NineSliceBox::updateResize)
+        );
+    }
+}

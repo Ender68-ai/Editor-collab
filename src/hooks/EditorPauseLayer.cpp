@@ -1,6 +1,8 @@
-﻿#include "ui/collablayer/CollabLayer.hpp"
-#include <Geode/Geode.hpp>
+﻿#include <Geode/Geode.hpp>
 #include <Geode/modify/EditorPauseLayer.hpp>
+
+#include "ui/ui.hpp"
+#include "ui/collablayer/CollabLayer.hpp"
 #include "SessionManager.hpp"
 #include "P2PManager.hpp"
 #include "RemoteActionHandler.hpp"
@@ -130,7 +132,7 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
                 }
                 if (auto* btn = typeinfo_cast<CCMenuItemSpriteExtra*>(sender)) {
                     btn->setEnabled(false);
-                }
+                }        
                 auto* loadingCircle = LoadingCircle::create();
                 loadingCircle->setParentLayer(this);
                 loadingCircle->show();
@@ -145,22 +147,24 @@ class $modify(MPEditorPauseLayer, EditorPauseLayer) {
                 });
                 return;
             }
-            session.leaveSession();
+
+            EditorPauseLayer::saveLevel();
+            this->onExitEditor(sender);
+            return;
         }
-        else{
+
         EditorPauseLayer::onSaveAndExit(sender);
-        }
     }
 
     void onExitEditor(CCObject* sender) {
         auto& session = SessionManager::get();
         if (session.isInSession()) {
             session.leaveSession();
-            auto scene = CCScene::create();
             auto collabLayer = CollabLayer::create();
+            auto scene = CCScene::create();
             scene->addChild(collabLayer);
-            CCDirector::sharedDirector()->replaceScene(scene);
-            return;
+            auto transition = Transition::create(0.5f, scene, {0, 0, 0});
+            CCDirector::sharedDirector()->replaceScene(transition);
         } else {
             EditorPauseLayer::onExitEditor(sender);
         }
