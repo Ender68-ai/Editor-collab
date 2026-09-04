@@ -519,6 +519,15 @@ namespace mpedit {
                         }
                     }
 
+                    for (auto* createdObj : newObjs) {
+                        if (createdObj->m_editorLayer != objData.editorLayer || createdObj->m_editorLayer2 != objData.editorLayer2) {
+                            editor->removeObjectFromSection(createdObj);
+                            createdObj->m_editorLayer = objData.editorLayer;
+                            createdObj->m_editorLayer2 = objData.editorLayer2;
+                            editor->addToSection(createdObj);
+                        }
+                    }
+
                     applyTransformSafe(obj, objData.rotation, objData.scaleX, objData.scaleY, objData.flipX, objData.flipY);
                     registerObject(objData.uuid, obj);
                     
@@ -552,6 +561,13 @@ namespace mpedit {
             if (!obj) {
                 log::warn("RemoteActionHandler: Failed to create object ID {}", objData.objectID);
                 continue;
+            }
+
+            if (obj->m_editorLayer != objData.editorLayer || obj->m_editorLayer2 != objData.editorLayer2) {
+                editor->removeObjectFromSection(obj);
+                obj->m_editorLayer = objData.editorLayer;
+                obj->m_editorLayer2 = objData.editorLayer2;
+                editor->addToSection(obj);
             }
 
             applyTransformSafe(obj, objData.rotation, objData.scaleX, objData.scaleY, objData.flipX, objData.flipY);

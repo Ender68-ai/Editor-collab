@@ -504,7 +504,7 @@ namespace mpedit {
 
         float timeoutSec = 5.0f;
         if (std::chrono::steady_clock::now() < m_fastPollEndTime) {
-            timeoutSec = 0.0f;
+            timeoutSec = 2.0f;
         }
 
         auto url = getSignalingUrl() + "/rooms/" + code + "/signal?role=" + role + "&playerId=" + std::to_string(playerId) + "&timeout=" + std::to_string(static_cast<int>(timeoutSec * 1000));
@@ -526,9 +526,9 @@ namespace mpedit {
                 }
 
                 if (m_signalingActive.load()) {
-                    float delay = 20.0f;
+                    float delay = 25.0f;
                     if (std::chrono::steady_clock::now() < m_fastPollEndTime) {
-                        delay = 0.5f;
+                        delay = 8.0f;
                     }
                     
                     std::thread([this, code, role, playerId, delay]() {
@@ -543,7 +543,7 @@ namespace mpedit {
     }
 
     void P2PManager::extendFastPoll() {
-        m_fastPollEndTime = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        m_fastPollEndTime = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     }
 
     void P2PManager::stopSignalPolling() {

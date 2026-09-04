@@ -1,3 +1,11 @@
+# 0.6.1
+- Added cloud hosting! Players can now upload their levels directly to a dedicated server in-game. You can of course host your own and do this for free (Read the documentation to learn how), but there will be a paid dedicated server service hosted officially by me (in the future) which will be set up by default.
+- Players can view and manage their cloud hosted rooms from the "Dedicated Servers" menu.
+- Updated Dedicated Server to add hosting multiple levels simultaneously, hosting and stopping sessions without restarting the server, more commands (and variables for those commands), and a lot more.
+- Optimized signaling server even more.
+- Fixed signaling server bug where fast polling connections were being held too long.
+- Fixed bug where objects placed by other players appear on the wrong layer.
+
 # 0.6.0
 - Added dedicated Server support for headless server hosting! See the `servers/dedicated` folder for instructions on how to run a dedicated server.
 - Added a "Servers" button in the Multiplayer menu. Here you can directly join or save dedicated server IPs.

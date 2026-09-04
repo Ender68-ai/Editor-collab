@@ -691,21 +691,55 @@ namespace mpedit {
         DedicatedServersPopup::create([this](std::string const& url) {
             this->onConnecting();
             
+            std::string urlWithoutCode = url;
+            std::string requestedCode = "";
+            size_t lastSlash = url.find_last_of('/');
+            if (lastSlash != std::string::npos && lastSlash < url.length() - 1) {
+                std::string possibleCode = url.substr(lastSlash + 1);
+                bool isAlphanum = std::all_of(possibleCode.begin(), possibleCode.end(), ::isalnum);
+                if (isAlphanum && possibleCode.length() <= 8) {
+                    requestedCode = possibleCode;
+                    urlWithoutCode = url.substr(0, lastSlash);
+                }
+            }
+
             geode::Ref<MultiplayerMenuPopup> safeThis = this;
-            P2PManager::get().fetchRooms([safeThis, url](std::vector<P2PManager::RoomInfo> const& rooms) {
+            P2PManager::get().fetchRooms([safeThis, urlWithoutCode, requestedCode](std::vector<P2PManager::RoomInfo> const& rooms) {
                 if (!safeThis->getParent()) return;
                 
                 if (rooms.empty()) {
                     safeThis->clearCenter();
                     if (safeThis->m_browserUiNode) safeThis->m_browserUiNode->setVisible(true);
-                    geode::Notification::create("Server has no active levels hosted", geode::NotificationIcon::Warning)->show();
+                    if (!requestedCode.empty()) {
+                        geode::Notification::create("Server has no active levels hosted with that code", geode::NotificationIcon::Warning)->show();
+                    } else {
+                        geode::Notification::create("Server has no active levels hosted", geode::NotificationIcon::Warning)->show();
+                    }
                     return;
                 }
                 
-                auto room = rooms[0];
-                room.serverUrl = url;
-                safeThis->onJoinRoom(room);
-            }, url);
+                if (!requestedCode.empty()) {
+                    bool found = false;
+                    for (auto const& r : rooms) {
+                        if (r.roomCode == requestedCode) {
+                            auto room = r;
+                            room.serverUrl = urlWithoutCode;
+                            safeThis->onJoinRoom(room);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        safeThis->clearCenter();
+                        if (safeThis->m_browserUiNode) safeThis->m_browserUiNode->setVisible(true);
+                        geode::Notification::create("Server has no active levels hosted with that code", geode::NotificationIcon::Warning)->show();
+                    }
+                } else {
+                    auto room = rooms[0];
+                    room.serverUrl = urlWithoutCode;
+                    safeThis->onJoinRoom(room);
+                }
+            }, urlWithoutCode);
         })->show();
     }
 

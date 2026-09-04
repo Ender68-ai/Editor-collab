@@ -20,6 +20,7 @@ namespace mpedit {
 
         
         void onAddServer(cocos2d::CCObject*);
+        void onMyHostedRooms(cocos2d::CCObject*);
         void onDirectConnect(cocos2d::CCObject*);
         
 

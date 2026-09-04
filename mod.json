@@ -8,7 +8,7 @@
     },
     "id": "d050.multiplayeredit",
     "name": "Multiplayer Edit",
-    "version": "v0.6.0",
+    "version": "v0.6.1",
     "developer": "d050",
     "description": "Collaborate with friends in real-time level editing! Host a session and build together.",
     "dependencies": {
@@ -71,6 +71,22 @@
             "name": "Check for Updates",
             "description": "Automatically check for newer versions when opening the Multiplayer menu.",
             "default": true
+        },
+        "cloud-section": {
+            "type": "title",
+            "name": "Cloud Hosting"
+        },
+        "cloud-hosting-url": {
+            "type": "string",
+            "name": "Cloud Hosting URL (WIP)",
+            "description": "The URL of the dedicated server used for uploading and hosting local levels.",
+            "default": "http://localhost:7575"
+        },
+        "cloud-auth-token": {
+            "type": "string",
+            "name": "Cloud Auth Token",
+            "description": "Your private token for uploading and managing levels on the Cloud Server. Get this from the server admin.",
+            "default": ""
         }
     }
 }

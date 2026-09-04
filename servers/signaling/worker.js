@@ -2,6 +2,7 @@
 const kv = await Deno.openKv();
 const ROOM_TTL = 2 * 60 * 60 * 1000;
 const CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const lastPingCache = new Map();
 
 
 async function enqueueKv(code, queueName, msg) {
@@ -87,7 +88,8 @@ Deno.serve(async (req) => {
 
         for await (const entry of kv.list({ prefix: ["room_meta"] })) {
             const room = entry.value;
-            if (!room.isPrivate && room.version && room.version !== "Unknown") {
+            if (!room.isPrivate && room.version && room.version !== "Unknown"
+                && room.lastPing && Date.now() - room.lastPing <= 3 * 60 * 1000) {
                 rooms.push({
                     roomCode: entry.key[1],
                     hostName: room.hostName,
@@ -131,8 +133,8 @@ Deno.serve(async (req) => {
         };
 
         let atomic = kv.atomic();
-        atomic = atomic.set(["rooms", code], roomObj, { expireIn: 5 * 60 * 1000 });
-        atomic = atomic.set(["room_meta", code], roomObj, { expireIn: 5 * 60 * 1000 });
+        atomic = atomic.set(["rooms", code], roomObj, { expireIn: 15 * 60 * 1000 });
+        atomic = atomic.set(["room_meta", code], roomObj, { expireIn: 15 * 60 * 1000 });
         await atomic.commit();
 
         return json({ roomCode: code, roomId });
@@ -191,8 +193,8 @@ Deno.serve(async (req) => {
             const commit = await kv
                 .atomic()
                 .check(currentRes)
-                .set(["rooms", code], currentRoom, { expireIn: 5 * 60 * 1000 })
-                .set(["room_meta", code], currentRoom, { expireIn: 5 * 60 * 1000 })
+                .set(["rooms", code], currentRoom, { expireIn: 15 * 60 * 1000 })
+                .set(["room_meta", code], currentRoom, { expireIn: 15 * 60 * 1000 })
                 .commit();
 
             success = commit.ok;
@@ -226,8 +228,8 @@ Deno.serve(async (req) => {
             const commit = await kv
                 .atomic()
                 .check(currentRes)
-                .set(["rooms", code], currentRoom, { expireIn: 5 * 60 * 1000 })
-                .set(["room_meta", code], currentRoom, { expireIn: 5 * 60 * 1000 })
+                .set(["rooms", code], currentRoom, { expireIn: 15 * 60 * 1000 })
+                .set(["room_meta", code], currentRoom, { expireIn: 15 * 60 * 1000 })
                 .commit();
 
             success = commit.ok;
@@ -253,8 +255,8 @@ Deno.serve(async (req) => {
             const commit = await kv
                 .atomic()
                 .check(currentRes)
-                .set(["rooms", code], currentRoom, { expireIn: 5 * 60 * 1000 })
-                .set(["room_meta", code], currentRoom, { expireIn: 5 * 60 * 1000 })
+                .set(["rooms", code], currentRoom, { expireIn: 15 * 60 * 1000 })
+                .set(["room_meta", code], currentRoom, { expireIn: 15 * 60 * 1000 })
                 .commit();
 
             success = commit.ok;
@@ -270,27 +272,23 @@ Deno.serve(async (req) => {
         const target = role === "host" ? "host" : playerId;
 
         if (role === "host") {
-
-            let success = false;
-            let retries = 3;
-            while (!success && retries > 0) {
-                const currentRes = await kv.get(["rooms", code]);
-                if (!currentRes.value) break;
-
-                const now = Date.now();
-
-                if (currentRes.value.lastPing && now - currentRes.value.lastPing < 30000) {
-                    break;
+            const cachedPing = lastPingCache.get(code) || 0;
+            if (Date.now() - cachedPing >= 120000) {
+                let success = false;
+                let retries = 3;
+                while (!success && retries > 0) {
+                    const currentRes = await kv.get(["rooms", code]);
+                    if (!currentRes.value) break;
+                    currentRes.value.lastPing = Date.now();
+                    const commit = await kv.atomic()
+                        .check(currentRes)
+                        .set(["rooms", code], currentRes.value, { expireIn: 15 * 60 * 1000 })
+                        .set(["room_meta", code], currentRes.value, { expireIn: 15 * 60 * 1000 })
+                        .commit();
+                    success = commit.ok;
+                    retries--;
                 }
-
-                currentRes.value.lastPing = now;
-                const commit = await kv.atomic()
-                    .check(currentRes)
-                    .set(["rooms", code], currentRes.value, { expireIn: 5 * 60 * 1000 })
-                    .set(["room_meta", code], currentRes.value, { expireIn: 5 * 60 * 1000 })
-                    .commit();
-                success = commit.ok;
-                retries--;
+                lastPingCache.set(code, Date.now());
             }
         }
 
@@ -300,9 +298,9 @@ Deno.serve(async (req) => {
         const timeoutParam = Number(url.searchParams.get("timeout") || "0");
         let actualTimeout;
         if (timeoutParam <= 0) {
-            actualTimeout = 16000;
+            actualTimeout = 1000;
         } else {
-            actualTimeout = Math.min(timeoutParam, 5000);
+            actualTimeout = Math.min(timeoutParam, 30000);
         }
 
         const stream = kv.watch([["rooms", code, queueName, "wakeup"]]);
