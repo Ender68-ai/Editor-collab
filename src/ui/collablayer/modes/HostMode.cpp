@@ -22,6 +22,10 @@ HostMode* HostMode::create() {
     return nullptr;
 }
 
+HostMode::~HostMode() {
+    mpedit::SessionManager::get().removeListener(this);
+}
+
 
 void HostMode::showListAfterDelay(float) {
         m_listLayer->setVisible(true);
@@ -37,7 +41,7 @@ bool HostMode::init() {
     self->retain();
 
     auto roomSetup = RoomCreateLayer::create([self]() {
-        if (self && self->m_listLayer) {
+        if (self->m_listLayer) {
             self->scheduleOnce(schedule_selector(HostMode::showListAfterDelay), 0.5f);
         }
         self->release();
@@ -52,7 +56,7 @@ bool HostMode::init() {
 
     // Register callback for when session ends
     mpedit::SessionManager::get().onSessionEnded(this, [self]() {
-        if (self && self->m_listLayer) {
+        if (self->m_listLayer) {
             self->m_listLayer->setVisible(false);
         }
     });

@@ -19,6 +19,10 @@ class $modify(MPLevelCell, LevelCell) {
             CCDirector::sharedDirector()->replaceScene(
                 LevelEditorLayer::scene(m_level, false)
             );
+            log::info(
+            "BEFORE PUSH: running scene = {}",
+            CCDirector::sharedDirector()->getRunningScene()
+            );
             return;
         }
 

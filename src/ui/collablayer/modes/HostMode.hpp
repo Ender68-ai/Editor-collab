@@ -13,6 +13,7 @@ class HostMode : public CCNode {
         GJListLayer* m_listLayer;
 
     public:
+        ~HostMode();
         static HostMode* create();
 };
 

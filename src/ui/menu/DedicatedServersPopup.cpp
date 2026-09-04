@@ -1,4 +1,5 @@
 #include "DedicatedServersPopup.hpp"
+#include "MyHostedRoomsPopup.hpp"
 #include <Geode/ui/TextInput.hpp>
 #include <Geode/ui/BasedButtonSprite.hpp>
 
@@ -245,6 +246,11 @@ namespace mpedit {
         auto addBtn = CCMenuItemSpriteExtra::create(addBtnSprite, this, menu_selector(DedicatedServersPopup::onAddServer));
         bottomMenu->addChild(addBtn);
 
+        auto myRoomsSprite = ButtonSprite::create("My Hosted Rooms", "goldFont.fnt", "GJ_button_01.png", 0.6f);
+        myRoomsSprite->setScale(0.7f);
+        auto myRoomsBtn = CCMenuItemSpriteExtra::create(myRoomsSprite, this, menu_selector(DedicatedServersPopup::onMyHostedRooms));
+        bottomMenu->addChild(myRoomsBtn);
+
         bottomMenu->updateLayout();
 
         this->setupList();
@@ -300,6 +306,14 @@ namespace mpedit {
 
     void DedicatedServersPopup::onAddServer(CCObject*) {
         AddServerPopup::create(this)->show();
+    }
+
+    void DedicatedServersPopup::onMyHostedRooms(CCObject*) {
+        if (Mod::get()->getSettingValue<std::string>("cloud-auth-token").empty()) {
+            FLAlertLayer::create("Error", "Please set your Cloud Auth Token in the mod settings.", "OK")->show();
+            return;
+        }
+        MyHostedRoomsPopup::create()->show();
     }
 
     void DedicatedServersPopup::onDirectConnect(CCObject*) {
